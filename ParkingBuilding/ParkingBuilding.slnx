@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="ParkingBuilding.API/ParkingBuilding.API.csproj" />
+  <Project Path="ParkingBuilding.Repository/ParkingBuilding.Repository.csproj" />
+  <Project Path="ParkingBuilding.Service/ParkingBuilding.Service.csproj" />
+</Solution>
