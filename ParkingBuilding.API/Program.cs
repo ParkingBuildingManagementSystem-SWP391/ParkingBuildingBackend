@@ -1,3 +1,5 @@
+using ParkingBuilding.Repository.Entities;
+using Microsoft.EntityFrameworkCore;
 
 namespace ParkingBuilding.API
 {
@@ -14,6 +16,13 @@ namespace ParkingBuilding.API
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen();
 
+            // 1. Lấy Connection String từ appsettings.json
+            var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+
+            // 2. Đăng ký DbContext vào DI Container
+            builder.Services.AddDbContext<ParkingManagementDbContext>(options =>
+                options.UseSqlServer(connectionString));
+
             var app = builder.Build();
 
             // Configure the HTTP request pipeline.
@@ -23,10 +32,11 @@ namespace ParkingBuilding.API
                 app.UseSwaggerUI();
             }
 
+
+
             app.UseHttpsRedirection();
 
             app.UseAuthorization();
-
 
             app.MapControllers();
 
