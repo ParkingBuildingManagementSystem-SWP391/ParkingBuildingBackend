@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace ParkingBuilding.Repository.Repository
 {
-    internal class UserRepository
+    public class UserRepository
     {
     }
 }

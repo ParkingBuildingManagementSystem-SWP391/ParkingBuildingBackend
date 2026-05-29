@@ -6,7 +6,11 @@ using System.Threading.Tasks;
 
 namespace ParkingBuilding.Service.DTOs
 {
-    internal class BookSlotRequest
+    public class BookSlotRequest
     {
+        public int UserId { get; set; }
+        public int SlotId { get; set; }
+        public string LicenseVehicle { get; set; } = string.Empty;
+        public int TypeId { get; set; }
     }
 }
