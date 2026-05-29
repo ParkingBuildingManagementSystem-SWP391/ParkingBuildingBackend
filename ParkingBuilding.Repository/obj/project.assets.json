@@ -3985,11 +3985,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "D:\\FPT-SU26\\SWP391\\ParkingBuildingBE\\ParkingBuilding.Repository\\ParkingBuilding.Repository.csproj",
+      "projectUniqueName": "D:\\FPT-SU26\\SWP391\\ParkingBuildingBE\\ParkingBuildingBackend\\ParkingBuilding.Repository\\ParkingBuilding.Repository.csproj",
       "projectName": "ParkingBuilding.Repository",
-      "projectPath": "D:\\FPT-SU26\\SWP391\\ParkingBuildingBE\\ParkingBuilding.Repository\\ParkingBuilding.Repository.csproj",
+      "projectPath": "D:\\FPT-SU26\\SWP391\\ParkingBuildingBE\\ParkingBuildingBackend\\ParkingBuilding.Repository\\ParkingBuilding.Repository.csproj",
       "packagesPath": "C:\\Users\\Hundreds\\.nuget\\packages\\",
-      "outputPath": "D:\\FPT-SU26\\SWP391\\ParkingBuildingBE\\ParkingBuilding.Repository\\obj\\",
+      "outputPath": "D:\\FPT-SU26\\SWP391\\ParkingBuildingBE\\ParkingBuildingBackend\\ParkingBuilding.Repository\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
