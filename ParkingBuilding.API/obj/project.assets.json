@@ -4733,11 +4733,11 @@
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "D:\\FPT-SU26\\SWP391\\ParkingBuildingBE\\ParkingBuilding.API\\ParkingBuilding.API.csproj",
+      "projectUniqueName": "D:\\FPT-SU26\\SWP391\\ParkingBuildingBE\\ParkingBuildingBackend\\ParkingBuilding.API\\ParkingBuilding.API.csproj",
       "projectName": "ParkingBuilding.API",
-      "projectPath": "D:\\FPT-SU26\\SWP391\\ParkingBuildingBE\\ParkingBuilding.API\\ParkingBuilding.API.csproj",
+      "projectPath": "D:\\FPT-SU26\\SWP391\\ParkingBuildingBE\\ParkingBuildingBackend\\ParkingBuilding.API\\ParkingBuilding.API.csproj",
       "packagesPath": "C:\\Users\\Hundreds\\.nuget\\packages\\",
-      "outputPath": "D:\\FPT-SU26\\SWP391\\ParkingBuildingBE\\ParkingBuilding.API\\obj\\",
+      "outputPath": "D:\\FPT-SU26\\SWP391\\ParkingBuildingBE\\ParkingBuildingBackend\\ParkingBuilding.API\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
@@ -4759,8 +4759,8 @@
           "framework": "net8.0",
           "targetAlias": "net8.0",
           "projectReferences": {
-            "D:\\FPT-SU26\\SWP391\\ParkingBuildingBE\\ParkingBuilding.Service\\ParkingBuilding.Service.csproj": {
-              "projectPath": "D:\\FPT-SU26\\SWP391\\ParkingBuildingBE\\ParkingBuilding.Service\\ParkingBuilding.Service.csproj"
+            "D:\\FPT-SU26\\SWP391\\ParkingBuildingBE\\ParkingBuildingBackend\\ParkingBuilding.Service\\ParkingBuilding.Service.csproj": {
+              "projectPath": "D:\\FPT-SU26\\SWP391\\ParkingBuildingBE\\ParkingBuildingBackend\\ParkingBuilding.Service\\ParkingBuilding.Service.csproj"
             }
           }
         }

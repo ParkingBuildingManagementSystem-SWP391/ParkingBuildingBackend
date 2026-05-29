@@ -1,8 +1,8 @@
 {
   "version": 2,
-  "dgSpecHash": "kY1rcPsOAtY=",
+  "dgSpecHash": "iS1oaz9DN8s=",
   "success": true,
-  "projectFilePath": "D:\\FPT-SU26\\SWP391\\ParkingBuildingBE\\ParkingBuilding.API\\ParkingBuilding.API.csproj",
+  "projectFilePath": "D:\\FPT-SU26\\SWP391\\ParkingBuildingBE\\ParkingBuildingBackend\\ParkingBuilding.API\\ParkingBuilding.API.csproj",
   "expectedPackageFiles": [
     "C:\\Users\\Hundreds\\.nuget\\packages\\azure.core\\1.25.0\\azure.core.1.25.0.nupkg.sha512",
     "C:\\Users\\Hundreds\\.nuget\\packages\\azure.identity\\1.7.0\\azure.identity.1.7.0.nupkg.sha512",
