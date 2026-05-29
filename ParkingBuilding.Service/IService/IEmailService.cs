@@ -6,7 +6,8 @@ using System.Threading.Tasks;
 
 namespace ParkingBuilding.Service.IService
 {
-    internal interface IEmailService
+    public interface IEmailService
     {
+        Task SendEmailAsync(string toEmail, string subject, string body);
     }
 }

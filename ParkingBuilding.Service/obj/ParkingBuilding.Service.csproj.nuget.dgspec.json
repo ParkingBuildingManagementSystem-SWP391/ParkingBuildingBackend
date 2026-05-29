@@ -151,6 +151,10 @@
               "target": "Package",
               "version": "[4.17.0, )"
             },
+            "Microsoft.AspNetCore.Http": {
+              "target": "Package",
+              "version": "[2.3.10, )"
+            },
             "Microsoft.Extensions.Caching.Abstractions": {
               "target": "Package",
               "version": "[8.0.0, )"
@@ -180,6 +184,9 @@
           "assetTargetFallback": true,
           "warn": true,
           "frameworkReferences": {
+            "Microsoft.AspNetCore.App": {
+              "privateAssets": "none"
+            },
             "Microsoft.NETCore.App": {
               "privateAssets": "all"
             }
