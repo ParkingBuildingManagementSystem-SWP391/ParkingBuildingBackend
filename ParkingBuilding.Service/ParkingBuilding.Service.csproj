@@ -11,8 +11,13 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="IService\" />
-    <Folder Include="Service\" />
+    <PackageReference Include="BCrypt.Net-Next" Version="4.2.0" />
+    <PackageReference Include="Google.Apis.Auth" Version="1.74.0" />
+    <PackageReference Include="MailKit" Version="4.17.0" />
+    <PackageReference Include="Microsoft.Extensions.Caching.Abstractions" Version="8.0.0" />
+    <PackageReference Include="Microsoft.IdentityModel.Tokens" Version="8.18.0" />
+    <PackageReference Include="MimeKit" Version="4.17.0" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.18.0" />
   </ItemGroup>
 
 </Project>
