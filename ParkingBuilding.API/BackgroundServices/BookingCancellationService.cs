@@ -1,6 +1,7 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using ParkingBuilding.API;
 using ParkingBuilding.Repository.Entities;
 
 namespace ParkingBuilding.API.BackgroundServices
