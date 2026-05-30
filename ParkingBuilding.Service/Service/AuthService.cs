@@ -95,10 +95,10 @@ namespace ParkingBuilding.Service.Service
             }
 
             // 3. Lấy Role mặc định
-            var defaultRole = await _userRepository.GetRoleByNameAsync("Member");
+            var defaultRole = await _userRepository.GetRoleByNameAsync("Registered_User");
             if (defaultRole == null)
             {
-                throw new Exception("Hệ thống chưa thiết lập Role 'Member' mặc định.");
+                throw new Exception("Hệ thống chưa thiết lập Role 'Registered_User' mặc định.");
             }
 
             // 4. Tạo User lưu DB

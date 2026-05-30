@@ -41,7 +41,7 @@ namespace ParkingBuilding.Service.Service
             // Đăng nhập bằng tài khoản email cấu hình sẵn
             await smtp.AuthenticateAsync(
                 _config["EmailSettings:FromEmail"],
-                _config["EmailSettings:Password"] // Đây nên là App Password nếu dùng Gmail
+                _config["EmailSettings:Password"] 
             );
 
             await smtp.SendAsync(email);
