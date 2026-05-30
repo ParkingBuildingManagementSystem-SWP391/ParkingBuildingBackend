@@ -1,5 +1,4 @@
-
-using ParkingBuilding.Repository.Entities;
+﻿using ParkingBuilding.Service.DTOs;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -8,9 +7,9 @@ using System.Threading.Tasks;
 
 namespace ParkingBuilding.Service.IService
 {
-
-    public interface ITokenService
+    public interface IParkingService
     {
-        string GenerateJwtToken(User user);
+        Task<bool> BookSlotAsync(BookSlotRequest request);
+
     }
 }

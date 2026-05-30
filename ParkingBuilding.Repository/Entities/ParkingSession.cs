@@ -27,7 +27,7 @@ public partial class ParkingSession
 
     public string SessionStatus { get; set; } = null!;
 
-    public int TicketId { get; set; }
+    public int? TicketId { get; set; }
 
     public bool IsDeleted { get; set; }
 
@@ -37,7 +37,7 @@ public partial class ParkingSession
 
     public virtual ParkingSlot Slot { get; set; } = null!;
 
-    public virtual Ticket Ticket { get; set; } = null!;
+    public virtual Ticket? Ticket { get; set; } = null!;
 
     public virtual VehiclesType Type { get; set; } = null!;
 

@@ -6,7 +6,13 @@ using System.Threading.Tasks;
 
 namespace ParkingBuilding.Service.DTOs
 {
-    internal class RegisterTempData
+
+    public class RegisterTempData
     {
+        public string Email { get; set; } = null!;
+        public string PasswordHash { get; set; } = null!;
+        public string Username { get; set; } = null!;
+        public string OtpCode { get; set; } = null!;
+        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     }
 }
