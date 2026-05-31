@@ -45,7 +45,7 @@ namespace ParkingBuilding.API
             builder.Services.AddScoped<IParkingService, ParkingService>();
 
             // 5. Đăng ký BackgroundService chạy ngầm (Quét và tự động hủy đơn sau 15p)
-            builder.Services.AddHostedService<BookingCancellationService>();
+            builder.Services.AddHostedService<BookingCancellationProcessor>();
 
             builder.Services.AddCors(options =>
             {

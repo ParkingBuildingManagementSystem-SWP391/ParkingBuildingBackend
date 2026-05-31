@@ -7,7 +7,7 @@ public partial class ParkingSession
 {
     public int SessionId { get; set; }
 
-    public int UserId { get; set; }
+    public int? UserId { get; set; }
 
     public int SlotId { get; set; }
 

@@ -11,5 +11,10 @@ namespace ParkingBuilding.Service.IService
     {
         Task<bool> BookSlotAsync(BookSlotRequest request);
 
+        Task<bool> CheckInVehicleAsync(CheckInRequest request);
+
+        Task<WalkInResponse> WalkInCheckInAsync(WalkInRequest request);
+
+
     }
 }
