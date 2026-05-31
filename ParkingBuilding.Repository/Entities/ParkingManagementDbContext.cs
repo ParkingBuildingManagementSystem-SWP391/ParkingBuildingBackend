@@ -96,7 +96,8 @@ public partial class ParkingManagementDbContext : DbContext
 
             entity.ToTable("ParkingSession");
 
-            entity.HasIndex(e => e.TicketId, "UQ__ParkingS__712CC6066EA25F4B").IsUnique();
+            //entity.HasIndex(e => e.TicketId, "UQ__ParkingS__712CC6066EA25F4B").IsUnique();
+
 
             entity.Property(e => e.BookingTime).HasColumnType("datetime");
             entity.Property(e => e.CheckInImageUrl)
@@ -119,10 +120,16 @@ public partial class ParkingManagementDbContext : DbContext
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK__ParkingSe__SlotI__619B8048");
 
-            entity.HasOne(d => d.Ticket).WithOne(p => p.ParkingSession)
-                .HasForeignKey<ParkingSession>(d => d.TicketId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK__ParkingSe__Ticke__6383C8BA");
+            //entity.HasOne(d => d.Ticket).WithOne(p => p.ParkingSession)
+            //    .HasForeignKey<ParkingSession>(d => d.TicketId)
+            //    .OnDelete(DeleteBehavior.ClientSetNull)
+            //    .HasConstraintName("FK__ParkingSe__Ticke__6383C8BA");
+
+            entity.HasOne(d => d.Ticket).WithMany(p => p.ParkingSession)
+            .HasForeignKey(d => d.TicketId)
+            .OnDelete(DeleteBehavior.Restrict)
+            .HasConstraintName("FK_ParkingSession_Tickets");
+
 
             entity.HasOne(d => d.Type).WithMany(p => p.ParkingSessions)
                 .HasForeignKey(d => d.TypeId)

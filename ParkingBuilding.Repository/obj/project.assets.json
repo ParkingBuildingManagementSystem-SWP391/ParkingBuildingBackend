@@ -3979,23 +3979,23 @@
     ]
   },
   "packageFolders": {
-    "C:\\Users\\Hundreds\\.nuget\\packages\\": {},
+    "C:\\Users\\Admin\\.nuget\\packages\\": {},
     "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "D:\\FPT-SU26\\SWP391\\ParkingBuildingBE\\ParkingBuildingBackend\\ParkingBuilding.Repository\\ParkingBuilding.Repository.csproj",
+      "projectUniqueName": "D:\\2026\\SUMMER26_KI - 5\\SWP391\\ParkingBuildingBackend\\ParkingBuilding.Repository\\ParkingBuilding.Repository.csproj",
       "projectName": "ParkingBuilding.Repository",
-      "projectPath": "D:\\FPT-SU26\\SWP391\\ParkingBuildingBE\\ParkingBuildingBackend\\ParkingBuilding.Repository\\ParkingBuilding.Repository.csproj",
-      "packagesPath": "C:\\Users\\Hundreds\\.nuget\\packages\\",
-      "outputPath": "D:\\FPT-SU26\\SWP391\\ParkingBuildingBE\\ParkingBuildingBackend\\ParkingBuilding.Repository\\obj\\",
+      "projectPath": "D:\\2026\\SUMMER26_KI - 5\\SWP391\\ParkingBuildingBackend\\ParkingBuilding.Repository\\ParkingBuilding.Repository.csproj",
+      "packagesPath": "C:\\Users\\Admin\\.nuget\\packages\\",
+      "outputPath": "D:\\2026\\SUMMER26_KI - 5\\SWP391\\ParkingBuildingBackend\\ParkingBuilding.Repository\\obj\\",
       "projectStyle": "PackageReference",
       "fallbackFolders": [
         "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"
       ],
       "configFilePaths": [
-        "C:\\Users\\Hundreds\\AppData\\Roaming\\NuGet\\NuGet.Config",
+        "C:\\Users\\Admin\\AppData\\Roaming\\NuGet\\NuGet.Config",
         "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
         "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
       ],

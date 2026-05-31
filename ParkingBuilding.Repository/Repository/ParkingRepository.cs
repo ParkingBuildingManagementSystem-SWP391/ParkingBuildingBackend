@@ -2,9 +2,6 @@
 using ParkingBuilding.Repository.Entities;
 using ParkingBuilding.Repository.IRepository;
 using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace ParkingBuilding.Repository.Repository
@@ -13,16 +10,17 @@ namespace ParkingBuilding.Repository.Repository
     {
         private readonly ParkingManagementDbContext _context;
 
-        public ParkingRepository(ParkingManagementDbContext context) { _context = context; }
+        public ParkingRepository(ParkingManagementDbContext context)
+        {
+            _context = context;
+        }
 
-        // Kiểm tra xem User này có đang giữ chỗ nào mà chưa đến đỗ không?
         public async Task<bool> HasActiveReservationAsync(int userId)
         {
             return await _context.ParkingSessions
-                .AnyAsync(s => s.UserId == userId && s.SessionStatus == "InProgress" && !s.IsDeleted);
+                .AnyAsync(s => s.UserId == userId && s.SessionStatus.Trim() == ParkingStatuses.SessionReserved && !s.IsDeleted);
         }
 
-        // Lấy thông tin Slot
         public async Task<ParkingSlot?> GetSlotByIdAsync(int slotId)
         {
             return await _context.ParkingSlots.FirstOrDefaultAsync(s => s.SlotId == slotId);
@@ -30,7 +28,6 @@ namespace ParkingBuilding.Repository.Repository
 
         public async Task CreateSessionAsync(ParkingSession session, ParkingSlot slot)
         {
-            // BẮT ĐẦU TRANSACTION: Ngăn chặn 2 người đặt cùng lúc
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
@@ -39,11 +36,58 @@ namespace ParkingBuilding.Repository.Repository
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
             }
-            catch (Exception)
+            catch (Exception) 
             {
-                await transaction.RollbackAsync(); // Lỗi thì hoàn tác tất cả!
+                await transaction.RollbackAsync();
                 throw;
             }
+        }
+
+        public async Task<ParkingSession?> GetReservedSessionByLicenseAsync(string licenseVehicle)
+        {
+            return await _context.ParkingSessions
+                .Include(s => s.Slot)
+                .Include(s => s.Ticket) // Nạp kèm vé
+                .FirstOrDefaultAsync(s => s.LicenseVehicle == licenseVehicle && s.SessionStatus.Trim() == ParkingStatuses.SessionReserved && !s.IsDeleted);
+        }
+
+        public async Task UpdateSessionAndSlotAsync(ParkingSession session, ParkingSlot slot)
+        {
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                _context.ParkingSessions.Update(session);
+
+                if (slot != null)
+                {
+                    _context.ParkingSlots.Update(slot);
+                }
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+            }
+            catch (Exception)
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        }
+
+        public async Task<ParkingSlot?> GetAvailableSlotForWalkInAsync(int vehicleTypeId)
+        {
+            return await _context.ParkingSlots
+                .FromSqlInterpolated($"SELECT TOP 1 * FROM ParkingSlots WITH (UPDLOCK, ROWLOCK) WHERE SlotStatus = {ParkingStatuses.SlotAvailable} AND TypeId = {vehicleTypeId} AND IsDeleted = 0 ORDER BY SlotName ASC")
+                .FirstOrDefaultAsync();
+        }
+
+        public async Task<List<ParkingSession>> GetExpiredReservationsAsync()
+        {
+            var expiredLimit = DateTime.UtcNow.AddMinutes(-15);
+            return await _context.ParkingSessions
+                .Include(ps => ps.Slot)
+                .Include(ps => ps.Ticket)
+                .Where(ps => ps.SessionStatus == ParkingStatuses.SessionReserved && ps.BookingTime < expiredLimit && !ps.IsDeleted)
+                .ToListAsync();
         }
     }
 }
