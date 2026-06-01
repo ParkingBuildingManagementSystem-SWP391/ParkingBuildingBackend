@@ -29,7 +29,7 @@ namespace ParkingBuilding.Service.Service
             new Claim(ClaimTypes.NameIdentifier, user.UserId.ToString()),
             new Claim(ClaimTypes.Email, user.Email),
             new Claim(ClaimTypes.Name, user.Username),
-            new Claim(ClaimTypes.Role, user.Role?.RoleName ?? "Member") // Mặc định là Member nếu trống
+            new Claim(ClaimTypes.Role, user.Role?.RoleName ?? "Registered_Driver") // Mặc định là Member nếu trống
         };
 
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["JwtSettings:Secret"] ?? "DefaultSuperSecretKeyThatIsAtLeast32BytesLong"));

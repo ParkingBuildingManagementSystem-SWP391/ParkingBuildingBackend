@@ -95,6 +95,43 @@ namespace ParkingBuilding.API
                  };
              });
 
+            builder.Services.AddSwaggerGen(options =>
+            {
+                // 1. Định nghĩa định dạng bảo mật (Security Definition) cho Swagger
+                options.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+                {
+                    Name = "Authorization",
+                    Type = Microsoft.OpenApi.Models.SecuritySchemeType.ApiKey,
+                    Scheme = "Bearer",
+                    BearerFormat = "JWT",
+                    In = Microsoft.OpenApi.Models.ParameterLocation.Header,
+                    Description = "Nhập 'Bearer' [khoảng trắng] rồi đến token của bạn.\n\nVí dụ: Bearer eyJhbGciOiJIUzI1Ni..."
+                });
+
+                // 2. Áp dụng yêu cầu bảo mật này cho các API (Security Requirement)
+                options.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
+                {
+                    {
+                        new Microsoft.OpenApi.Models.OpenApiSecurityScheme
+                        {
+                            Reference = new Microsoft.OpenApi.Models.OpenApiReference
+                            {
+                                Type = Microsoft.OpenApi.Models.ReferenceType.SecurityScheme,
+                                Id = "Bearer"
+                            }
+                        },
+                        new string[] {}
+                    }
+                 });
+            });
+
+            //// Thêm cấu hình Authentication và Authorization của bạn ở đây (nếu chưa có)
+            //builder.Services.AddAuthentication("Bearer")
+            //    .AddJwtBearer(options => {
+            //        // Cấu hình các tham số token của bạn (Issuer, Audience, Secret Key...)
+            //    });
+            builder.Services.AddAuthorization();
+
             var app = builder.Build();
 
             // Configure the HTTP request pipeline.

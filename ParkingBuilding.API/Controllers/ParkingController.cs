@@ -1,4 +1,5 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 using ParkingBuilding.Service.DTOs;
 using ParkingBuilding.Service.IService;
 
@@ -18,6 +19,7 @@ namespace ParkingBuilding.API.Controllers
 
         // API 1: Khách đặt chỗ trước (Khớp 100% code gốc của bạn)
         [HttpPost("book")]
+        [Authorize(Roles = "Registered_Driver")]
         public async Task<IActionResult> BookSlot([FromBody] BookSlotRequest request)
         {
             try
@@ -34,6 +36,7 @@ namespace ParkingBuilding.API.Controllers
 
         // API 2: Quét cổng vào check-in (Khớp 100% code gốc của bạn)
         [HttpPost("check-in")]
+        [Authorize(Roles = "Staff")]
         public async Task<IActionResult> CheckInVehicle([FromBody] CheckInRequest request)
         {
             try
@@ -50,6 +53,7 @@ namespace ParkingBuilding.API.Controllers
 
         // API 3: Khách vãng lai đến cổng (Walk-in)
         [HttpPost("walk-in")]
+        [Authorize(Roles = "Staff")]
         public async Task<IActionResult> WalkInCheckIn([FromBody] WalkInRequest request)
         {
             try

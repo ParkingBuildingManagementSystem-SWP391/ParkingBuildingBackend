@@ -11,10 +11,11 @@
 using System;
 using System.Reflection;
 
+[assembly: Microsoft.Extensions.Configuration.UserSecrets.UserSecretsIdAttribute("ba0de36b-5c3f-43b4-a5d5-ad136ea555d5")]
 [assembly: System.Reflection.AssemblyCompanyAttribute("ParkingBuilding.API")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+ef606c3ca2458dc18728619f598520d5d692dcc9")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+77e2d2519e2407e880c4ec16c4494c34673512cb")]
 [assembly: System.Reflection.AssemblyProductAttribute("ParkingBuilding.API")]
 [assembly: System.Reflection.AssemblyTitleAttribute("ParkingBuilding.API")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
