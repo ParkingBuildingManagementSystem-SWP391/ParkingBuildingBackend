@@ -143,7 +143,7 @@ namespace ParkingBuilding.Service.Service
             var ticket = new Ticket
             {
                 TicketCode = $"WK_{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}",
-                TicketStatus = ParkingStatuses.TicketActive
+                TicketStatus = "Used" 
             };
 
             slot.SlotStatus = ParkingStatuses.SlotOccupied;
