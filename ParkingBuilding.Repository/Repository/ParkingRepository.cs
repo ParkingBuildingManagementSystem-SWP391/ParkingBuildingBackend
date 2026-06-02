@@ -47,10 +47,19 @@ namespace ParkingBuilding.Repository.Repository
         {
             return await _context.ParkingSessions
                 .Include(s => s.Slot)
-                .Include(s => s.Ticket) // Nạp kèm vé
+                .Include(s => s.Ticket)
                 .FirstOrDefaultAsync(s => s.LicenseVehicle == licenseVehicle && s.SessionStatus.Trim() == ParkingStatuses.SessionReserved && !s.IsDeleted);
         }
-
+        public async Task<ParkingSession?> GetReservedSessionByTicketCodeAsync(string ticketCode)
+        {
+            return await _context.ParkingSessions
+                .Include(s => s.Slot)
+                .Include(s => s.Ticket) 
+                .FirstOrDefaultAsync(s => s.Ticket != null
+                                       && s.Ticket.TicketCode.Trim() == ticketCode.Trim()
+                                       && s.SessionStatus.Trim() == ParkingStatuses.SessionReserved
+                                       && !s.IsDeleted);
+        }
         public async Task UpdateSessionAndSlotAsync(ParkingSession session, ParkingSlot slot)
         {
             using var transaction = await _context.Database.BeginTransactionAsync();

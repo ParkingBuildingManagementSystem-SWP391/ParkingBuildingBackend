@@ -21,7 +21,7 @@ namespace ParkingBuilding.Repository.Repository
         public async Task<User?> GetByEmailAsync(string email)
         {
             return await _context.Users
-                .Include(u => u.Role) // Load kèm thông tin Role để sau này ghi vào JWT claims
+                .Include(u => u.Role) 
                 .FirstOrDefaultAsync(u => u.Email == email && !u.IsDeleted);
         }
 

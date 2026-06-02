@@ -30,7 +30,6 @@ namespace ParkingBuilding.API.BackgroundServices
                     {
                         var parkingRepo = scope.ServiceProvider.GetRequiredService<IParkingRepository>();
 
-                        // 1. Quét tìm các Session "Reserved" quá hạn 15 phút
                         var expiredSessions = await parkingRepo.GetExpiredReservationsAsync();
 
                         if (expiredSessions.Any())
@@ -41,23 +40,19 @@ namespace ParkingBuilding.API.BackgroundServices
                             {
                                 try
                                 {
-                                    // A. Đổi trạng thái lượt đỗ sang Canceled
                                     session.SessionStatus = ParkingStatuses.SessionCanceled;
 
-                                    // B. Giải phóng ô đỗ về Available
                                     var slot = session.Slot;
                                     if (slot != null)
                                     {
                                         slot.SlotStatus = ParkingStatuses.SlotAvailable;
                                     }
 
-                                    // C. Vô hiệu hóa vé QR sang Expired (Hết hạn)
                                     if (session.Ticket != null)
                                     {
                                         session.Ticket.TicketStatus = ParkingStatuses.TicketExpired;
                                     }
 
-                                    // D. Lưu cập nhật đồng bộ thông qua Repository (đã tích hợp Transaction)
                                     await parkingRepo.UpdateSessionAndSlotAsync(session, slot);
 
                                     _logger.LogWarning($"Đã tự động hủy lịch đặt của xe: {session.LicenseVehicle} (Session ID: {session.SessionId})");
@@ -75,7 +70,6 @@ namespace ParkingBuilding.API.BackgroundServices
                     _logger.LogError(ex, "Lỗi xảy ra trong vòng quét của BookingCancellationProcessor.");
                 }
 
-                // Dừng 1 phút trước khi quét lại để không làm nặng máy chủ
                 await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
             }
         }

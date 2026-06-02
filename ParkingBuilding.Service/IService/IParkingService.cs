@@ -9,7 +9,7 @@ namespace ParkingBuilding.Service.IService
 {
     public interface IParkingService
     {
-        Task<bool> BookSlotAsync(int userId, BookSlotRequest request);
+        Task<BookSlotResponse> BookSlotAsync(int userId, BookSlotRequest request);
         Task<bool> CheckInVehicleAsync(CheckInRequest request);
 
         Task<WalkInResponse> WalkInCheckInAsync(WalkInRequest request);
