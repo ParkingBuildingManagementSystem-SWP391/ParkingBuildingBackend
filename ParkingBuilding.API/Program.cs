@@ -21,37 +21,27 @@ namespace ParkingBuilding.API
 
             builder.Services.AddMemoryCache();
 
-            // Add services to the container.
-
             builder.Services.AddControllers();
-            // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
             builder.Services.AddEndpointsApiExplorer();
             builder.Services.AddSwaggerGen();
 
-            // 1. Lấy Connection String từ appsettings.json
             var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
             
 
-            // 2. Đăng ký DbContext vào DI Container
             builder.Services.AddDbContext<ParkingManagementDbContext>(options =>
                 options.UseSqlServer(connectionString));
 
-            // booking
-            // 3. Đăng ký Dependency Injection cho Lớp Repository
-            // Sử dụng AddScoped để quản lý vòng đời theo Request HTTP
             builder.Services.AddScoped<IParkingRepository, ParkingRepository>();
 
-            // 4. Đăng ký Dependency Injection cho Lớp Service
             builder.Services.AddScoped<IParkingService, ParkingService>();
 
-            // 5. Đăng ký BackgroundService chạy ngầm (Quét và tự động hủy đơn sau 15p)
             builder.Services.AddHostedService<BookingCancellationProcessor>();
 
             builder.Services.AddCors(options =>
             {
                 options.AddPolicy("AllowClient", policy =>
                 {
-                    policy.WithOrigins("https://localhost:7008") // URL của Frontend
+                    policy.WithOrigins("https://localhost:7008") 
                           .AllowAnyHeader()
                           .AllowAnyMethod()
                           .AllowCredentials();
@@ -102,13 +92,12 @@ namespace ParkingBuilding.API
                      ValidIssuer = builder.Configuration["JwtSettings:Issuer"],
                      ValidAudience = builder.Configuration["JwtSettings:Audience"],
                      IssuerSigningKey = new SymmetricSecurityKey(key),
-                     ClockSkew = TimeSpan.Zero // Không cho phép độ lệch thời gian hết hạn
+                     ClockSkew = TimeSpan.Zero 
                  };
              });
 
             builder.Services.AddSwaggerGen(options =>
             {
-                // 1. Định nghĩa định dạng bảo mật (Security Definition) cho Swagger
                 options.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
                 {
                     Name = "Authorization",
@@ -119,7 +108,6 @@ namespace ParkingBuilding.API
                     Description = "Nhập 'Bearer' [khoảng trắng] rồi đến token của bạn.\n\nVí dụ: Bearer eyJhbGciOiJIUzI1Ni..."
                 });
 
-                // 2. Áp dụng yêu cầu bảo mật này cho các API (Security Requirement)
                 options.AddSecurityRequirement(new Microsoft.OpenApi.Models.OpenApiSecurityRequirement
                 {
                     {
@@ -136,16 +124,11 @@ namespace ParkingBuilding.API
                  });
             });
 
-            //// Thêm cấu hình Authentication và Authorization của bạn ở đây (nếu chưa có)
-            //builder.Services.AddAuthentication("Bearer")
-            //    .AddJwtBearer(options => {
-            //        // Cấu hình các tham số token của bạn (Issuer, Audience, Secret Key...)
-            //    });
+
             builder.Services.AddAuthorization();
 
             var app = builder.Build();
 
-            // Configure the HTTP request pipeline.
             if (app.Environment.IsDevelopment())
             {
                 app.UseSwagger();

@@ -33,16 +33,14 @@ namespace ParkingBuilding.Service.Service
 
             using var smtp = new SmtpClient();
 
-            // Cấu hình kết nối SMTP (ví dụ smtp.gmail.com cổng 587)
             var host = _config["EmailSettings:SmtpHost"];
             var port = int.Parse(_config["EmailSettings:SmtpPort"] ?? "587");
 
             await smtp.ConnectAsync(host, port, SecureSocketOptions.StartTls);
 
-            // Đăng nhập bằng tài khoản email cấu hình sẵn
             await smtp.AuthenticateAsync(
                 _config["EmailSettings:FromEmail"],
-                _config["EmailSettings:Password"] // Đây nên là App Password nếu dùng Gmail
+                _config["EmailSettings:Password"] 
             );
 
             await smtp.SendAsync(email);

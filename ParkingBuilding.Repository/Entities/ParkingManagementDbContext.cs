@@ -39,6 +39,11 @@ public partial class ParkingManagementDbContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+
+
+        
+
+
         modelBuilder.Entity<Floor>(entity =>
         {
             entity.HasKey(e => e.FloorId).HasName("PK__Floors__49D1E84B8AF34A55");

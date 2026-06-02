@@ -29,7 +29,7 @@ namespace ParkingBuilding.Service.Service
             new Claim(ClaimTypes.NameIdentifier, user.UserId.ToString()),
             new Claim(ClaimTypes.Email, user.Email),
             new Claim(ClaimTypes.Name, user.Username),
-            new Claim(ClaimTypes.Role, user.Role?.RoleName ?? "Registered_Driver") // Mặc định là Member nếu trống
+            new Claim(ClaimTypes.Role, user.Role?.RoleName ?? "Registered_Driver") 
         };
 
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_config["JwtSettings:Secret"] ?? "DefaultSuperSecretKeyThatIsAtLeast32BytesLong"));
@@ -39,7 +39,7 @@ namespace ParkingBuilding.Service.Service
                 issuer: _config["JwtSettings:Issuer"],
                 audience: _config["JwtSettings:Audience"],
                 claims: claims,
-                expires: DateTime.UtcNow.AddDays(1), // Token hết hạn sau 1 ngày
+                expires: DateTime.UtcNow.AddDays(1), 
                 signingCredentials: creds
             );
 

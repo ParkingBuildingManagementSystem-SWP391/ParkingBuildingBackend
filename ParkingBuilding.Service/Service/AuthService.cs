@@ -35,20 +35,16 @@ namespace ParkingBuilding.Service.Service
 
         public async Task<string> RegisterAsync(RegisterRequest request)
         {
-            // 1. Kiểm tra Email trùng
             var existingUser = await _userRepository.GetByEmailAsync(request.Email);
             if (existingUser != null)
             {
                 throw new BadHttpRequestException("Email này đã được sử dụng bởi tài khoản khác!");
             }
 
-            // 2. Hash mật khẩu bằng BCrypt
             var passwordHash = BCrypt.Net.BCrypt.HashPassword(request.Password);
 
-            // 3. Sinh OTP 6 số ngẫu nhiên
             var otp = new Random().Next(100000, 999999).ToString();
 
-            // 4. Lưu tạm vào Cache trong 5 phút
             var tempData = new RegisterTempData
             {
                 Email = request.Email,
@@ -62,7 +58,6 @@ namespace ParkingBuilding.Service.Service
 
             _cache.Set(request.Email, tempData, cacheOptions);
 
-            // 5. Gửi Mail OTP
             var mailSubject = "Mã xác thực đăng ký tài khoản Parking Building";
             var mailBody = $@"
             <h3>Chào mừng {request.Username}!</h3>
@@ -79,26 +74,23 @@ namespace ParkingBuilding.Service.Service
 
         public async Task<AuthResponse> VerifyOtpAsync(VerifyOtpRequest request)
         {
-            // 1. Lấy dữ liệu tạm từ Cache
             if (!_cache.TryGetValue(request.Email, out RegisterTempData? tempData) || tempData == null)
             {
                 throw new BadHttpRequestException("Yêu cầu đăng ký đã hết hạn hoặc không tồn tại. Vui lòng đăng ký lại!");
             }
 
-            // 2. Kiểm tra mã OTP
             if (tempData.OtpCode != request.OtpCode)
             {
                 throw new BadHttpRequestException("Mã OTP không chính xác. Vui lòng thử lại!");
             }
 
             // 3. Lấy Role mặc định
-            var defaultRole = await _userRepository.GetRoleByNameAsync("Registered_Driver");
+            var defaultRole = await _userRepository.GetRoleByNameAsync("Member");
             if (defaultRole == null)
             {
                 throw new Exception("Hệ thống chưa thiết lập Role này.");
             }
 
-            // 4. Tạo User lưu DB
             var user = new User
             {
                 Email = tempData.Email,
@@ -111,13 +103,10 @@ namespace ParkingBuilding.Service.Service
             await _userRepository.AddAsync(user);
             await _userRepository.SaveChangesAsync();
 
-            // 5. Xóa bỏ cache sau khi dùng
             _cache.Remove(request.Email);
 
-            // 6. Tải lại user kèm role để sinh JWT đầy đủ thông tin
             var dbUser = await _userRepository.GetByEmailAsync(user.Email);
 
-            // 7. Tạo JWT Token
             var token = _tokenService.GenerateJwtToken(dbUser!);
 
             return new AuthResponse
@@ -137,7 +126,6 @@ namespace ParkingBuilding.Service.Service
                 throw new BadHttpRequestException("Email hoặc mật khẩu không chính xác!");
             }
 
-            // Kiểm tra mật khẩu băm
             bool isPasswordValid = BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash);
             if (!isPasswordValid)
             {
@@ -160,7 +148,6 @@ namespace ParkingBuilding.Service.Service
             GoogleJsonWebSignature.Payload payload;
             try
             {
-                // Xác thực token với Google ClientId
                 var googleClientId = _config["Google:ClientId"];
                 payload = await GoogleJsonWebSignature.ValidateAsync(request.IdToken, new GoogleJsonWebSignature.ValidationSettings
                 {
@@ -172,12 +159,10 @@ namespace ParkingBuilding.Service.Service
                 throw new BadHttpRequestException("Google ID Token không hợp lệ!");
             }
 
-            // Tìm User theo Email Google cung cấp
             var user = await _userRepository.GetByEmailAsync(payload.Email);
 
             if (user == null)
             {
-                // Nếu chưa có, tự động tạo mới tài khoản
                 var defaultRole = await _userRepository.GetRoleByNameAsync("Member");
                 if (defaultRole == null)
                 {
@@ -188,7 +173,7 @@ namespace ParkingBuilding.Service.Service
                 {
                     Email = payload.Email,
                     Username = payload.Name ?? payload.Email.Split('@')[0],
-                    PasswordHash = "", // Không cần password cho tài khoản Google
+                    PasswordHash = "", 
                     RoleId = defaultRole.RoleId,
                     IsDeleted = false
                 };
@@ -196,7 +181,6 @@ namespace ParkingBuilding.Service.Service
                 await _userRepository.AddAsync(user);
                 await _userRepository.SaveChangesAsync();
 
-                // Tải lại để có đầy đủ thông tin Role
                 user = await _userRepository.GetByEmailAsync(user.Email);
             }
 

@@ -8,9 +8,8 @@ namespace ParkingBuilding.Service.DTOs
 {
     public class WalkInRequest
     {
-        public string LicenseVehicle { get; set; } = null!;
-        public int TypeId { get; set; }
-        public string? CardOrTicketId { get; set; }
-        public string? CheckInImageUrl { get; set; }
+        public string LicenseVehicle { get; set; } = null!; 
+        public int VehicleTypeId { get; set; }               
+        public string? CheckInImageUrl { get; set; }        
     }
 }
