@@ -20,7 +20,7 @@ namespace ParkingBuilding.API.BackgroundServices
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
-            _logger.LogInformation("Booking Cancellation Processor đã khởi chạy thành công.");
+            _logger.LogInformation("The cancellation process has successfully begun.............");
 
             while (!stoppingToken.IsCancellationRequested)
             {

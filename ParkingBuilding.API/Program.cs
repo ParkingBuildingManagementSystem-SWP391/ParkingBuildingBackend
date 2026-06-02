@@ -48,13 +48,24 @@ namespace ParkingBuilding.API
                 });
             });
 
+            builder.Services.AddScoped<IUserRepository, UserRepository>();
 
+            builder.Services.AddScoped<IEmailService, EmailService>();
 
+            builder.Services.AddScoped<ITokenService, TokenService>();
+
+            builder.Services.AddScoped<IAuthService, AuthService>();
 
             builder.Services.AddScoped<IUserRepository, UserRepository>();
+
             builder.Services.AddScoped<IEmailService, EmailService>();
+
             builder.Services.AddScoped<ITokenService, TokenService>();
+
             builder.Services.AddScoped<IAuthService, AuthService>();
+
+            builder.Services.AddScoped<IAdminService, AdminService>();
+
 
             var jwtSecret = builder.Configuration["JwtSettings:Secret"] ?? "DefaultSuperSecretKeyThatIsAtLeast32BytesLong";
             var key = Encoding.UTF8.GetBytes(jwtSecret);

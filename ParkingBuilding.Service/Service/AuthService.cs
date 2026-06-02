@@ -84,10 +84,11 @@ namespace ParkingBuilding.Service.Service
                 throw new BadHttpRequestException("Mã OTP không chính xác. Vui lòng thử lại!");
             }
 
-            var defaultRole = await _userRepository.GetRoleByNameAsync("Registered_Driver");
+            // 3. Lấy Role mặc định
+            var defaultRole = await _userRepository.GetRoleByNameAsync("Member");
             if (defaultRole == null)
             {
-                throw new Exception("Hệ thống chưa thiết lập Role 'Member' mặc định.");
+                throw new Exception("Hệ thống chưa thiết lập Role này.");
             }
 
             var user = new User

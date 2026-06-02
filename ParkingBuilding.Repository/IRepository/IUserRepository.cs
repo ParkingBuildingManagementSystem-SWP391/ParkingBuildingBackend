@@ -15,5 +15,7 @@ namespace ParkingBuilding.Repository.IRepository
         Task AddAsync(User user);
         Task<bool> SaveChangesAsync();
         Task<Role?> GetRoleByNameAsync(string roleName);
+        Task<IEnumerable<User>> GetAllUsersWithRolesAsync();
+        Task<User?> GetByIdAsync(int userId);
     }
 }

@@ -40,5 +40,19 @@ namespace ParkingBuilding.Repository.Repository
             return await _context.Roles.FirstOrDefaultAsync(r => r.RoleName == roleName && !r.IsDeleted);
         }
 
+        public async Task<IEnumerable<User>> GetAllUsersWithRolesAsync()
+        {
+            return await _context.Users
+                .Include(u => u.Role) // Kết hợp với bảng Role để lấy RoleName
+                .Where(u => !u.IsDeleted) // Chỉ lấy các tài khoản chưa bị xóa
+                .ToListAsync();
+        }
+
+        public async Task<User?> GetByIdAsync(int userId)
+        {
+            return await _context.Users
+                .Include(u => u.Role)
+                .FirstOrDefaultAsync(u => u.UserId == userId && !u.IsDeleted);
+        }
     }
 }
