@@ -21,5 +21,7 @@ namespace ParkingBuilding.Repository.IRepository
         Task<List<ParkingSession>> GetExpiredReservationsAsync();
 
         Task<ParkingSession?> GetReservedSessionByTicketCodeAsync(string ticketCode);
+
+        Task<List<ParkingSlot>> GetSlotsByFloorIdAsync(int floorId);
     }
 }

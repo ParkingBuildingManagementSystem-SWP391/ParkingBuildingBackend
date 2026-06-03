@@ -269,6 +269,7 @@ __pycache__/
 *.pyc
 
 ./appsettings.json
+./appsettings.*.json
 
 # Cake - Uncomment if you are using it
 # tools/
