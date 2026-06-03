@@ -98,5 +98,59 @@ namespace ParkingBuilding.Repository.Repository
                 .Where(ps => ps.SessionStatus == ParkingStatuses.SessionReserved && ps.BookingTime < expiredLimit && !ps.IsDeleted)
                 .ToListAsync();
         }
+
+
+        public async Task<ParkingSession?> GetActiveSessionByTicketCodeAsync(string ticketCode)
+        {
+            return await _context.ParkingSessions
+                .Include(s => s.Slot)
+                .Include(s => s.Ticket)
+                .Include(s => s.Type)
+                .FirstOrDefaultAsync(s => s.Ticket != null
+                                     && s.Ticket.TicketCode.Trim() == ticketCode.Trim()
+                                     && s.SessionStatus.Trim() == ParkingStatuses.SessionInProgress
+                                     && !s.IsDeleted);
+        }
+
+        public async Task<ParkingSession?> GetActiveSessionByIdAsync(int sessionId)
+        {
+            return await _context.ParkingSessions
+                .Include(s => s.Slot)
+                .Include(s => s.Ticket)
+                .Include(s => s.Type)
+                .FirstOrDefaultAsync(s => s.SessionId == sessionId
+                                     && s.SessionStatus.Trim() == ParkingStatuses.SessionInProgress
+                                     && !s.IsDeleted);
+        }
+
+        public async Task CompleteParkingSessionAsync(ParkingSession session, ParkingSlot slot, Invoice invoice)
+        {
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                if (session.Ticket != null)
+                {
+                    session.Ticket.TicketStatus = ParkingStatuses.TicketCompleted;
+                };
+
+                if (slot != null)
+                {
+                    slot.SlotStatus = ParkingStatuses.SlotAvailable;
+                }
+
+                session.SessionStatus = ParkingStatuses.SessionCompleted;
+
+                await _context.Invoices.AddAsync(invoice);
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+            }
+            catch (Exception)
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        }
+
     }
 }

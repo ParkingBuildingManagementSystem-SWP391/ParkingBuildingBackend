@@ -14,6 +14,7 @@ namespace ParkingBuilding.Service.IService
 
         Task<WalkInResponse> WalkInCheckInAsync(WalkInRequest request);
 
+        Task<CheckoutResponse> CheckoutVehicleAsync(CheckoutRequest request);
 
     }
 }
