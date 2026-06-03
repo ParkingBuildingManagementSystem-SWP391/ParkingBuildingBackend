@@ -14,6 +14,6 @@ namespace ParkingBuilding.Service.IService
 
         Task<WalkInResponse> WalkInCheckInAsync(WalkInRequest request);
 
-
+        Task<List<ParkingSlotResponseDto>> GetSlotsByFloorIdAsync(int floorId);
     }
 }

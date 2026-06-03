@@ -175,5 +175,18 @@ namespace ParkingBuilding.Service.Service
             };
         }
 
+        public async Task<List<ParkingSlotResponseDto>> GetSlotsByFloorIdAsync(int floorId)
+        {
+            var slots = await _repository.GetSlotsByFloorIdAsync(floorId);
+
+            // Thực hiện ánh xạ dữ liệu (Mapping) từ Entity sang DTO
+            return slots.Select(s => new ParkingSlotResponseDto
+            {
+                SlotName = s.SlotName,
+                SlotStatus = s.SlotStatus,
+                TypeId = s.TypeId
+            }).ToList();
+        }
+
     }
 }

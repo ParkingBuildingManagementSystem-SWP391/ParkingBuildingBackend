@@ -90,5 +90,19 @@ namespace ParkingBuilding.API.Controllers
                 return BadRequest(new { error = ex.Message });
             }
         }
+
+        [HttpGet("floor/{floorId}")]
+        public async Task<IActionResult> GetSlotsByFloorId(int floorId)
+        {
+            try
+            {
+                var slots = await _parkingService.GetSlotsByFloorIdAsync(floorId);
+                return Ok(slots);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { isSuccess = false, message = ex.Message });
+            }
+        }
     }
 }
