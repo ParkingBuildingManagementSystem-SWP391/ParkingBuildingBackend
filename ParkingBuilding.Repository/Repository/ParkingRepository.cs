@@ -36,7 +36,7 @@ namespace ParkingBuilding.Repository.Repository
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
             }
-            catch (Exception) 
+            catch (Exception)
             {
                 await transaction.RollbackAsync();
                 throw;
@@ -54,7 +54,7 @@ namespace ParkingBuilding.Repository.Repository
         {
             return await _context.ParkingSessions
                 .Include(s => s.Slot)
-                .Include(s => s.Ticket) 
+                .Include(s => s.Ticket)
                 .FirstOrDefaultAsync(s => s.Ticket != null
                                        && s.Ticket.TicketCode.Trim() == ticketCode.Trim()
                                        && s.SessionStatus.Trim() == ParkingStatuses.SessionReserved
@@ -152,5 +152,12 @@ namespace ParkingBuilding.Repository.Repository
             }
         }
 
+
+        public async Task<List<ParkingSlot>> GetSlotsByFloorIdAsync(int floorId)
+        {
+            return await _context.ParkingSlots
+                .Where(s => s.FloorId == floorId && !s.IsDeleted)
+                .ToListAsync();
+        }
     }
 }

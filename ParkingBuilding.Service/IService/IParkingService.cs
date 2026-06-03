@@ -16,5 +16,6 @@ namespace ParkingBuilding.Service.IService
 
         Task<CheckoutResponse> CheckoutVehicleAsync(CheckoutRequest request);
 
+        Task<List<ParkingSlotResponseDto>> GetSlotsByFloorIdAsync(int floorId);
     }
 }

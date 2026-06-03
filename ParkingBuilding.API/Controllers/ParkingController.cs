@@ -2,9 +2,6 @@
 using Microsoft.AspNetCore.Mvc;
 using ParkingBuilding.Service.DTOs;
 using ParkingBuilding.Service.IService;
-
-// jwt 
-using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
 
 
@@ -89,7 +86,6 @@ namespace ParkingBuilding.API.Controllers
         }
 
 
-
         // API 4: Xử lý xe ra bãi (Check-out) 
         [Authorize(Roles = "Staff")]
         [HttpPost("check-out")]
@@ -108,6 +104,19 @@ namespace ParkingBuilding.API.Controllers
                 CheckoutResponse response = await _parkingService.CheckoutVehicleAsync(request);
 
                 return Ok(response);
+            }           
+            catch (Exception ex)
+            {
+                return BadRequest(new { isSuccess = false, message = ex.Message });
+            }
+        }
+        [HttpGet("floor/{floorId}")]
+        public async Task<IActionResult> GetSlotsByFloorId(int floorId)
+        {
+            try
+            {
+                var slots = await _parkingService.GetSlotsByFloorIdAsync(floorId);
+                return Ok(slots);
             }
             catch (Exception ex)
             {

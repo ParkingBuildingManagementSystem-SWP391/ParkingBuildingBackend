@@ -202,15 +202,15 @@ namespace ParkingBuilding.Service.Service
             }
 
             DateTime checkInTime = session.CheckInTime ?? throw new Exception("Dữ liệu giờ vào của lượt đỗ này không hợp lệ.");
-            DateTime checkOutTime = DateTime.UtcNow; 
+            DateTime checkOutTime = DateTime.UtcNow;
 
             TimeSpan duration = checkOutTime - checkInTime;
-            double durationHours = Math.Ceiling(duration.TotalHours); 
-            if (durationHours <= 0) durationHours = 1; 
+            double durationHours = Math.Ceiling(duration.TotalHours);
+            if (durationHours <= 0) durationHours = 1;
 
-            
-            decimal hourlyRate = 5000; 
-            if (session.TypeId == 2)   
+
+            decimal hourlyRate = 5000;
+            if (session.TypeId == 2)
             {
                 hourlyRate = 20000;
             }
@@ -226,7 +226,7 @@ namespace ParkingBuilding.Service.Service
 
             if (session.Ticket != null)
             {
-                session.Ticket.TicketStatus = ParkingStatuses.TicketCompleted; 
+                session.Ticket.TicketStatus = ParkingStatuses.TicketCompleted;
             }
 
             var slot = session.Slot;
@@ -266,6 +266,17 @@ namespace ParkingBuilding.Service.Service
                 InvoiceId = invoice.InvoiceId,
                 IsPaid = true
             };
+        }
+        public async Task<List<ParkingSlotResponseDto>> GetSlotsByFloorIdAsync(int floorId)
+        {
+            var slots = await _repository.GetSlotsByFloorIdAsync(floorId);
+
+            return slots.Select(s => new ParkingSlotResponseDto
+            {
+                SlotName = s.SlotName,
+                SlotStatus = s.SlotStatus,
+                TypeId = s.TypeId
+            }).ToList();
         }
 
     }
