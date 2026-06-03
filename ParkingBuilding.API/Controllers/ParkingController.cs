@@ -2,9 +2,6 @@
 using Microsoft.AspNetCore.Mvc;
 using ParkingBuilding.Service.DTOs;
 using ParkingBuilding.Service.IService;
-
-// jwt 
-using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
 
 
@@ -48,16 +45,13 @@ namespace ParkingBuilding.API.Controllers
             }
         }
 
-        // =========================================================================
-        // API 2: QUÉT CỔNG VÀO CHECK-IN (KHỚP 100% CODE GỐC CHUẨN CỦA BẠN)
-        // =========================================================================
+        // API 2: QUÉT CỔNG VÀO CHECK-IN
         [Authorize(Roles = "Staff")] 
         [HttpPost("check-in")]
         public async Task<IActionResult> CheckInVehicle([FromBody] CheckInRequest request)
         {
             try
             {
-                // Gọi xuống Service kiểm tra biển số xe và mốc thời gian 15 phút
                 var isSuccess = await _parkingService.CheckInVehicleAsync(request);
 
                 if (isSuccess)
@@ -91,6 +85,31 @@ namespace ParkingBuilding.API.Controllers
             }
         }
 
+
+        // API 4: Xử lý xe ra bãi (Check-out) 
+        [Authorize(Roles = "Staff")]
+        [HttpPost("check-out")]
+        public async Task<IActionResult> CheckOutVehicle([FromBody] CheckoutRequest request)
+        {
+            try
+            {
+                var staffIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(staffIdClaim))
+                {
+                    return Unauthorized(new { isSuccess = false, message = "Không tìm thấy thông tin Staff thực hiện." });
+                }
+
+                request.StaffId = int.Parse(staffIdClaim);
+
+                CheckoutResponse response = await _parkingService.CheckoutVehicleAsync(request);
+
+                return Ok(response);
+            }           
+            catch (Exception ex)
+            {
+                return BadRequest(new { isSuccess = false, message = ex.Message });
+            }
+        }
         [HttpGet("floor/{floorId}")]
         public async Task<IActionResult> GetSlotsByFloorId(int floorId)
         {

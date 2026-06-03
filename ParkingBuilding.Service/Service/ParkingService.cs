@@ -120,7 +120,7 @@ namespace ParkingBuilding.Service.Service
 
             if (!string.IsNullOrEmpty(request.TicketCode) && session.Ticket != null)
             {
-                session.Ticket.TicketStatus = "Used";
+                session.Ticket.TicketStatus = ParkingStatuses.TicketActive;
             }
 
             await _repository.UpdateSessionAndSlotAsync(session, session.Slot!);
@@ -143,7 +143,7 @@ namespace ParkingBuilding.Service.Service
             var ticket = new Ticket
             {
                 TicketCode = $"WK_{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}",
-                TicketStatus = "Used" 
+                TicketStatus = ParkingStatuses.TicketActive
             };
 
             slot.SlotStatus = ParkingStatuses.SlotOccupied;
@@ -175,11 +175,102 @@ namespace ParkingBuilding.Service.Service
             };
         }
 
+
+        // =========================================================================
+        //              LUỒNG 4: XỬ LÝ KHÁCH XE RA BÃI  (CHECK-OUT) 
+        // =========================================================================
+
+        public async Task<CheckoutResponse> CheckoutVehicleAsync(CheckoutRequest request)
+        {
+            if (request == null)
+                throw new ArgumentNullException(nameof(request));
+
+            ParkingSession? session = null;
+
+            if (!string.IsNullOrEmpty(request.TicketCode))
+            {
+                session = await _repository.GetActiveSessionByTicketCodeAsync(request.TicketCode);
+            }
+            else if (request.SessionId.HasValue)
+            {
+                session = await _repository.GetActiveSessionByIdAsync(request.SessionId.Value);
+            }
+
+            if (session == null)
+            {
+                throw new Exception("Không tìm thấy lượt đỗ xe hợp lệ đang ở trong bãi cho phương tiện này.");
+            }
+
+            DateTime checkInTime = session.CheckInTime ?? throw new Exception("Dữ liệu giờ vào của lượt đỗ này không hợp lệ.");
+            DateTime checkOutTime = DateTime.UtcNow;
+
+            TimeSpan duration = checkOutTime - checkInTime;
+            double durationHours = Math.Ceiling(duration.TotalHours);
+            if (durationHours <= 0) durationHours = 1;
+
+
+            decimal hourlyRate = 5000;
+            if (session.TypeId == 2)
+            {
+                hourlyRate = 20000;
+            }
+            decimal totalAmount = (decimal)durationHours * hourlyRate;
+
+            string checkInPlate = session.LicenseVehicle.Trim().ToUpper();
+            string checkOutPlate = request.CheckoutLicensePlate.Trim().ToUpper();
+            bool isLicensePlateMatched = checkInPlate == checkOutPlate;
+
+            session.CheckOutTime = checkOutTime;
+            session.CheckOutImageUrl = request.CheckOutImageUrl;
+            session.SessionStatus = ParkingStatuses.SessionCompleted;
+
+            if (session.Ticket != null)
+            {
+                session.Ticket.TicketStatus = ParkingStatuses.TicketCompleted;
+            }
+
+            var slot = session.Slot;
+            if (slot != null)
+            {
+                slot.SlotStatus = ParkingStatuses.SlotAvailable;
+            }
+
+            var invoice = new Invoice
+            {
+                Session = session,
+                TotalAmount = totalAmount,
+                PaymentTime = checkOutTime,
+                StaffId = request.StaffId
+            };
+
+            await _repository.CompleteParkingSessionAsync(session, slot!, invoice);
+
+            return new CheckoutResponse
+            {
+                IsSuccess = true,
+                Message = isLicensePlateMatched
+                    ? "Xác nhận đối khớp biển số thành công. Mời xe ra."
+                    : "CẢNH BÁO: Biển số lúc ra không trùng khớp với lúc vào! Vui lòng kiểm tra lại hình ảnh.",
+                SessionId = session.SessionId,
+                TicketCode = session.Ticket?.TicketCode ?? "N/A",
+                SlotName = slot?.SlotName ?? "N/A",
+                CheckInLicensePlate = checkInPlate,
+                CheckOutLicensePlate = checkOutPlate,
+                IsLicensePlateMatched = isLicensePlateMatched,
+                CheckInImageUrl = session.CheckInImageUrl,
+                CheckOutImageUrl = session.CheckOutImageUrl,
+                CheckInTime = checkInTime,
+                CheckOutTime = checkOutTime,
+                DurationHours = durationHours,
+                TotalAmount = totalAmount,
+                InvoiceId = invoice.InvoiceId,
+                IsPaid = true
+            };
+        }
         public async Task<List<ParkingSlotResponseDto>> GetSlotsByFloorIdAsync(int floorId)
         {
             var slots = await _repository.GetSlotsByFloorIdAsync(floorId);
 
-            // Thực hiện ánh xạ dữ liệu (Mapping) từ Entity sang DTO
             return slots.Select(s => new ParkingSlotResponseDto
             {
                 SlotName = s.SlotName,
