@@ -1,4 +1,5 @@
-﻿using ParkingBuilding.Service.DTOs;
+﻿using ParkingBuilding.Repository.Entities;
+using ParkingBuilding.Service.DTOs;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -14,7 +15,7 @@ namespace ParkingBuilding.Service.IService
 
         Task<WalkInResponse> WalkInCheckInAsync(WalkInRequest request);
 
-        Task<CheckoutResponse> CheckoutVehicleAsync(CheckoutRequest request);
+        Task<CheckoutResponse> CheckoutVehicleAsync(CheckoutRequest request, int currentStaffId);
 
         Task<List<ParkingSlotResponseDto>> GetSlotsByFloorIdAsync(int floorId);
     }

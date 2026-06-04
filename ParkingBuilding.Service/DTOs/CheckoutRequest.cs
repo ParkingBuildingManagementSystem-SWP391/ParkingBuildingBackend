@@ -1,20 +1,19 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.ComponentModel;
 
 namespace ParkingBuilding.Service.DTOs
 {
     public class CheckoutRequest
     {
+        [DefaultValue("")]
         public string? TicketCode { get; set; }
+
         public int? SessionId { get; set; }
 
-        public string CheckoutLicensePlate { get; set; } = null!;
+        [DefaultValue("")]
+        public string? CheckoutLicensePlate { get; set; }
 
+        [DefaultValue("")]
         public string? CheckOutImageUrl { get; set; }
-
-        public int StaffId { get; set; }
     }
 }

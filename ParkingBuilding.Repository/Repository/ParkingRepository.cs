@@ -60,6 +60,15 @@ namespace ParkingBuilding.Repository.Repository
                                        && s.SessionStatus.Trim() == ParkingStatuses.SessionReserved
                                        && !s.IsDeleted);
         }
+
+        public async Task<ParkingSession?> GetReservedSessionByTicketIdAsync(int ticketId)
+        {
+            return await _context.ParkingSessions
+                .Include(s => s.Slot)
+                .Include(s => s.Ticket)
+                .FirstOrDefaultAsync(s => s.TicketId == ticketId
+                                       && s.SessionStatus == ParkingStatuses.SessionReserved); 
+        }
         public async Task UpdateSessionAndSlotAsync(ParkingSession session, ParkingSlot slot)
         {
             using var transaction = await _context.Database.BeginTransactionAsync();
@@ -152,7 +161,19 @@ namespace ParkingBuilding.Repository.Repository
             }
         }
 
+        public async Task<User?> GetStaffByIdAsync(int staffId)
+        {
+            return await _context.Users.FirstOrDefaultAsync(u => u.UserId == staffId);
 
+           
+        }
+
+        public async Task<ParkingSession?> GetActiveSessionByLicensePlateAsync(string licensePlate)
+        {
+            return await _context.ParkingSessions
+                .FirstOrDefaultAsync(s => s.LicenseVehicle == licensePlate
+                                       && s.SessionStatus == ParkingStatuses.SessionInProgress);
+        }
         public async Task<List<ParkingSlot>> GetSlotsByFloorIdAsync(int floorId)
         {
             return await _context.ParkingSlots

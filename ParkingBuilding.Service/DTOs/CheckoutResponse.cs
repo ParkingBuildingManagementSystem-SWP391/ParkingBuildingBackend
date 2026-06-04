@@ -28,5 +28,7 @@ namespace ParkingBuilding.Service.DTOs
 
         public int? InvoiceId { get; set; }
         public bool IsPaid { get; set; }
+
+        public string StaffName { get; set; } = null!;
     }
 }

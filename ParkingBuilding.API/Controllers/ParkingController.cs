@@ -99,10 +99,9 @@ namespace ParkingBuilding.API.Controllers
                     return Unauthorized(new { isSuccess = false, message = "Không tìm thấy thông tin Staff thực hiện." });
                 }
 
-                request.StaffId = int.Parse(staffIdClaim);
+                int currentStaffId = int.Parse(staffIdClaim);
 
-                CheckoutResponse response = await _parkingService.CheckoutVehicleAsync(request);
-
+                CheckoutResponse response = await _parkingService.CheckoutVehicleAsync(request, currentStaffId);
                 return Ok(response);
             }           
             catch (Exception ex)
