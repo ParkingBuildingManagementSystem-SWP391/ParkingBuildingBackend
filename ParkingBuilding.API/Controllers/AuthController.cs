@@ -54,6 +54,7 @@ namespace ParkingBuilding.API.Controllers
         [HttpPost("login")]
         public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
+            
             try
             {
                 var response = await _authService.LoginAsync(request);
