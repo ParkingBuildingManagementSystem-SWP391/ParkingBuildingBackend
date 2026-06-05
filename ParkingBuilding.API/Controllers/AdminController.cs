@@ -57,5 +57,31 @@ namespace ParkingBuilding.API.Controllers
                 return StatusCode(500, new { error = "Lỗi hệ thống khi phân quyền: " + ex.Message });
             }
         }
+
+        [HttpPost("create-user")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> CreateUser([FromBody] CreateUserRequestDto request)
+        {
+            try
+            {
+                var result = await _adminService.CreateUserAsync(request);
+                return CreatedAtAction(nameof(GetAllUsers), new { id = result.Id }, new { message = "Tạo tài khoản người dùng thành công!", data = result });
+            }
+            catch (ArgumentException ex)
+            {
+                // Lỗi trùng lặp email hoặc tham số không hợp lệ
+                return BadRequest(new { error = ex.Message });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                // Lỗi không tìm thấy Role
+                return NotFound(new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                // Lỗi hệ thống ngoài ý muốn
+                return StatusCode(500, new { error = "Lỗi hệ thống khi tạo người dùng: " + ex.Message });
+            }
+        }
     }
 }
