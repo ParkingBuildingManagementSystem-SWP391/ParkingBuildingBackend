@@ -32,15 +32,16 @@ namespace ParkingBuilding.API.Controllers
             }
         }
 
-        [HttpPost("assign-role")]
-        public async Task<IActionResult> AssignRole([FromBody] AssignRoleRequestDto request)
+        [HttpPost("update-user")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> UpdateUser([FromBody] UpdateUserRequestDto request)
         {
             try
             {
-                var result = await _adminService.AssignRoleAsync(request);
+                var result = await _adminService.updateUserAsync(request);
                 if (result)
                 {
-                    return Ok(new { message = $"Ủy quyền thành công! Tài khoản ID {request.UserId} đã được chuyển sang vai trò '{request.RoleName}'." });
+                    return Ok(new { message = $"Cập nhật thành công! Tài khoản ID {request.UserId} ." });
                 }
                 return BadRequest(new { error = "Ủy quyền thất bại. Không thể lưu thay đổi vào cơ sở dữ liệu." });
             }

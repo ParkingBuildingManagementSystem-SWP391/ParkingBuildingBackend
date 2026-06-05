@@ -11,7 +11,7 @@ namespace ParkingBuilding.Service.IService
     {
         Task<IEnumerable<UserResponseDto>> GetAllUsersAsync();
 
-        Task<bool> AssignRoleAsync(AssignRoleRequestDto request);
+        Task<bool> updateUserAsync(UpdateUserRequestDto request);
 
         Task<UserResponseDto> CreateUserAsync(CreateUserRequestDto request);
     }
