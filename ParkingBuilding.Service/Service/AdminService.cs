@@ -18,7 +18,7 @@ namespace ParkingBuilding.Service.Service
         {
             _userRepository = userRepository;
         }
-        public async Task<bool> AssignRoleAsync(AssignRoleRequestDto request)
+        public async Task<bool> updateUserAsync(UpdateUserRequestDto request)
         {
 
             var user = await _userRepository.GetByIdAsync(request.UserId);
@@ -26,14 +26,30 @@ namespace ParkingBuilding.Service.Service
             {
                 throw new KeyNotFoundException($"Không tìm thấy tài khoản người dùng với ID: {request.UserId}");
             }
-
-            var role = await _userRepository.GetRoleByNameAsync(request.RoleName);
-            if (role == null)
+            if (request.RoleName != "")
             {
-                throw new ArgumentException($"Hệ thống không tồn tại phân quyền có tên: '{request.RoleName}'. Vui lòng kiểm tra lại!");
+                var role = await _userRepository.GetRoleByNameAsync(request.RoleName);
+                if (role == null)
+                {
+                    throw new ArgumentException($"Hệ thống không tồn tại phân quyền có tên: '{request.RoleName}'. Vui lòng kiểm tra lại!");
+                }
+                user.RoleId = role.RoleId;
             }
 
-            user.RoleId = role.RoleId;
+            if (request.phoneNumber != "")
+            {
+                user.PhoneNumber = request.phoneNumber;
+            }
+
+            if (request.userName != "")
+            {
+                user.Username = request.userName;
+            }
+
+            if (request.email != "")
+            {
+                user.Email = request.email;
+            }
 
             return await _userRepository.SaveChangesAsync();
         }
