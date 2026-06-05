@@ -174,6 +174,14 @@ namespace ParkingBuilding.Repository.Repository
                 .FirstOrDefaultAsync(s => s.LicenseVehicle == licensePlate
                                        && s.SessionStatus == ParkingStatuses.SessionInProgress);
         }
+
+        public async Task AddInvoiceAsync(Invoice invoice)
+        {
+            await _context.Invoices.AddAsync(invoice);
+            await _context.SaveChangesAsync();
+        }
+
+
         public async Task<List<ParkingSlot>> GetSlotsByFloorIdAsync(int floorId)
         {
             return await _context.ParkingSlots

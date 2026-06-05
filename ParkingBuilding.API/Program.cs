@@ -6,6 +6,7 @@ using ParkingBuilding.API.BackgroundServices;
 using ParkingBuilding.Repository.Entities;
 using ParkingBuilding.Repository.IRepository;
 using ParkingBuilding.Repository.Repository;
+using ParkingBuilding.Service.DTOs;
 using ParkingBuilding.Service.IService;
 using ParkingBuilding.Service.Service;
 
@@ -66,6 +67,16 @@ namespace ParkingBuilding.API
 
             builder.Services.AddScoped<IAdminService, AdminService>();
 
+            // Đăng ký cấu hình VnPayConfig từ appsettings.json
+            builder.Services.Configure<VnPayConfig>(builder.Configuration.GetSection("VnPayConfig"));
+
+            // Đăng ký dịch vụ thanh toán (Service Layer)
+            builder.Services.AddScoped<IPaymentService, PaymentService>();
+
+            // Đăng ký các Repository riêng lẻ (Repository Layer)
+            builder.Services.AddScoped<IInvoiceRepository, InvoiceRepository>();
+            builder.Services.AddScoped<ISessionRepository, SessionRepository>();
+            builder.Services.AddScoped<ISlotRepository, SlotRepository>();
 
             var jwtSecret = builder.Configuration["JwtSettings:Secret"] ?? "DefaultSuperSecretKeyThatIsAtLeast32BytesLong";
             var key = Encoding.UTF8.GetBytes(jwtSecret);

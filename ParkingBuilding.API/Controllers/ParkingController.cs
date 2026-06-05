@@ -86,29 +86,29 @@ namespace ParkingBuilding.API.Controllers
         }
 
 
-        // API 4: Xử lý xe ra bãi (Check-out) 
+        // API 4: Xác thực xe ra bãi & Tính tiền (Chưa cho xe ra bãi) 
         [Authorize(Roles = "Staff")]
-        [HttpPost("check-out")]
+        [HttpPost("check-out")]                         
         public async Task<IActionResult> CheckOutVehicle([FromBody] CheckoutRequest request)
         {
             try
             {
-                var staffIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                var staffIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                 if (string.IsNullOrEmpty(staffIdClaim))
-                {
                     return Unauthorized(new { isSuccess = false, message = "Không tìm thấy thông tin Staff thực hiện." });
-                }
 
                 int currentStaffId = int.Parse(staffIdClaim);
 
-                CheckoutResponse response = await _parkingService.CheckoutVehicleAsync(request, currentStaffId);
+                CheckoutResponse response = await _parkingService.CheckoutVehicleAsync(request, currentStaffId); 
                 return Ok(response);
-            }           
+            }
             catch (Exception ex)
             {
                 return BadRequest(new { isSuccess = false, message = ex.Message });
             }
         }
+
+
         [HttpGet("floor/{floorId}")]
         public async Task<IActionResult> GetSlotsByFloorId(int floorId)
         {

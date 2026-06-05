@@ -15,6 +15,15 @@ public partial class Invoice
 
     public int StaffId { get; set; }
 
+
+    public string? PaymentMethod { get; set; }
+    public string? PaymentStatus { get; set; }
+    public string? TransactionCode { get; set; }
+    public DateTime? CreatedDate { get; set; }
+    public DateTime? UpdatedDate { get; set; }
+
+
+
     public virtual ParkingSession Session { get; set; } = null!;
 
     public virtual User Staff { get; set; } = null!;

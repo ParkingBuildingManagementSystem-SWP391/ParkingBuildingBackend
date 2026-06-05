@@ -30,6 +30,9 @@ namespace ParkingBuilding.Repository.IRepository
         Task<User?> GetStaffByIdAsync(int staffId);
         Task<ParkingSession?> GetActiveSessionByLicensePlateAsync(string licensePlate);
 
+        Task AddInvoiceAsync(Invoice invoice);
+
+
         Task<List<ParkingSlot>> GetSlotsByFloorIdAsync(int floorId);
     }
 }

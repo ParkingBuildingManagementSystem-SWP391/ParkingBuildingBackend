@@ -84,6 +84,14 @@ public partial class ParkingManagementDbContext : DbContext
             entity.Property(e => e.PaymentTime).HasColumnType("datetime");
             entity.Property(e => e.TotalAmount).HasColumnType("decimal(18, 2)");
 
+            entity.Property(e => e.PaymentMethod).HasMaxLength(50).IsUnicode(false);
+            entity.Property(e => e.PaymentStatus).HasMaxLength(50).IsUnicode(false);
+            entity.Property(e => e.TransactionCode).HasMaxLength(100).IsUnicode(false);
+            entity.Property(e => e.CreatedDate).HasColumnType("datetime");
+            entity.Property(e => e.UpdatedDate).HasColumnType("datetime");
+
+
+
             entity.HasOne(d => d.Session).WithOne(p => p.Invoice)
                 .HasForeignKey<Invoice>(d => d.SessionId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
@@ -177,6 +185,9 @@ public partial class ParkingManagementDbContext : DbContext
         modelBuilder.Entity<Ticket>(entity =>
         {
             entity.HasKey(e => e.TicketId).HasName("PK__Tickets__712CC607227F4409");
+
+            entity.Property(e => e.TicketId)
+           .ValueGeneratedOnAdd();
 
             entity.Property(e => e.TicketCode)
                 .HasMaxLength(100)
