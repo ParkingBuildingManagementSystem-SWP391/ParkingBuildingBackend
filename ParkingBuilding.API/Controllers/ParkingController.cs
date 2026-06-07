@@ -9,6 +9,10 @@ namespace ParkingBuilding.API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    /// <summary>
+    /// API Controller quản lý các hoạt động đỗ xe.
+    /// Cho phép khách đặt trước vị trí, nhân viên thực hiện check-in cho xe đã đặt hoặc xe vãng lai, và soát vé check-out đầu ra.
+    /// </summary>
     public class ParkingController : ControllerBase
     {
         private readonly IParkingService _parkingService;
@@ -19,6 +23,11 @@ namespace ParkingBuilding.API.Controllers
         }
 
         // API 1: Khách đặt chỗ trước 
+        /// <summary>
+        /// API đặt chỗ trước dành cho tài xế thành viên.
+        /// - BẢO MẬT: Trích xuất UserId trực tiếp từ JWT Token để đảm bảo định danh chính chủ.
+        /// - Nghiệp vụ: Cấp phát tạm thời 1 ô đỗ trống và tạo vé giữ chỗ trong 15 phút.
+        /// </summary>
         [Authorize(Roles = "Registered_Driver")]
         [HttpPost("book")]
         public async Task<IActionResult> BookSlot([FromBody] BookSlotRequest request)
@@ -45,6 +54,11 @@ namespace ParkingBuilding.API.Controllers
         }
 
         // API 2: QUÉT CỔNG VÀO CHECK-IN
+        /// <summary>
+        /// API check-in tại cổng vào dành cho xe đã đặt chỗ trước.
+        /// - Yêu cầu vai trò Nhân viên (Staff).
+        /// - Cập nhật trạng thái đỗ xe sang đang đỗ (InProgress).
+        /// </summary>
         [Authorize(Roles = "Staff")] 
         [HttpPost("check-in")]
         public async Task<IActionResult> CheckInVehicle([FromBody] CheckInRequest request)
@@ -65,6 +79,11 @@ namespace ParkingBuilding.API.Controllers
         }
 
         // API 3: Khách vãng lai đến cổng (Walk-in)
+        /// <summary>
+        /// API check-in tại cổng dành cho khách vãng lai (không đặt trước).
+        /// - Yêu cầu vai trò Nhân viên (Staff).
+        /// - Sử dụng cơ chế khóa Database chống tranh chấp để tự động tìm và gán 1 slot đỗ trống lập tức.
+        /// </summary>
         [Authorize(Roles = "Staff")]
         [HttpPost("walk-in")]
         public async Task<IActionResult> WalkInCheckIn([FromBody] WalkInRequest request)
@@ -73,7 +92,6 @@ namespace ParkingBuilding.API.Controllers
             {
                 var result = await _parkingService.WalkInCheckInAsync(request);
 
-                // KIỂM TRA TRẠNG THÁI TRẢ VỀ TỪ SERVICE
                 if (result.Status == "Error" || result.Status == "Full")
                 {
                     return BadRequest(new { isSuccess = false, message = result.TicketCode });
@@ -94,6 +112,12 @@ namespace ParkingBuilding.API.Controllers
 
 
         // API 4: Xác thực xe ra bãi & Tính tiền (Chưa cho xe ra bãi) 
+        /// <summary>
+        /// API quét xe ra tại cổng check-out (chưa mở cổng).
+        /// - BẢO MẬT: Lấy StaffId từ JWT Token của nhân viên soát vé thực hiện.
+        /// - Nghiệp vụ: Đối khớp biển số xe, tính tổng thời gian đỗ, áp dụng Grace Period (ân hạn 15 phút) nếu đã trả trước,
+        ///   hoặc sinh yêu cầu thanh toán (CASH / VNPAY) nếu chưa trả đủ tiền.
+        /// </summary>
         [Authorize(Roles = "Staff")]
         [HttpPost("check-out")]                         
         public async Task<IActionResult> CheckOutVehicle([FromBody] CheckoutRequest request)

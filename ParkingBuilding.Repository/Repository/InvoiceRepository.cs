@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using ParkingBuilding.Repository.Entities;
 using ParkingBuilding.Repository.IRepository;
 using System;
@@ -9,6 +9,9 @@ using System.Threading.Tasks;
 
 namespace ParkingBuilding.Repository.Repository
 {
+    /// <summary>
+    /// Repository quản lý truy cập cơ sở dữ liệu cho bảng Invoices (Hóa đơn).
+    /// </summary>
     public class InvoiceRepository : IInvoiceRepository
     {
         private readonly ParkingManagementDbContext _context;
@@ -18,6 +21,10 @@ namespace ParkingBuilding.Repository.Repository
             _context = context;
         }
 
+        /// <summary>
+        /// Thêm mới hóa đơn hoặc Cập nhật (UPSERT) lại hóa đơn đang có của Session nếu chưa thanh toán thành công.
+        /// Đảm bảo tính toàn vẹn dữ liệu, tránh lỗi trùng lặp bản ghi hóa đơn trong Database.
+        /// </summary>
         public async Task AddAsync(Invoice invoice)
         {
             var existingInvoice = await _context.Invoices.FirstOrDefaultAsync(i => i.SessionId == invoice.SessionId);
@@ -60,7 +67,7 @@ namespace ParkingBuilding.Repository.Repository
         public async Task<Invoice?> GetByIdAsync(int invoiceId)
         {
             return await _context.Invoices
-                .Include(i => i.Session) // <-- Nạp kèm thông tin phiên đỗ
+                .Include(i => i.Session)
                 .FirstOrDefaultAsync(i => i.InvoiceId == invoiceId);
         }
 

@@ -33,9 +33,9 @@ public partial class ParkingManagementDbContext : DbContext
 
     public virtual DbSet<VehiclesType> VehiclesTypes { get; set; }
 
-//    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-//#warning To protect potentially sensitive information in your connection string, you should move it out of source code. You can avoid scaffolding the connection string by using the Name= syntax to read it from configuration - see https://go.microsoft.com/fwlink/?linkid=2131148. For more guidance on storing connection strings, see https://go.microsoft.com/fwlink/?LinkId=723263.
-//        => optionsBuilder.UseSqlServer("Server=LAPTOP-UU1O8321\\SQLEXPRESS;Database=ParkingManagementDb;User Id=sa;Password=12345;TrustServerCertificate=True");
+    //    protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+    //#warning To protect potentially sensitive information in your connection string, you should move it out of source code. You can avoid scaffolding the connection string by using the Name= syntax to read it from configuration - see https://go.microsoft.com/fwlink/?linkid=2131148. For more guidance on storing connection strings, see https://go.microsoft.com/fwlink/?LinkId=723263.
+    //        => optionsBuilder.UseSqlServer("Server=LAPTOP-UU1O8321\\SQLEXPRESS;Database=ParkingManagementDb;User Id=sa;Password=12345;TrustServerCertificate=True");
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -110,9 +110,6 @@ public partial class ParkingManagementDbContext : DbContext
 
             entity.ToTable("ParkingSession");
 
-            //entity.HasIndex(e => e.TicketId, "UQ__ParkingS__712CC6066EA25F4B").IsUnique();
-
-
             entity.Property(e => e.BookingTime).HasColumnType("datetime");
             entity.Property(e => e.CheckInImageUrl)
                 .HasMaxLength(500)
@@ -133,11 +130,6 @@ public partial class ParkingManagementDbContext : DbContext
                 .HasForeignKey(d => d.SlotId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK__ParkingSe__SlotI__619B8048");
-
-            //entity.HasOne(d => d.Ticket).WithOne(p => p.ParkingSession)
-            //    .HasForeignKey<ParkingSession>(d => d.TicketId)
-            //    .OnDelete(DeleteBehavior.ClientSetNull)
-            //    .HasConstraintName("FK__ParkingSe__Ticke__6383C8BA");
 
             entity.HasOne(d => d.Ticket).WithMany(p => p.ParkingSession)
             .HasForeignKey(d => d.TicketId)

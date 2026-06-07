@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using ParkingBuilding.API;
@@ -7,6 +7,10 @@ using ParkingBuilding.Repository.IRepository;
 
 namespace ParkingBuilding.API.BackgroundServices
 {
+    /// <summary>
+    /// Tiến trình chạy ngầm (Background Service) tự động quét và xử lý hủy các đơn đặt chỗ (Booking) đã quá hạn.
+    /// Hoạt động chu kỳ 1 phút/lần để giải phóng tài nguyên ô đỗ bị chiếm dụng ảo.
+    /// </summary>
     public class BookingCancellationProcessor : BackgroundService
     {
         private readonly IServiceProvider _serviceProvider;
@@ -18,6 +22,11 @@ namespace ParkingBuilding.API.BackgroundServices
             _logger = logger;
         }
 
+        /// <summary>
+        /// Vòng lặp thực thi của tiến trình chạy ngầm.
+        /// - Quét CSDL tìm các lượt đặt chỗ (Reserved) đã quá 15 phút so với BookingTime mà khách chưa đến check-in.
+        /// - Chuyển trạng thái phiên sang Canceled, khôi phục trạng thái Slot về Available và đổi trạng thái Vé sang Expired.
+        /// </summary>
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             _logger.LogInformation("The cancellation process has successfully begun.............");

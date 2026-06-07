@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using ParkingBuilding.Service.DTOs;
@@ -8,6 +8,10 @@ namespace ParkingBuilding.API.Controllers
 {
     [Route("api/[controller]")]
     [ApiController]
+    /// <summary>
+    /// API Controller dành cho Quản trị viên (Admin).
+    /// Hỗ trợ các tác vụ quản lý tài khoản người dùng, tạo tài khoản Staff/Driver và phân quyền hệ thống.
+    /// </summary>
     public class AdminController : ControllerBase
     {
         private readonly IAdminService _adminService;
@@ -18,6 +22,10 @@ namespace ParkingBuilding.API.Controllers
         }
 
         [HttpGet("users")]
+        /// <summary>
+        /// API lấy danh sách toàn bộ tài khoản người dùng hoạt động trong hệ thống.
+        /// - Yêu cầu vai trò Admin.
+        /// </summary>
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> GetAllUsers()
         {
@@ -33,6 +41,10 @@ namespace ParkingBuilding.API.Controllers
         }
 
         [HttpPost("update-user")]
+        /// <summary>
+        /// API cập nhật thông tin cá nhân và thay đổi phân quyền (Role) của người dùng.
+        /// - Yêu cầu vai trò Admin.
+        /// </summary>
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> UpdateUser([FromBody] UpdateUserRequestDto request)
         {
@@ -60,6 +72,10 @@ namespace ParkingBuilding.API.Controllers
         }
 
         [HttpPost("create-user")]
+        /// <summary>
+        /// API để Admin trực tiếp khởi tạo tài khoản mới (Staff/Driver) không qua luồng xác thực OTP.
+        /// - Yêu cầu vai trò Admin.
+        /// </summary>
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> CreateUser([FromBody] CreateUserRequestDto request)
         {
