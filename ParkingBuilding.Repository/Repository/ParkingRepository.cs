@@ -119,6 +119,10 @@ namespace ParkingBuilding.Repository.Repository
             }
         }
 
+        /// <summary>
+        /// Lấy thông tin Slot theo ID kèm theo Khóa dòng dữ liệu (UPDLOCK, ROWLOCK).
+        /// Ngăn chặn các giao dịch đỗ xe song song sửa đổi trạng thái Slot đỗ này cho đến khi Transaction kết thúc.
+        /// </summary>
         public async Task<ParkingSlot?> GetSlotByIdForBookingWithLockAsync(int slotId)
         {
             // Sử dụng UPDLOCK, ROWLOCK để khóa dòng dữ liệu của Slot được chọn cho đến khi Transaction kết thúc
@@ -127,6 +131,9 @@ namespace ParkingBuilding.Repository.Repository
                 .FirstOrDefaultAsync();
         }
 
+        /// <summary>
+        /// Tìm và trả về 1 Slot đỗ còn trống đầu tiên phù hợp với loại xe, đồng thời Khóa dòng dữ liệu (UPDLOCK, ROWLOCK) tránh tranh chấp.
+        /// </summary>
         public async Task<ParkingSlot?> GetAvailableSlotForWalkInAsync(int vehicleTypeId)
         {
             return await _context.ParkingSlots
@@ -169,6 +176,10 @@ namespace ParkingBuilding.Repository.Repository
                                      && s.SessionStatus.Trim() == ParkingStatuses.SessionInProgress
                                      && !s.IsDeleted);
         }
+        /// <summary>
+        /// Tạo mới phiên đỗ vãng lai (Walk-in) sử dụng Cơ chế Khóa Database và Transaction.
+        /// Tìm slot trống, đổi trạng thái slot sang Occupied, lưu Session đỗ xe và Vé mới tạo trong một giao dịch an toàn tuyệt đối.
+        /// </summary>
         public async Task<ParkingSession?> CreateWalkInSessionWithLockAsync(string licenseVehicle, int vehicleTypeId, string? checkInImageUrl, Ticket ticket)
         {
             using var transaction = await _context.Database.BeginTransactionAsync();
@@ -289,14 +300,12 @@ namespace ParkingBuilding.Repository.Repository
                     existingInvoice.PaymentStatus = invoice.PaymentStatus;
                     existingInvoice.UpdatedDate = DateTime.UtcNow;
 
-                    // Chỉ gán mã giao dịch mới nếu mã cũ đang trống hoặc null
                     if (string.IsNullOrEmpty(existingInvoice.TransactionCode))
                     {
                         existingInvoice.TransactionCode = invoice.TransactionCode;
                     }
                     else
                     {
-                        // Đồng bộ lại mã cũ ngược lại cho biến đang chạy trong bộ nhớ để tạo URL VNPay đúng
                         invoice.TransactionCode = existingInvoice.TransactionCode;
                     }
 

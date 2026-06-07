@@ -10,6 +10,10 @@ using System.Threading.Tasks;
 
 namespace ParkingBuilding.Service.Service
 {
+    /// <summary>
+    /// Lớp nghiệp vụ quản trị hệ thống (Admin Management).
+    /// Cung cấp quyền hạn cho Admin: Tạo tài khoản nhân viên/tài xế, cập nhật thông tin và phân quyền người dùng.
+    /// </summary>
     public class AdminService : IAdminService
     {
         public readonly IUserRepository _userRepository;
@@ -18,6 +22,9 @@ namespace ParkingBuilding.Service.Service
         {
             _userRepository = userRepository;
         }
+        /// <summary>
+        /// Cập nhật thông tin tài khoản người dùng hoặc thay đổi phân quyền (Role) của họ trong hệ thống.
+        /// </summary>
         public async Task<bool> updateUserAsync(UpdateUserRequestDto request)
         {
 
@@ -54,6 +61,9 @@ namespace ParkingBuilding.Service.Service
             return await _userRepository.SaveChangesAsync();
         }
 
+        /// <summary>
+        /// Admin trực tiếp tạo tài khoản mới cho nhân viên (Staff) hoặc tài xế (Driver) mà không cần qua luồng OTP.
+        /// </summary>
         public async Task<UserResponseDto> CreateUserAsync(CreateUserRequestDto request)
         {
             var existingUser = await _userRepository.GetByEmailAsync(request.Email);
@@ -102,6 +112,9 @@ namespace ParkingBuilding.Service.Service
             };
         }
 
+        /// <summary>
+        /// Lấy danh sách toàn bộ tài khoản người dùng đang hoạt động trong hệ thống (Không bao gồm các tài khoản đã bị xóa IsDeleted = true).
+        /// </summary>
         public async Task<IEnumerable<UserResponseDto>> GetAllUsersAsync()
         {
             var users = await _userRepository.GetAllUsersWithRolesAsync();

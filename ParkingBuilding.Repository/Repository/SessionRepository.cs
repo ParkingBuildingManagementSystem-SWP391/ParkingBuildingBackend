@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using ParkingBuilding.Repository.Entities;
 using ParkingBuilding.Repository.IRepository;
 using System.Collections.Generic;
@@ -8,6 +8,9 @@ using System.Threading.Tasks;
 
 namespace ParkingBuilding.Repository.Repository
 {
+    /// <summary>
+    /// Repository quản lý truy cập cơ sở dữ liệu cho bảng ParkingSessions (Phiên đỗ xe).
+    /// </summary>
     public class SessionRepository : ISessionRepository
     {
         private readonly ParkingManagementDbContext _context;

@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using ParkingBuilding.Repository.Entities;
 using ParkingBuilding.Repository.IRepository;
 using System;
@@ -9,6 +9,9 @@ using System.Threading.Tasks;
 
 namespace ParkingBuilding.Repository.Repository
 {
+    /// <summary>
+    /// Repository quản lý truy cập cơ sở dữ liệu cho bảng ParkingSlots (Ô đỗ xe).
+    /// </summary>
     public class SlotRepository : ISlotRepository
     {
         private readonly ParkingManagementDbContext _context;

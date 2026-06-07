@@ -1,4 +1,4 @@
-﻿using Google.Apis.Auth;
+using Google.Apis.Auth;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 using ParkingBuilding.Repository.Entities;
@@ -11,6 +11,10 @@ using Microsoft.AspNetCore.Http;
 
 namespace ParkingBuilding.Service.Service
 {
+    /// <summary>
+    /// Lớp nghiệp vụ xử lý xác thực (Authentication).
+    /// Chức năng: Đăng ký thành viên, xác thực mã OTP qua Email, đăng nhập truyền thống và đăng nhập Google (SSO).
+    /// </summary>
     public class AuthService : IAuthService
     {
         private readonly IUserRepository _userRepository;
@@ -33,6 +37,12 @@ namespace ParkingBuilding.Service.Service
             _config = config;
         }
 
+        /// <summary>
+        /// Đăng ký tài khoản mới (Bước 1):
+        /// - Mã hóa mật khẩu bằng BCrypt.
+        /// - Sinh mã OTP ngẫu nhiên 6 chữ số và lưu thông tin đăng ký tạm thời vào MemoryCache trong 5 phút.
+        /// - Gửi email OTP xác nhận về hòm thư người dùng.
+        /// </summary>
         public async Task<string> RegisterAsync(RegisterRequest request)
         {
             var existingUser = await _userRepository.GetByEmailAsync(request.Email);
@@ -72,6 +82,11 @@ namespace ParkingBuilding.Service.Service
         }
 
 
+        /// <summary>
+        /// Xác thực đăng ký (Bước 2):
+        /// - So khớp mã OTP người dùng nhập với OTP lưu trong MemoryCache.
+        /// - Nếu khớp, tạo mới User chính thức trong CSDL với Role mặc định là 'Registered_Driver' và sinh Token JWT đăng nhập.
+        /// </summary>
         public async Task<AuthResponse> VerifyOtpAsync(VerifyOtpRequest request)
         {
             if (!_cache.TryGetValue(request.Email, out RegisterTempData? tempData) || tempData == null)
@@ -118,6 +133,11 @@ namespace ParkingBuilding.Service.Service
             };
         }
 
+        /// <summary>
+        /// Đăng nhập tài khoản bằng Email và Password.
+        /// - Sử dụng thư viện BCrypt để đối khớp mật khẩu băm dưới CSDL.
+        /// - Trả về JWT Token chứa các thông tin định danh (UserId, Role) của người dùng.
+        /// </summary>
         public async Task<AuthResponse> LoginAsync(LoginRequest request)
         {
             var user = await _userRepository.GetByEmailAsync(request.Email);
@@ -143,6 +163,11 @@ namespace ParkingBuilding.Service.Service
             };
         }
 
+        /// <summary>
+        /// Đăng nhập liên kết bằng tài khoản Google (Single Sign-On).
+        /// - Xác thực Google ID Token gửi từ Front-end.
+        /// - Nếu email này chưa tồn tại trong hệ thống, tự động tạo mới tài khoản với mật khẩu rỗng và phân quyền 'Registered_Driver'.
+        /// </summary>
         public async Task<AuthResponse> ContinueWithGoogleAsync(GoogleLoginRequest request)
         {
             GoogleJsonWebSignature.Payload payload;

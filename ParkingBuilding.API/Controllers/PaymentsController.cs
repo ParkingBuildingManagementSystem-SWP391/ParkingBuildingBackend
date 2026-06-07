@@ -13,9 +13,13 @@ using System.Threading.Tasks;
 namespace ParkingBuilding.API.Controllers
 {
 
-    [Authorize] // Yêu cầu xác thực JWT Token để truy cập các API thanh toán
+    [Authorize] 
     [ApiController]
     [Route("api/[controller]")]
+    /// <summary>
+    /// API Controller quản lý các hoạt động thanh toán.
+    /// Cho phép thanh toán bằng tiền mặt qua Staff, tạo link thanh toán VNPay và xử lý webhook IPN tự động từ VNPay.
+    /// </summary>
     public class PaymentsController : ControllerBase
     {
         private readonly IPaymentService _paymentService;
@@ -29,9 +33,12 @@ namespace ParkingBuilding.API.Controllers
 
         [Authorize(Roles = "Staff")]
         [HttpPost("cash")]
+        /// <summary>
+        /// API ghi nhận thanh toán bằng tiền mặt.
+        /// - BẢO MẬT: Lấy StaffId trực tiếp từ JWT Token của nhân viên xác nhận giao dịch để đảm bảo truy vết trách nhiệm.
+        /// </summary>
         public async Task<IActionResult> ProcessCashPayment([FromBody] CashPaymentDto request)
         {
-            // Trích xuất StaffId an toàn từ Claims trong JWT Token gửi kèm trong Header
             var staffIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
                                ?? User.FindFirst("id")?.Value;
 
@@ -42,7 +49,6 @@ namespace ParkingBuilding.API.Controllers
 
             int currentStaffId = int.Parse(staffIdClaim);
 
-            // Truyền staffId đã được xác thực an toàn xuống Service
             var result = await _paymentService.ProcessCashPaymentAsync(request, currentStaffId);
             if (!result.Success) return BadRequest(result.Message);
 
@@ -51,9 +57,12 @@ namespace ParkingBuilding.API.Controllers
 
 
         [HttpPost("vnpay/create")]
+        /// <summary>
+        /// API tài xế chủ động tạo mã QR VNPay để thanh toán trước qua App di động.
+        /// - BẢO MẬT: Trích xuất UserId từ JWT Token của tài xế đang đăng nhập.
+        /// </summary>
         public async Task<IActionResult> CreateVnPayPayment([FromBody] CreateVnPayPaymentDto request)
         {
-            // Trích xuất UserId từ token
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userIdClaim)) return Unauthorized("Không tìm thấy thông tin tài xế.");
             int currentUserId = int.Parse(userIdClaim);
@@ -61,7 +70,6 @@ namespace ParkingBuilding.API.Controllers
             string ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
             request.IpAddress = ipAddress;
 
-            // Truyền currentUserId vào Service
             var result = await _paymentService.CreateVnPayPaymentUrlAsync(request, _vnPayConfig, currentUserId);
             if (!result.Success) return BadRequest(result.Message);
 
@@ -71,6 +79,11 @@ namespace ParkingBuilding.API.Controllers
 
         [AllowAnonymous]
         [HttpGet("vnpay-ipn")]
+        /// <summary>
+        /// Webhook IPN Callback nhận phản hồi trạng thái giao dịch tự động từ VNPay.
+        /// - BẢO MẬT: Sử dụng [AllowAnonymous] vì webhook được gọi tự động từ máy chủ VNPay mà không mang theo Token JWT.
+        /// - Xác thực: So khớp chữ ký HMAC-SHA512 để tránh tin tặc giả mạo thông tin thanh toán thành công.
+        /// </summary>
         public async Task<IActionResult> VnPayIpn()
         {
 
@@ -124,11 +137,14 @@ namespace ParkingBuilding.API.Controllers
 
 
         [HttpGet("status/{invoiceId}")]
+        /// <summary>
+        /// API kiểm tra trạng thái thanh toán hiện tại của hóa đơn (PENDING/SUCCESS/FAILED).
+        /// - BẢO MẬT: Ràng buộc chặt chẽ, tài xế chỉ có quyền xem trạng thái hóa đơn của chính mình.
+        /// </summary>
         public async Task<IActionResult> GetPaymentStatus(int invoiceId)
         {
             try
             {
-                // Lấy thông tin định danh và vai trò từ Token
                 var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                 var roleClaim = User.FindFirst(ClaimTypes.Role)?.Value;
 

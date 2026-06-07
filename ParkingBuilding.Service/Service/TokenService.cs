@@ -13,6 +13,9 @@ using System.Threading.Tasks;
 
 namespace ParkingBuilding.Service.Service
 {
+    /// <summary>
+    /// Lớp nghiệp vụ cấp phát mã thông báo JWT (JSON Web Token) cho quá trình xác thực người dùng.
+    /// </summary>
     public class TokenService : ITokenService
     {
         private readonly IConfiguration _config;
@@ -22,6 +25,9 @@ namespace ParkingBuilding.Service.Service
             _config = config;
         }
 
+        /// <summary>
+        /// Sinh mã JWT Token bất đối xứng chứa các Claims (UserId, Email, Username, Role) với thời hạn hết hạn là 1 ngày.
+        /// </summary>
         public string GenerateJwtToken(User user)
         {
             var claims = new List<Claim>

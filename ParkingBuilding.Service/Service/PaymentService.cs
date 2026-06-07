@@ -16,7 +16,10 @@ namespace ParkingBuilding.Service.Service
     // =========================================================================
     //              LUỒNG 6 : PAYMENT - THANH TOÁN
     // =========================================================================
-
+    /// <summary>
+    /// Lớp nghiệp vụ quản lý thanh toán (Payment Workflow).
+    /// Hỗ trợ xác nhận thanh toán tiền mặt tại quầy và xử lý giao dịch thông qua cổng thanh toán VNPay.
+    /// </summary>
     public class PaymentService : IPaymentService
     {
         private readonly IInvoiceRepository _invoiceRepo;
@@ -36,6 +39,12 @@ namespace ParkingBuilding.Service.Service
             _context = context;
         }
 
+        /// <summary>
+        /// Xử lý Webhook (IPN Callback) từ cổng thanh toán VNPay gửi về khi khách thanh toán thành công.
+        /// - Đảm bảo an toàn: Xác minh số tiền khớp và tránh xử lý trùng lặp giao dịch (Double Payment).
+        /// - LƯU Ý ĐẶC BIỆT: Nếu khách tự thanh toán trước trên App di động (session.CheckOutTime == null),
+        ///   hệ thống chỉ cập nhật hóa đơn SUCCESS mà KHÔNG giải phóng ô đỗ, nhằm tránh tình trạng "trống ảo" khi xe chưa thực sự rời bãi.
+        /// </summary>
         public async Task<PaymentResultDto> ConfirmVnPayPaymentAsync(string txnRef, decimal amount, string responseCode)
         {
             // Bắt đầu một Database Transaction để đảm bảo tính toàn vẹn (ACID)
@@ -116,6 +125,9 @@ namespace ParkingBuilding.Service.Service
             }
         }
 
+        /// <summary>
+        /// Tạo hóa đơn PENDING trên hệ thống và trả về Link QR thanh toán VNPay cho tài xế tự thanh toán trước trên App.
+        /// </summary>
         public async Task<PaymentResultDto> CreateVnPayPaymentUrlAsync(CreateVnPayPaymentDto request, VnPayConfig config, int currentUserId)
         {
             var session = await _sessionRepo.GetByIdAsync(request.SessionId);
@@ -179,6 +191,11 @@ namespace ParkingBuilding.Service.Service
             };
         }
 
+        /// <summary>
+        /// Nhân viên xác nhận đã nhận đủ tiền mặt của khách tại cổng ra.
+        /// - Ghi nhận hóa đơn SUCCESS bằng phương thức CASH.
+        /// - Cập nhật hoàn thành phiên đỗ và giải phóng ô đỗ về Available ngay lập tức.
+        /// </summary>
         public async Task<PaymentResultDto> ProcessCashPaymentAsync(CashPaymentDto request, int currentStaffId)
         {
             var session = await _sessionRepo.GetByIdAsync(request.SessionId);
@@ -259,6 +276,11 @@ namespace ParkingBuilding.Service.Service
             }
         }
 
+        /// <summary>
+        /// Lấy trạng thái thanh toán hiện tại của hóa đơn (PENDING / SUCCESS / FAILED).
+        /// - Tài xế (Driver) chỉ được xem hóa đơn của chính mình.
+        /// - Nhân viên (Staff) và Quản trị viên (Admin) được xem tất cả hóa đơn.
+        /// </summary>
         public async Task<string?> GetPaymentStatusAsync(int invoiceId, int currentUserId, string currentUserRole)
         {
             var invoice = await _invoiceRepo.GetByIdAsync(invoiceId);

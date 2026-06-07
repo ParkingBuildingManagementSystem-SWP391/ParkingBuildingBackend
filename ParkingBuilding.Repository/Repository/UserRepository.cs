@@ -9,6 +9,9 @@ using System.Threading.Tasks;
 
 namespace ParkingBuilding.Repository.Repository
 {
+    /// <summary>
+    /// Repository quản lý truy cập cơ sở dữ liệu cho bảng Users và Roles.
+    /// </summary>
     public class UserRepository : IUserRepository
     {
         private readonly ParkingManagementDbContext _context;
@@ -18,6 +21,9 @@ namespace ParkingBuilding.Repository.Repository
             _context = context;
         }
 
+        /// <summary>
+        /// Tìm tài khoản người dùng theo email và nạp kèm thông tin Role.
+        /// </summary>
         public async Task<User?> GetByEmailAsync(string email)
         {
             return await _context.Users
@@ -35,6 +41,9 @@ namespace ParkingBuilding.Repository.Repository
             return await _context.SaveChangesAsync() > 0;
         }
 
+        /// <summary>
+        /// Tìm đối tượng Role theo tên (ví dụ: 'Admin', 'Staff', 'Registered_Driver').
+        /// </summary>
         public async Task<Role?> GetRoleByNameAsync(string roleName)
         {
             return await _context.Roles.FirstOrDefaultAsync(r => r.RoleName == roleName && !r.IsDeleted);
@@ -43,8 +52,8 @@ namespace ParkingBuilding.Repository.Repository
         public async Task<IEnumerable<User>> GetAllUsersWithRolesAsync()
         {
             return await _context.Users
-                .Include(u => u.Role) // Kết hợp với bảng Role để lấy RoleName
-                .Where(u => !u.IsDeleted) // Chỉ lấy các tài khoản chưa bị xóa
+                .Include(u => u.Role) 
+                .Where(u => !u.IsDeleted)
                 .ToListAsync();
         }
 
