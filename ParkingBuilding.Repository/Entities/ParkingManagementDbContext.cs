@@ -99,7 +99,8 @@ public partial class ParkingManagementDbContext : DbContext
 
             entity.HasOne(d => d.Staff).WithMany(p => p.Invoices)
                 .HasForeignKey(d => d.StaffId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
+                .IsRequired(false)
+                .OnDelete(DeleteBehavior.SetNull)
                 .HasConstraintName("FK__Invoices__StaffI__693CA210");
         });
 

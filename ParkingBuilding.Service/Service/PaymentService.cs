@@ -1,4 +1,4 @@
-﻿using Google;
+using Google;
 using Microsoft.EntityFrameworkCore;
 using ParkingBuilding.Repository.Entities;
 using ParkingBuilding.Repository.IRepository;
@@ -72,7 +72,7 @@ namespace ParkingBuilding.Service.Service
                     return new PaymentResultDto { Success = false, ErrorCode = "00", Message = "Thanh toán thất bại từ VNPay" };
                 }
 
-                // 5. Cập nhật trạng thái Hóa đơn, Phiên đỗ xe và giải phóng Chỗ đỗ tương ứng
+                // 5. Cập nhật trạng thái Hóa đơn
                 invoice.PaymentStatus = "SUCCESS";
                 invoice.PaymentTime = DateTime.UtcNow;
                 invoice.UpdatedDate = DateTime.UtcNow;
@@ -80,20 +80,26 @@ namespace ParkingBuilding.Service.Service
                 var session = await _sessionRepo.GetByIdAsync(invoice.SessionId);
                 if (session != null)
                 {
-                    session.SessionStatus = ParkingStatuses.SessionCompleted;
-                    session.CheckOutTime = DateTime.UtcNow;
-              
-                    if (session.Ticket != null)
+                    // Nếu là thanh toán tại cổng (CheckOutTime đã được khởi tạo trước đó bởi CheckoutVehicleAsync)
+                    if (session.CheckOutTime != null)
                     {
-                        session.Ticket.TicketStatus = ParkingStatuses.TicketCompleted;
+                        session.SessionStatus = ParkingStatuses.SessionCompleted;
+
+                        if (session.Ticket != null)
+                        {
+                            session.Ticket.TicketStatus = ParkingStatuses.TicketCompleted;
+                        }
+                        await _sessionRepo.UpdateAsync(session);
+
+                        var slot = await _slotRepo.GetByIdAsync(session.SlotId);
+                        if (slot != null)
+                        {
+                            slot.SlotStatus = ParkingStatuses.SlotAvailable;
+                            await _slotRepo.UpdateAsync(slot);
+                        }
                     }
-                    await _sessionRepo.UpdateAsync(session);
-                    var slot = await _slotRepo.GetByIdAsync(session.SlotId);
-                    if (slot != null)
-                    {
-                        slot.SlotStatus = ParkingStatuses.SlotAvailable;
-                        await _slotRepo.UpdateAsync(slot);
-                    }
+                    // Ngược lại, nếu thanh toán trước trên App di động (session.CheckOutTime == null)
+                    // Chúng ta KHÔNG cập nhật trạng thái session và slot tại đây. Việc này sẽ đợi xe ra đến cổng soát vé.
                 }
 
                 // Hoàn tất lưu mọi thay đổi vĩnh viễn vào Database
@@ -110,22 +116,15 @@ namespace ParkingBuilding.Service.Service
             }
         }
 
-        public async Task<PaymentResultDto> CreateVnPayPaymentUrlAsync(CreateVnPayPaymentDto request, VnPayConfig config)
+        public async Task<PaymentResultDto> CreateVnPayPaymentUrlAsync(CreateVnPayPaymentDto request, VnPayConfig config, int currentUserId)
         {
             var session = await _sessionRepo.GetByIdAsync(request.SessionId);
             if (session == null || session.SessionStatus == ParkingStatuses.SessionCompleted)
                 return new PaymentResultDto { Success = false, Message = "Phiên đỗ xe không tồn tại hoặc đã được thanh toán" };
+            if (session.UserId != currentUserId)
+                return new PaymentResultDto { Success = false, Message = "Bạn không có quyền thanh toán cho phiên đỗ xe này!" };
 
-            // 1. Tính toán phí đỗ xe dựa trên loại phương tiện (TypeId) và thời gian đỗ
-            decimal hourlyRate = 2000; // Mặc định cho Xe đạp (TypeId = 1)
-            if (session.TypeId == 2) // Xe máy
-            {
-                hourlyRate = 5000;
-            }
-            else if (session.TypeId == 3) // Xe hơi
-            {
-                hourlyRate = 20000;
-            }
+            decimal hourlyRate = Helpers.PricingHelper.GetHourlyRate(session.TypeId);
 
             DateTime checkInTime = session.CheckInTime ?? DateTime.UtcNow;
             DateTime checkOutTime = DateTime.UtcNow;
@@ -158,7 +157,10 @@ namespace ParkingBuilding.Service.Service
             vnpay.AddRequestData("vnp_Command", config.Command);
             vnpay.AddRequestData("vnp_TmnCode", config.TmnCode);
             vnpay.AddRequestData("vnp_Amount", ((long)(calculatedFee * 100)).ToString()); // VNPay nhân số tiền với 100
-            vnpay.AddRequestData("vnp_CreateDate", DateTime.Now.ToString("yyyyMMddHHmmss"));
+            var vnTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
+            var vnNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vnTimeZone);
+            vnpay.AddRequestData("vnp_CreateDate", vnNow.ToString("yyyyMMddHHmmss"));
+
             vnpay.AddRequestData("vnp_CurrCode", "VND");
             vnpay.AddRequestData("vnp_IpAddr", request.IpAddress ?? "127.0.0.1");
             vnpay.AddRequestData("vnp_Locale", "vn");
@@ -183,16 +185,7 @@ namespace ParkingBuilding.Service.Service
             if (session == null || session.SessionStatus == ParkingStatuses.SessionCompleted)
                 return new PaymentResultDto { Success = false, Message = "Phiên đỗ xe không tồn tại hoặc đã được thanh toán" };
 
-            // 1. Tính toán phí đỗ xe dựa trên loại phương tiện (TypeId) và thời gian đỗ
-            decimal hourlyRate = 2000; // Mặc định cho Xe đạp  
-            if (session.TypeId == 2) // Xe máy (TypeId = 2)
-            {
-                hourlyRate = 5000;
-            }
-            else if (session.TypeId == 3) // Xe hơi (TypeId = 3)
-            {
-                hourlyRate = 20000;
-            }
+            decimal hourlyRate = Helpers.PricingHelper.GetHourlyRate(session.TypeId);
 
             DateTime checkInTime = session.CheckInTime ?? DateTime.UtcNow;
             DateTime checkOutTime = DateTime.UtcNow;
@@ -207,37 +200,77 @@ namespace ParkingBuilding.Service.Service
                 return new PaymentResultDto { Success = false, Message = $"Số tiền nhận chưa đủ. Khách cần trả: {calculatedFee} VNĐ" };
 
             // 2. Tạo hóa đơn thanh toán tiền mặt thành công
-            var invoice = new Invoice
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
             {
-                SessionId = (int)request.SessionId,
-                TotalAmount = calculatedFee,
-                PaymentMethod = "CASH",
-                PaymentStatus = "SUCCESS",
-                StaffId = currentStaffId, // Lấy ID nhân viên đã xác thực từ JWT
-                CreatedDate = DateTime.UtcNow,
-                PaymentTime = DateTime.UtcNow
-            };
-            await _invoiceRepo.AddAsync(invoice);
+                // 2. Tạo hóa đơn thanh toán tiền mặt thành công
+                var invoice = new Invoice
+                {
+                    SessionId = (int)request.SessionId,
+                    TotalAmount = calculatedFee,
+                    PaymentMethod = "CASH",
+                    PaymentStatus = "SUCCESS",
+                    StaffId = currentStaffId,
+                    CreatedDate = DateTime.UtcNow,
+                    PaymentTime = DateTime.UtcNow
+                };
+                await _invoiceRepo.AddAsync(invoice);
 
-            // 3. Cập nhật trạng thái Session sang Completed và giải phóng Slot đỗ xe
-            session.CheckOutTime = checkOutTime;
-            session.SessionStatus = ParkingStatuses.SessionCompleted;
-            await _sessionRepo.UpdateAsync(session);
+                // 3. Cập nhật trạng thái Session sang Completed
+                session.CheckOutTime = checkOutTime;
+                session.SessionStatus = ParkingStatuses.SessionCompleted;
 
-            var slot = await _slotRepo.GetByIdAsync(session.SlotId);
-            if (slot != null)
-            {
-                slot.SlotStatus = ParkingStatuses.SlotAvailable;
-                await _slotRepo.UpdateAsync(slot);
+                // Cập nhật Trạng thái Vé (Đảm bảo tính toàn vẹn dữ liệu)
+                if (session.Ticket != null)
+                {
+                    session.Ticket.TicketStatus = ParkingStatuses.TicketCompleted;
+                }
+                await _sessionRepo.UpdateAsync(session);
+
+                // 4. Giải phóng ô đỗ
+                var slot = await _slotRepo.GetByIdAsync(session.SlotId);
+                if (slot != null)
+                {
+                    slot.SlotStatus = ParkingStatuses.SlotAvailable;
+                    await _slotRepo.UpdateAsync(slot);
+                }
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                decimal changeDue = request.AmountReceived - calculatedFee;
+                string slotName = slot?.SlotName ?? "N/A";
+                string license = session.LicenseVehicle ?? "N/A";
+
+                return new PaymentResultDto 
+                { 
+                    Success = true, 
+                    InvoiceId = invoice.InvoiceId,
+                    Message = $"Thanh toán tiền mặt thành công. Số tiền cần trả: {calculatedFee:N0} VNĐ. Đã nhận: {request.AmountReceived:N0} VNĐ. Tiền thừa: {changeDue:N0} VNĐ. Ô đỗ {slotName} đã giải phóng. Mời xe {license} ra khỏi bãi.",
+                    ChangeDue = changeDue,
+                    LicenseVehicle = license,
+                    SlotName = slotName
+                };
             }
-
-            return new PaymentResultDto { Success = true, InvoiceId = invoice.InvoiceId };
+            catch (Exception)
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
         }
 
-        public async Task<string?> GetPaymentStatusAsync(int invoiceId)
+        public async Task<string?> GetPaymentStatusAsync(int invoiceId, int currentUserId, string currentUserRole)
         {
             var invoice = await _invoiceRepo.GetByIdAsync(invoiceId);
-            return invoice?.PaymentStatus; // Trả về null nếu không tìm thấy hóa đơn
+            if (invoice == null) return null;
+
+            // Nếu là tài xế, chỉ cho phép xem hóa đơn thuộc về phiên đỗ của chính mình
+            if (currentUserRole == "Registered_Driver" && invoice.Session != null && invoice.Session.UserId != currentUserId)
+            {
+                throw new UnauthorizedAccessException("Bạn không có quyền xem thông tin hóa đơn này!");
+            }
+
+            return invoice.PaymentStatus;
         }
 
         // Các phương thức VNPay sẽ được định nghĩa ở các phần tiếp theo...

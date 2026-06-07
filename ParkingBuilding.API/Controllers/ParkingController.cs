@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ParkingBuilding.Service.DTOs;
 using ParkingBuilding.Service.IService;
@@ -19,9 +19,8 @@ namespace ParkingBuilding.API.Controllers
         }
 
         // API 1: Khách đặt chỗ trước 
-        [Authorize]
-        [HttpPost("book")]
         [Authorize(Roles = "Registered_Driver")]
+        [HttpPost("book")]
         public async Task<IActionResult> BookSlot([FromBody] BookSlotRequest request)
         {
             try
@@ -73,15 +72,23 @@ namespace ParkingBuilding.API.Controllers
             try
             {
                 var result = await _parkingService.WalkInCheckInAsync(request);
+
+                // KIỂM TRA TRẠNG THÁI TRẢ VỀ TỪ SERVICE
+                if (result.Status == "Error" || result.Status == "Full")
+                {
+                    return BadRequest(new { isSuccess = false, message = result.TicketCode });
+                }
+
                 return Ok(new
                 {
+                    isSuccess = true,
                     message = $"Check-in khách hàng thành công! Xe đỗ tại vị trí: {result.SlotName}.",
                     data = result
                 });
             }
             catch (Exception ex)
             {
-                return BadRequest(new { error = ex.Message });
+                return BadRequest(new { isSuccess = false, error = ex.Message });
             }
         }
 

@@ -11,6 +11,8 @@ namespace ParkingBuilding.Repository.IRepository
     {
 
         Task<ParkingSlot?> GetSlotByIdAsync(int slotId);
+        Task<ParkingSlot?> GetSlotByIdForBookingWithLockAsync(int slotId);
+
         Task<bool> HasActiveReservationAsync(int userId); 
         Task CreateSessionAsync(ParkingSession session, ParkingSlot slot);
 
@@ -27,6 +29,9 @@ namespace ParkingBuilding.Repository.IRepository
         Task<ParkingSession?> GetActiveSessionByTicketCodeAsync(string ticketCode);
         Task<ParkingSession?> GetActiveSessionByIdAsync(int sessionId);
         Task CompleteParkingSessionAsync(ParkingSession session, ParkingSlot slot, Invoice invoice);
+        Task<ParkingSession?> CreateWalkInSessionWithLockAsync(string licenseVehicle, int vehicleTypeId, string? checkInImageUrl, Ticket ticket);
+
+
         Task<User?> GetStaffByIdAsync(int staffId);
         Task<ParkingSession?> GetActiveSessionByLicensePlateAsync(string licensePlate);
 
@@ -34,5 +39,6 @@ namespace ParkingBuilding.Repository.IRepository
 
 
         Task<List<ParkingSlot>> GetSlotsByFloorIdAsync(int floorId);
+        
     }
 }

@@ -163,7 +163,7 @@ namespace ParkingBuilding.Service.Service
 
             if (user == null)
             {
-                var defaultRole = await _userRepository.GetRoleByNameAsync("Member");
+                var defaultRole = await _userRepository.GetRoleByNameAsync("Registered_Driver");
                 if (defaultRole == null)
                 {
                     throw new Exception("Hệ thống chưa thiết lập Role 'Member' mặc định.");

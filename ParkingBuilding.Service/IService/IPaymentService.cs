@@ -9,11 +9,11 @@ namespace ParkingBuilding.Service.IService {
     public interface IPaymentService
     {
         Task<PaymentResultDto> ProcessCashPaymentAsync(CashPaymentDto request, int currentStaffId);
-        Task<PaymentResultDto> CreateVnPayPaymentUrlAsync(CreateVnPayPaymentDto request, VnPayConfig config);
+        Task<PaymentResultDto> CreateVnPayPaymentUrlAsync(CreateVnPayPaymentDto request, VnPayConfig config, int currentUserId);
         Task<PaymentResultDto> ConfirmVnPayPaymentAsync(string txnRef, decimal amount, string responseCode);
 
 
-        Task<string?> GetPaymentStatusAsync(int invoiceId);
+        Task<string?> GetPaymentStatusAsync(int invoiceId, int currentUserId, string currentUserRole);
         
     }
 }   

@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -27,6 +27,7 @@ namespace ParkingBuilding.API.Controllers
             _vnPayConfig = vnPayConfig.Value;
         }
 
+        [Authorize(Roles = "Staff")]
         [HttpPost("cash")]
         public async Task<IActionResult> ProcessCashPayment([FromBody] CashPaymentDto request)
         {
@@ -52,61 +53,72 @@ namespace ParkingBuilding.API.Controllers
         [HttpPost("vnpay/create")]
         public async Task<IActionResult> CreateVnPayPayment([FromBody] CreateVnPayPaymentDto request)
         {
-            // Lấy địa chỉ IP của Client gửi yêu cầu
+            // Trích xuất UserId từ token
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim)) return Unauthorized("Không tìm thấy thông tin tài xế.");
+            int currentUserId = int.Parse(userIdClaim);
+
             string ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
             request.IpAddress = ipAddress;
 
-            var result = await _paymentService.CreateVnPayPaymentUrlAsync(request, _vnPayConfig);
+            // Truyền currentUserId vào Service
+            var result = await _paymentService.CreateVnPayPaymentUrlAsync(request, _vnPayConfig, currentUserId);
             if (!result.Success) return BadRequest(result.Message);
 
             return Ok(result);
         }
+
+
+        [AllowAnonymous]
         [HttpGet("vnpay-ipn")]
         public async Task<IActionResult> VnPayIpn()
         {
-            var queryParams = Request.Query;
-            var vnpay = new VnPayLibrary();
-            string vnp_SecureHash = "";
 
-            // 1. Trích xuất các tham số vnp_ nhận được
-            foreach (var key in queryParams.Keys)
+            try
             {
-                if (!string.IsNullOrEmpty(key) && key.StartsWith("vnp_"))
+                var queryParams = Request.Query;
+                var vnpay = new VnPayLibrary();
+                string vnp_SecureHash = "";
+
+                foreach (var key in queryParams.Keys)
                 {
-                    if (key == "vnp_SecureHash")
+                    if (!string.IsNullOrEmpty(key) && key.StartsWith("vnp_"))
                     {
-                        vnp_SecureHash = queryParams[key];
-                    }
-                    else
-                    {
-                        vnpay.AddResponseData(key, queryParams[key]);
+                        if (key == "vnp_SecureHash")
+                        {
+                            vnp_SecureHash = queryParams[key];
+                        }
+                        else
+                        {
+                            vnpay.AddResponseData(key, queryParams[key]);
+                        }
                     }
                 }
-            }
 
-            // 2. Xác thực chữ ký số bằng Helper
-            bool isValidSignature = vnpay.ValidateSignature(vnp_SecureHash, _vnPayConfig.HashSecret);
-            if (!isValidSignature)
+                bool isValidSignature = vnpay.ValidateSignature(vnp_SecureHash, _vnPayConfig.HashSecret);
+                if (!isValidSignature)
+                {
+                    return Ok(new { RspCode = "97", Message = "Invalid signature" });
+                }
+
+                string txnRef = vnpay.GetResponseData("vnp_TxnRef");
+                decimal vnpayAmount = Convert.ToDecimal(vnpay.GetResponseData("vnp_Amount")) / 100m;
+                string responseCode = vnpay.GetResponseData("vnp_ResponseCode");
+
+                var result = await _paymentService.ConfirmVnPayPaymentAsync(txnRef, vnpayAmount, responseCode);
+
+                if (!result.Success)
+                {
+                    return Ok(new { RspCode = result.ErrorCode, Message = result.Message });
+                }
+
+                return Ok(new { RspCode = "00", Message = "Confirm Success" });
+            }
+            catch (Exception ex)
             {
-                return Ok(new { RspCode = "97", Message = "Invalid signature" });
+                             
+                return Ok(new { RspCode = "99", Message = "System Error: " + ex.Message });
             }
-
-            // 3. Đọc dữ liệu giao dịch từ VNPay trả về
-            string txnRef = vnpay.GetResponseData("vnp_TxnRef");
-            long vnpayAmount = Convert.ToInt64(vnpay.GetResponseData("vnp_Amount")) / 100;
-            string responseCode = vnpay.GetResponseData("vnp_ResponseCode");
-
-            // 4. Gọi service xử lý cập nhật trạng thái hóa đơn & phiên đỗ xe
-            var result = await _paymentService.ConfirmVnPayPaymentAsync(txnRef, vnpayAmount, responseCode);
-
-            if (!result.Success)
-            {
-                // Trả về mã lỗi tương ứng theo chuẩn quy định của VNPay
-                return Ok(new { RspCode = result.ErrorCode, Message = result.Message });
-            }
-
-            // Phản hồi thành công về cho Server VNPay để kết thúc phiên IPN
-            return Ok(new { RspCode = "00", Message = "Confirm Success" });
         }
 
 
@@ -114,12 +126,34 @@ namespace ParkingBuilding.API.Controllers
         [HttpGet("status/{invoiceId}")]
         public async Task<IActionResult> GetPaymentStatus(int invoiceId)
         {
-            var status = await _paymentService.GetPaymentStatusAsync(invoiceId);
+            try
+            {
+                // Lấy thông tin định danh và vai trò từ Token
+                var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                var roleClaim = User.FindFirst(ClaimTypes.Role)?.Value;
 
-            if (status == null)
-                return NotFound("Hóa đơn không tồn tại");
+                if (string.IsNullOrEmpty(userIdClaim) || string.IsNullOrEmpty(roleClaim))
+                {
+                    return Unauthorized("Không thể xác định thông tin người dùng.");
+                }
 
-            return Ok(new { status = status });
+                int currentUserId = int.Parse(userIdClaim);
+                string currentUserRole = roleClaim;
+
+                var status = await _paymentService.GetPaymentStatusAsync(invoiceId, currentUserId, currentUserRole);
+                if (status == null)
+                    return NotFound("Hóa đơn không tồn tại");
+
+                return Ok(new { status = status });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return Forbid(ex.Message);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
         }
 
 
