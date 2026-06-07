@@ -30,5 +30,8 @@ namespace ParkingBuilding.Service.DTOs
         public bool IsPaid { get; set; }
 
         public string StaffName { get; set; } = null!;
+
+        public string? PaymentUrl { get; set; }
+
     }
 }

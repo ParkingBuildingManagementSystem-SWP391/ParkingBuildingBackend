@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using ParkingBuilding.Repository.Entities;
 using ParkingBuilding.Repository.IRepository;
 using System;
@@ -28,17 +28,30 @@ namespace ParkingBuilding.Repository.Repository
 
         public async Task CreateSessionAsync(ParkingSession session, ParkingSlot slot)
         {
-            using var transaction = await _context.Database.BeginTransactionAsync();
+            // Kiểm tra xem đã có giao dịch (Transaction) nào đang hoạt động trên DbContext này chưa
+            var isOuterTransaction = _context.Database.CurrentTransaction != null;
+
+            // Chỉ bắt đầu transaction mới nếu chưa có transaction nào bên ngoài hoạt động
+            var transaction = isOuterTransaction ? null : await _context.Database.BeginTransactionAsync();
             try
             {
                 await _context.ParkingSessions.AddAsync(session);
                 _context.ParkingSlots.Update(slot);
                 await _context.SaveChangesAsync();
-                await transaction.CommitAsync();
+
+                // Chỉ commit nếu transaction này do chính hàm này tạo ra
+                if (transaction != null)
+                {
+                    await transaction.CommitAsync();
+                }
             }
             catch (Exception)
             {
-                await transaction.RollbackAsync();
+                // Chỉ rollback nếu transaction này do chính hàm này tạo ra
+                if (transaction != null)
+                {
+                    await transaction.RollbackAsync();
+                }
                 throw;
             }
         }
@@ -67,13 +80,28 @@ namespace ParkingBuilding.Repository.Repository
                 .Include(s => s.Slot)
                 .Include(s => s.Ticket)
                 .FirstOrDefaultAsync(s => s.TicketId == ticketId
-                                       && s.SessionStatus == ParkingStatuses.SessionReserved); 
+                                       && s.SessionStatus.Trim() == ParkingStatuses.SessionReserved);
         }
         public async Task UpdateSessionAndSlotAsync(ParkingSession session, ParkingSlot slot)
         {
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
+                // Nạp trạng thái hiện tại từ DB để kiểm tra trùng lặp trước khi lưu thay đổi
+                var dbSession = await _context.ParkingSessions.AsNoTracking()
+                    .FirstOrDefaultAsync(s => s.SessionId == session.SessionId);
+
+                if (dbSession != null)
+                {
+                    // Cho phép cập nhật nếu trạng thái trong DB đang là Reserved (để check-in) hoặc đang là InProgress (để cập nhật checkout)
+                    if (dbSession.SessionStatus.Trim() != ParkingStatuses.SessionReserved
+                        && dbSession.SessionStatus.Trim() != ParkingStatuses.SessionInProgress
+                        && session.SessionStatus == ParkingStatuses.SessionInProgress)
+                    {
+                        throw new Exception("Lượt đặt chỗ này đã bị thay đổi trạng thái trước đó (đã hủy hoặc đã vào bãi).");
+                    }
+                }
+
                 _context.ParkingSessions.Update(session);
 
                 if (slot != null)
@@ -89,6 +117,14 @@ namespace ParkingBuilding.Repository.Repository
                 await transaction.RollbackAsync();
                 throw;
             }
+        }
+
+        public async Task<ParkingSlot?> GetSlotByIdForBookingWithLockAsync(int slotId)
+        {
+            // Sử dụng UPDLOCK, ROWLOCK để khóa dòng dữ liệu của Slot được chọn cho đến khi Transaction kết thúc
+            return await _context.ParkingSlots
+                .FromSqlInterpolated($"SELECT * FROM ParkingSlots WITH (UPDLOCK, ROWLOCK) WHERE SlotId = {slotId}")
+                .FirstOrDefaultAsync();
         }
 
         public async Task<ParkingSlot?> GetAvailableSlotForWalkInAsync(int vehicleTypeId)
@@ -115,6 +151,7 @@ namespace ParkingBuilding.Repository.Repository
                 .Include(s => s.Slot)
                 .Include(s => s.Ticket)
                 .Include(s => s.Type)
+                .Include(s => s.Invoice)
                 .FirstOrDefaultAsync(s => s.Ticket != null
                                      && s.Ticket.TicketCode.Trim() == ticketCode.Trim()
                                      && s.SessionStatus.Trim() == ParkingStatuses.SessionInProgress
@@ -127,9 +164,51 @@ namespace ParkingBuilding.Repository.Repository
                 .Include(s => s.Slot)
                 .Include(s => s.Ticket)
                 .Include(s => s.Type)
+                .Include(s => s.Invoice)
                 .FirstOrDefaultAsync(s => s.SessionId == sessionId
                                      && s.SessionStatus.Trim() == ParkingStatuses.SessionInProgress
                                      && !s.IsDeleted);
+        }
+        public async Task<ParkingSession?> CreateWalkInSessionWithLockAsync(string licenseVehicle, int vehicleTypeId, string? checkInImageUrl, Ticket ticket)
+        {
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                // 1. Khóa bảng và lấy 1 vị trí trống ngay trong transaction để tránh tranh chấp (concurrency)
+                var slot = await _context.ParkingSlots
+                    .FromSqlInterpolated($"SELECT TOP 1 * FROM ParkingSlots WITH (UPDLOCK, ROWLOCK) WHERE SlotStatus = {ParkingStatuses.SlotAvailable} AND TypeId = {vehicleTypeId} AND IsDeleted = 0 ORDER BY SlotName ASC")
+                    .FirstOrDefaultAsync();
+
+                if (slot == null) return null;
+
+                // 2. Cập nhật trạng thái slot
+                slot.SlotStatus = ParkingStatuses.SlotOccupied;
+                _context.ParkingSlots.Update(slot);
+
+                // 3. Tạo phiên đỗ mới
+                var newSession = new ParkingSession
+                {
+                    UserId = null,
+                    SlotId = slot.SlotId,
+                    LicenseVehicle = licenseVehicle,
+                    TypeId = vehicleTypeId,
+                    CheckInTime = DateTime.UtcNow,
+                    CheckInImageUrl = checkInImageUrl,
+                    SessionStatus = ParkingStatuses.SessionInProgress,
+                    Ticket = ticket,
+                    IsDeleted = false
+                };
+
+                await _context.ParkingSessions.AddAsync(newSession);
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+                return newSession;
+            }
+            catch (Exception)
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
         }
 
         public async Task CompleteParkingSessionAsync(ParkingSession session, ParkingSlot slot, Invoice invoice)
@@ -140,7 +219,7 @@ namespace ParkingBuilding.Repository.Repository
                 if (session.Ticket != null)
                 {
                     session.Ticket.TicketStatus = ParkingStatuses.TicketCompleted;
-                };
+                }
 
                 if (slot != null)
                 {
@@ -149,7 +228,24 @@ namespace ParkingBuilding.Repository.Repository
 
                 session.SessionStatus = ParkingStatuses.SessionCompleted;
 
-                await _context.Invoices.AddAsync(invoice);
+                var sessionId = invoice.SessionId > 0 ? invoice.SessionId : (invoice.Session?.SessionId ?? session.SessionId);
+                var existingInvoice = await _context.Invoices.FirstOrDefaultAsync(i => i.SessionId == sessionId);
+
+                if (existingInvoice != null)
+                {
+                    existingInvoice.TotalAmount = invoice.TotalAmount;
+                    existingInvoice.PaymentMethod = invoice.PaymentMethod;
+                    existingInvoice.PaymentStatus = invoice.PaymentStatus;
+                    existingInvoice.PaymentTime = invoice.PaymentTime;
+                    existingInvoice.StaffId = invoice.StaffId;
+                    existingInvoice.UpdatedDate = DateTime.UtcNow;
+
+                    _context.Invoices.Update(existingInvoice);
+                }
+                else
+                {
+                    await _context.Invoices.AddAsync(invoice);
+                }
 
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
@@ -171,9 +267,52 @@ namespace ParkingBuilding.Repository.Repository
         public async Task<ParkingSession?> GetActiveSessionByLicensePlateAsync(string licensePlate)
         {
             return await _context.ParkingSessions
+                .Include(s => s.Slot)
+                .Include(s => s.Ticket)
+                .Include(s => s.Type)
+                .Include(s => s.Invoice)
                 .FirstOrDefaultAsync(s => s.LicenseVehicle == licensePlate
-                                       && s.SessionStatus == ParkingStatuses.SessionInProgress);
+                                       && s.SessionStatus.Trim() == ParkingStatuses.SessionInProgress);
         }
+
+        public async Task AddInvoiceAsync(Invoice invoice)
+        {
+            var sessionId = invoice.SessionId > 0 ? invoice.SessionId : (invoice.Session?.SessionId ?? 0);
+            var existingInvoice = await _context.Invoices.FirstOrDefaultAsync(i => i.SessionId == sessionId);
+
+            if (existingInvoice != null)
+            {
+                if (existingInvoice.PaymentStatus != "SUCCESS")
+                {
+                    existingInvoice.TotalAmount = invoice.TotalAmount;
+                    existingInvoice.PaymentMethod = invoice.PaymentMethod;
+                    existingInvoice.PaymentStatus = invoice.PaymentStatus;
+                    existingInvoice.UpdatedDate = DateTime.UtcNow;
+
+                    // Chỉ gán mã giao dịch mới nếu mã cũ đang trống hoặc null
+                    if (string.IsNullOrEmpty(existingInvoice.TransactionCode))
+                    {
+                        existingInvoice.TransactionCode = invoice.TransactionCode;
+                    }
+                    else
+                    {
+                        // Đồng bộ lại mã cũ ngược lại cho biến đang chạy trong bộ nhớ để tạo URL VNPay đúng
+                        invoice.TransactionCode = existingInvoice.TransactionCode;
+                    }
+
+                    _context.Invoices.Update(existingInvoice);
+                    await _context.SaveChangesAsync();
+                    invoice.InvoiceId = existingInvoice.InvoiceId;
+                }
+            }
+            else
+            {
+                await _context.Invoices.AddAsync(invoice);
+                await _context.SaveChangesAsync();
+            }
+        }
+
+
         public async Task<List<ParkingSlot>> GetSlotsByFloorIdAsync(int floorId)
         {
             return await _context.ParkingSlots

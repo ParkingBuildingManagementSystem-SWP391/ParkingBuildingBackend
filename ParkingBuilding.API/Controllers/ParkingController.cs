@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ParkingBuilding.Service.DTOs;
 using ParkingBuilding.Service.IService;
@@ -19,9 +19,8 @@ namespace ParkingBuilding.API.Controllers
         }
 
         // API 1: Khách đặt chỗ trước 
-        [Authorize]
-        [HttpPost("book")]
         [Authorize(Roles = "Registered_Driver")]
+        [HttpPost("book")]
         public async Task<IActionResult> BookSlot([FromBody] BookSlotRequest request)
         {
             try
@@ -73,42 +72,50 @@ namespace ParkingBuilding.API.Controllers
             try
             {
                 var result = await _parkingService.WalkInCheckInAsync(request);
+
+                // KIỂM TRA TRẠNG THÁI TRẢ VỀ TỪ SERVICE
+                if (result.Status == "Error" || result.Status == "Full")
+                {
+                    return BadRequest(new { isSuccess = false, message = result.TicketCode });
+                }
+
                 return Ok(new
                 {
+                    isSuccess = true,
                     message = $"Check-in khách hàng thành công! Xe đỗ tại vị trí: {result.SlotName}.",
                     data = result
                 });
             }
             catch (Exception ex)
             {
-                return BadRequest(new { error = ex.Message });
+                return BadRequest(new { isSuccess = false, error = ex.Message });
             }
         }
 
 
-        // API 4: Xử lý xe ra bãi (Check-out) 
+        // API 4: Xác thực xe ra bãi & Tính tiền (Chưa cho xe ra bãi) 
         [Authorize(Roles = "Staff")]
-        [HttpPost("check-out")]
+        [HttpPost("check-out")]                         
         public async Task<IActionResult> CheckOutVehicle([FromBody] CheckoutRequest request)
         {
             try
             {
-                var staffIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                var staffIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
                 if (string.IsNullOrEmpty(staffIdClaim))
-                {
                     return Unauthorized(new { isSuccess = false, message = "Không tìm thấy thông tin Staff thực hiện." });
-                }
 
                 int currentStaffId = int.Parse(staffIdClaim);
 
-                CheckoutResponse response = await _parkingService.CheckoutVehicleAsync(request, currentStaffId);
+                CheckoutResponse response = await _parkingService.CheckoutVehicleAsync(request, currentStaffId); 
                 return Ok(response);
-            }           
+            }
             catch (Exception ex)
             {
                 return BadRequest(new { isSuccess = false, message = ex.Message });
             }
         }
+
+
         [HttpGet("floor/{floorId}")]
         public async Task<IActionResult> GetSlotsByFloorId(int floorId)
         {

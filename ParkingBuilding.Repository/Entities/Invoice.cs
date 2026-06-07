@@ -13,7 +13,16 @@ public partial class Invoice
 
     public DateTime? PaymentTime { get; set; }
 
-    public int StaffId { get; set; }
+    public int? StaffId { get; set; }
+
+
+    public string? PaymentMethod { get; set; }
+    public string? PaymentStatus { get; set; }
+    public string? TransactionCode { get; set; }
+    public DateTime? CreatedDate { get; set; }
+    public DateTime? UpdatedDate { get; set; }
+
+
 
     public virtual ParkingSession Session { get; set; } = null!;
 

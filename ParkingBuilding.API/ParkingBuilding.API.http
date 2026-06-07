@@ -1,4 +1,4 @@
-@ParkingBuilding.API_HostAddress = http://localhost:5284
+@ParkingBuilding.API_HostAddress = http://localhost:4008
 
 GET {{ParkingBuilding.API_HostAddress}}/weatherforecast/
 Accept: application/json

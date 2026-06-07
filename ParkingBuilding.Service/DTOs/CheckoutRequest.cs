@@ -15,5 +15,8 @@ namespace ParkingBuilding.Service.DTOs
 
         [DefaultValue("")]
         public string? CheckOutImageUrl { get; set; }
+
+        [DefaultValue("CASH")]
+        public string PaymentMethod { get; set; } = "CASH";
     }
 }
