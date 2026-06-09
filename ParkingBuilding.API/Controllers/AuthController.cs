@@ -73,7 +73,8 @@ namespace ParkingBuilding.API.Controllers
             
             try
             {
-                var response = await _authService.LoginAsync(request);
+                string ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+                var response = await _authService.LoginAsync(request, ipAddress);
                 return Ok(response);
             }
             catch (BadHttpRequestException ex)

@@ -5,6 +5,7 @@ using ParkingBuilding.Repository.Entities;
 using ParkingBuilding.Repository.IRepository;
 using ParkingBuilding.Service.DTOs;
 using ParkingBuilding.Service.IService;
+using Microsoft.Extensions.Logging;
 using System;
 
 using Microsoft.AspNetCore.Http;
@@ -22,19 +23,20 @@ namespace ParkingBuilding.Service.Service
         private readonly IEmailService _emailService;
         private readonly IMemoryCache _cache;
         private readonly IConfiguration _config;
-
+        private readonly ILogger<AuthService> _logger;
         public AuthService(
             IUserRepository userRepository,
             ITokenService tokenService,
             IEmailService emailService,
             IMemoryCache cache,
-            IConfiguration config)
+            IConfiguration config, ILogger<AuthService> logger)
         {
             _userRepository = userRepository;
             _tokenService = tokenService;
             _emailService = emailService;
             _cache = cache;
             _config = config;
+            _logger = logger;
         }
 
         /// <summary>
@@ -138,21 +140,31 @@ namespace ParkingBuilding.Service.Service
         /// - Sử dụng thư viện BCrypt để đối khớp mật khẩu băm dưới CSDL.
         /// - Trả về JWT Token chứa các thông tin định danh (UserId, Role) của người dùng.
         /// </summary>
-        public async Task<AuthResponse> LoginAsync(LoginRequest request)
+        public async Task<AuthResponse> LoginAsync(LoginRequest request, string ipAddress)
         {
             var user = await _userRepository.GetByEmailAsync(request.Email);
             if (user == null)
             {
+                // GHI LOG WARNING: Không tồn tại email này trong hệ thống
+                _logger.LogWarning("Đăng nhập thất bại: Email '{Email}' không tồn tại. Yêu cầu đến từ IP: {IP}.", request.Email, ipAddress);
+
                 throw new BadHttpRequestException("Email hoặc mật khẩu không chính xác!");
             }
 
             bool isPasswordValid = BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash);
             if (!isPasswordValid)
             {
+                // GHI LOG WARNING: Nhập sai mật khẩu
+                _logger.LogWarning("Đăng nhập thất bại: Nhập sai mật khẩu cho tài khoản '{Email}'. Yêu cầu đến từ IP: {IP}.", request.Email, ipAddress);
+
                 throw new BadHttpRequestException("Email hoặc mật khẩu không chính xác!");
             }
 
             var token = _tokenService.GenerateJwtToken(user);
+
+            // GHI LOG INFORMATION: Đăng nhập thành công
+            _logger.LogInformation("Đăng nhập thành công: Người dùng '{Email}' (Vai trò: {Role}) đã đăng nhập thành công từ IP {IP}.",
+                user.Email, user.Role.RoleName, ipAddress);
 
             return new AuthResponse
             {
@@ -162,6 +174,7 @@ namespace ParkingBuilding.Service.Service
                 RoleName = user.Role.RoleName
             };
         }
+
 
         /// <summary>
         /// Đăng nhập liên kết bằng tài khoản Google (Single Sign-On).

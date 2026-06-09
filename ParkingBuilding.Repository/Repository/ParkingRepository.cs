@@ -300,14 +300,8 @@ namespace ParkingBuilding.Repository.Repository
                     existingInvoice.PaymentStatus = invoice.PaymentStatus;
                     existingInvoice.UpdatedDate = DateTime.UtcNow;
 
-                    if (string.IsNullOrEmpty(existingInvoice.TransactionCode))
-                    {
-                        existingInvoice.TransactionCode = invoice.TransactionCode;
-                    }
-                    else
-                    {
-                        invoice.TransactionCode = existingInvoice.TransactionCode;
-                    }
+                    // Luôn cập nhật mã giao dịch mới nhất để khớp với QR Code/URL thanh toán vừa được sinh ra
+                    existingInvoice.TransactionCode = invoice.TransactionCode;
 
                     _context.Invoices.Update(existingInvoice);
                     await _context.SaveChangesAsync();

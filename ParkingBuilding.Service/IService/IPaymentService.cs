@@ -1,4 +1,4 @@
-﻿using ParkingBuilding.Service.DTOs;
+using ParkingBuilding.Service.DTOs;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -10,7 +10,7 @@ namespace ParkingBuilding.Service.IService {
     {
         Task<PaymentResultDto> ProcessCashPaymentAsync(CashPaymentDto request, int currentStaffId);
         Task<PaymentResultDto> CreateVnPayPaymentUrlAsync(CreateVnPayPaymentDto request, VnPayConfig config, int currentUserId);
-        Task<PaymentResultDto> ConfirmVnPayPaymentAsync(string txnRef, decimal amount, string responseCode);
+        Task<PaymentResultDto> ConfirmVnPayPaymentAsync(string txnRef, decimal amount, string responseCode, string transactionStatus);
 
 
         Task<string?> GetPaymentStatusAsync(int invoiceId, int currentUserId, string currentUserRole);
