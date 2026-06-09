@@ -12,7 +12,7 @@ namespace ParkingBuilding.Service.IService
     {
         Task<string> RegisterAsync(RegisterRequest request);
         Task<AuthResponse> VerifyOtpAsync(VerifyOtpRequest request);
-        Task<AuthResponse> LoginAsync(LoginRequest request);
+        Task<AuthResponse> LoginAsync(LoginRequest request, string ipAddress);
         Task<AuthResponse> ContinueWithGoogleAsync(GoogleLoginRequest request);
     }
 }

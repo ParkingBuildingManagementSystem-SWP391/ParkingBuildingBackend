@@ -39,16 +39,8 @@ namespace ParkingBuilding.Repository.Repository
                     existingInvoice.PaymentStatus = invoice.PaymentStatus;
                     existingInvoice.UpdatedDate = DateTime.UtcNow;
 
-                    // Chỉ gán mã giao dịch mới nếu mã cũ đang trống hoặc null
-                    if (string.IsNullOrEmpty(existingInvoice.TransactionCode))
-                    {
-                        existingInvoice.TransactionCode = invoice.TransactionCode;
-                    }
-                    else
-                    {
-                        // Đồng bộ lại mã cũ ngược lại cho biến đang chạy trong bộ nhớ để tạo URL VNPay đúng
-                        invoice.TransactionCode = existingInvoice.TransactionCode;
-                    }
+                    // Luôn cập nhật mã giao dịch mới nhất để khớp với QR Code/URL thanh toán vừa được sinh ra
+                    existingInvoice.TransactionCode = invoice.TransactionCode;
 
                     _context.Invoices.Update(existingInvoice);
                     await _context.SaveChangesAsync();
