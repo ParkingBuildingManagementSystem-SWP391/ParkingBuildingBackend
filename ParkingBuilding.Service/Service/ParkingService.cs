@@ -129,7 +129,7 @@ namespace ParkingBuilding.Service.Service
                     var ticket = new Ticket
                     {
                         TicketCode = $"QR_{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}",
-                        TicketStatus = "Pending" // Vé tạm thời chưa hoạt động cho đến khi thanh toán xong
+                        TicketStatus = ParkingStatuses.TicketActive // Vé tạm thời chưa hoạt động cho đến khi thanh toán xong
                     };
 
                     slot.SlotStatus = ParkingStatuses.SlotReserved;
@@ -165,6 +165,7 @@ namespace ParkingBuilding.Service.Service
 
                     await _context.Invoices.AddAsync(invoice);
                     await _context.SaveChangesAsync();
+                    _logger.LogInformation("Lưu dữ liệu thành công bảng Invoices, hàm bookslotasync của booking");
                     await transaction.CommitAsync();
 
                     // Khởi tạo tham số gửi lên cổng VNPAY
