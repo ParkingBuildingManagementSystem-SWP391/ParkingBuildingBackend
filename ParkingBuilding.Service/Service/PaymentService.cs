@@ -76,7 +76,7 @@ namespace ParkingBuilding.Service.Service
                 }
 
                 // 3. Đề phòng xử lý trùng lặp (Double Payment / Đã xử lý)
-                if (invoice.PaymentStatus == "SUCCESS" || invoice.PaymentStatus == "FAILED")
+                if (invoice.PaymentStatus == "SUCCESS" || invoice.PaymentStatus == "Deposited" || invoice.PaymentStatus == "FAILED")
                 {
                     // GHI LOG WARNING: Hóa đơn đã được xử lý trước đó
                     _logger.LogWarning("VNPay Confirm: Hóa đơn {TxnRef} đã được xử lý trước đó với trạng thái: {Status}.",
@@ -100,43 +100,81 @@ namespace ParkingBuilding.Service.Service
                     return new PaymentResultDto { Success = false, ErrorCode = "00", Message = "Thanh toán thất bại từ VNPay" };
                 }
 
-                // 5. Cập nhật trạng thái Hóa đơn sang SUCCESS
-                invoice.PaymentStatus = "SUCCESS";
-                invoice.PaymentTime = DateTime.UtcNow;
-                invoice.UpdatedDate = DateTime.UtcNow;
+                // 5. Cập nhật trạng thái Hóa đơn
+                bool isDeposit = txnRef.StartsWith("DEP");
+                if (isDeposit)
+                {
+                    invoice.PaymentStatus = "Deposited";
+                    invoice.PaymentTime = DateTime.UtcNow;
+                    invoice.UpdatedDate = null; // Đúng yêu cầu đặt cọc giữ chỗ, để trống UpdatedDate
 
-                _logger.LogInformation("VNPay Confirm: Xác nhận giao dịch {TxnRef} thành công số tiền {Amount} VND. Đang cập nhật trạng thái...",
-                    txnRef, amount);
+                    _logger.LogInformation("VNPay Confirm: Xác nhận giao dịch đặt cọc {TxnRef} thành công số tiền {Amount} VND. Đang cập nhật trạng thái...",
+                        txnRef, amount);
+                }
+                else
+                {
+                    invoice.PaymentStatus = "SUCCESS";
+                    invoice.PaymentTime = DateTime.UtcNow;
+                    invoice.UpdatedDate = DateTime.UtcNow;
+
+                    _logger.LogInformation("VNPay Confirm: Xác nhận giao dịch thanh toán {TxnRef} thành công số tiền {Amount} VND. Đang cập nhật trạng thái...",
+                        txnRef, amount);
+                }
 
                 var session = await _sessionRepo.GetByIdAsync(invoice.SessionId);
                 if (session != null)
                 {
-                    // Nếu là thanh toán tại cổng (CheckOutTime đã được khởi tạo trước đó bởi CheckoutVehicleAsync)
-                    if (session.CheckOutTime != null)
+                    if (isDeposit)
                     {
-                        session.SessionStatus = ParkingStatuses.SessionCompleted;
-
+                        // Cập nhật vé sang trạng thái Active (Có hiệu lực để check-in cổng bãi)
                         if (session.Ticket != null)
                         {
-                            session.Ticket.TicketStatus = ParkingStatuses.TicketCompleted;
+                            session.Ticket.TicketStatus = ParkingStatuses.TicketActive;
                         }
-                        await _sessionRepo.UpdateAsync(session);
+
+                        // Đặt trạng thái phiên đỗ xe và ô đỗ
+                        session.SessionStatus = ParkingStatuses.SessionReserved;
 
                         var slot = await _slotRepo.GetByIdAsync(session.SlotId);
                         if (slot != null)
                         {
-                            slot.SlotStatus = ParkingStatuses.SlotAvailable;
+                            slot.SlotStatus = ParkingStatuses.SlotReserved;
                             await _slotRepo.UpdateAsync(slot);
                         }
 
-                        _logger.LogInformation("VNPay Confirm: Hoàn thành phiên đỗ tại cổng {SessionId} và giải phóng ô đỗ {SlotName}.",
-                            session.SessionId, slot?.SlotName ?? "N/A");
+                        await _sessionRepo.UpdateAsync(session);
+                        _logger.LogInformation("VNPay Confirm: Đặt chỗ giữ chỗ thành công cho phiên đỗ {SessionId}. Vé {TicketCode} đã kích hoạt.",
+                            session.SessionId, session.Ticket?.TicketCode ?? "N/A");
                     }
                     else
                     {
-                        // Ngược lại, nếu thanh toán trước trên App di động (session.CheckOutTime == null)
-                        _logger.LogInformation("VNPay Confirm: Tài xế tự thanh toán trước qua App thành công cho phiên đỗ {SessionId}. Trạng thái phiên sẽ được cập nhật khi xe ra tới cổng kiểm soát.",
-                            session.SessionId);
+                        // Nếu là thanh toán tại cổng (CheckOutTime đã được khởi tạo trước đó bởi CheckoutVehicleAsync)
+                        if (session.CheckOutTime != null)
+                        {
+                            session.SessionStatus = ParkingStatuses.SessionCompleted;
+
+                            if (session.Ticket != null)
+                            {
+                                session.Ticket.TicketStatus = ParkingStatuses.TicketCompleted;
+                            }
+                            await _sessionRepo.UpdateAsync(session);
+
+                            var slot = await _slotRepo.GetByIdAsync(session.SlotId);
+                            if (slot != null)
+                            {
+                                slot.SlotStatus = ParkingStatuses.SlotAvailable;
+                                await _slotRepo.UpdateAsync(slot);
+                            }
+
+                            _logger.LogInformation("VNPay Confirm: Hoàn thành phiên đỗ tại cổng {SessionId} và giải phóng ô đỗ {SlotName}.",
+                                session.SessionId, slot?.SlotName ?? "N/A");
+                        }
+                        else
+                        {
+                            // Ngược lại, nếu thanh toán trước trên App di động (session.CheckOutTime == null)
+                            _logger.LogInformation("VNPay Confirm: Tài xế tự thanh toán trước qua App thành công cho phiên đỗ {SessionId}. Trạng thái phiên sẽ được cập nhật khi xe ra tới cổng kiểm soát.",
+                                session.SessionId);
+                        }
                     }
                 }
 
@@ -144,7 +182,7 @@ namespace ParkingBuilding.Service.Service
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
 
-                _logger.LogInformation("VNPay Confirm: Cập nhật hóa đơn SUCCESS và đồng bộ cơ sở dữ liệu thành công cho giao dịch {TxnRef}.", txnRef);
+                _logger.LogInformation("VNPay Confirm: Cập nhật hóa đơn {Status} và đồng bộ cơ sở dữ liệu thành công cho giao dịch {TxnRef}.", invoice.PaymentStatus, txnRef);
 
                 return new PaymentResultDto { Success = true };
             }
