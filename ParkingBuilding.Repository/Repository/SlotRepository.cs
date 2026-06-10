@@ -26,6 +26,12 @@ namespace ParkingBuilding.Repository.Repository
             return await _context.ParkingSlots.FirstOrDefaultAsync(s => s.SlotId == slotId);
         }
 
+        public async Task<ParkingSlot?> GetByNameAsync(string name)
+        {
+            return await _context.ParkingSlots.FirstOrDefaultAsync(s => s.SlotName == name);
+
+        }
+
         public async Task UpdateAsync(ParkingSlot slot)
         {
             _context.ParkingSlots.Update(slot);

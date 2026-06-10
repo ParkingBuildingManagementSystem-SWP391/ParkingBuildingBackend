@@ -11,5 +11,6 @@ namespace ParkingBuilding.Repository.IRepository
     {
         Task<ParkingSlot?> GetByIdAsync(int slotId);
         Task UpdateAsync(ParkingSlot slot);
+        Task<ParkingSlot?> GetByNameAsync(string name);
     }
 }

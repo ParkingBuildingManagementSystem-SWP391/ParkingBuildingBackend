@@ -17,14 +17,16 @@ namespace ParkingBuilding.Service.Service
     /// </summary>
     public class ParkingService : IParkingService
     {
-        private readonly IParkingRepository _repository;
+        private readonly IParkingRepository _parkingRepository;
+        private readonly ISlotRepository _slotRepository;
         private readonly VnPayConfig _vnPayConfig;
         private readonly ParkingManagementDbContext _context;
         private readonly ILogger<ParkingService> _logger;
 
-        public ParkingService(IParkingRepository repository, IOptions<VnPayConfig> vnPayConfig, ParkingManagementDbContext context, ILogger<ParkingService> logger)
+        public ParkingService(IParkingRepository parkingRepository, ISlotRepository slotRepository, IOptions<VnPayConfig> vnPayConfig, ParkingManagementDbContext context, ILogger<ParkingService> logger)
         {
-            _repository = repository;
+            _parkingRepository = parkingRepository;
+            _slotRepository = slotRepository;
             _vnPayConfig = vnPayConfig.Value;
             _context = context;
             _logger = logger;
@@ -43,62 +45,161 @@ namespace ParkingBuilding.Service.Service
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
-                var hasActiveBooking = await _repository.HasActiveReservationAsync(userId);
+                // 1. Kiểm tra xem người dùng có lượt đặt chỗ nào chưa hoàn thành không
+                var hasActiveBooking = await _parkingRepository.HasActiveReservationAsync(userId);
                 if (hasActiveBooking)
                     throw new Exception("Bạn đang có một lượt đặt chỗ chưa hoàn thành. Vui lòng check-in hoặc hủy trước khi đặt chỗ mới.");
 
-                var slot = await _repository.GetSlotByIdForBookingWithLockAsync(request.SlotId);
-
+                // 2. Khóa dòng dữ liệu ô đỗ và kiểm tra tính hợp lệ
+                var slot = await _parkingRepository.GetSlotByIdForBookingWithLockAsync(request.SlotId);
                 if (slot == null || slot.SlotStatus.Trim() != ParkingStatuses.SlotAvailable || slot.IsDeleted == true)
                     throw new Exception("Chỗ đỗ này không còn trống hoặc không tồn tại.");
 
                 if (slot.TypeId != request.TypeId)
                     throw new Exception("Loại xe của bạn không phù hợp với chỗ đỗ này.");
 
-                var ticket = new Ticket
+                // 3. Tính toán khoảng thời gian chờ xe vào bãi
+                var now = DateTime.UtcNow;
+                var diff = request.ExpectedCheckInTime - now;
+
+                if (diff.TotalSeconds <= 0)
+                    throw new Exception("Thời gian xe vào dự kiến phải lớn hơn thời gian hiện tại.");
+
+                // TRƯỜNG HỢP 1: DƯỚI 2 TIẾNG -> Đặt trước thành công lập tức không mất tiền
+                if (diff.TotalHours < 2)
                 {
-                    TicketCode = $"QR_{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}",
-                    TicketStatus = ParkingStatuses.TicketActive
-                };
+                    var ticket = new Ticket
+                    {
+                        TicketCode = $"QR_{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}",
+                        TicketStatus = ParkingStatuses.TicketActive
+                    };
 
-                slot.SlotStatus = ParkingStatuses.SlotReserved;
+                    slot.SlotStatus = ParkingStatuses.SlotReserved;
 
-                var newSession = new ParkingSession
-                {
-                    UserId = userId,
-                    SlotId = request.SlotId,
-                    LicenseVehicle = request.LicenseVehicle,
-                    TypeId = request.TypeId,
-                    BookingTime = DateTime.UtcNow,
-                    SessionStatus = ParkingStatuses.SessionReserved,
-                    Ticket = ticket,
-                    IsDeleted = false
-                };
+                    var newSession = new ParkingSession
+                    {
+                        UserId = userId,
+                        SlotId = request.SlotId,
+                        LicenseVehicle = request.LicenseVehicle,
+                        TypeId = request.TypeId,
+                        BookingTime = now,
+                        CheckInTime = null, // Xe chưa vào bãi nên để trống
+                        CheckOutTime = null,
+                        CheckInImageUrl = null,
+                        CheckOutImageUrl = null,
+                        SessionStatus = ParkingStatuses.SessionInProgress, // Đặt trạng thái theo yêu cầu
+                        Ticket = ticket,
+                        IsDeleted = false
+                    };
 
-                await _repository.CreateSessionAsync(newSession, slot);
-                await transaction.CommitAsync();
+                    await _parkingRepository.CreateSessionAsync(newSession, slot);
+                    await transaction.CommitAsync();
 
-                // ============================================
-                //  XỬ LÝ SINH MÃ QR TỪ TICKET CODE VỪA TẠO
-                // ============================================
-                string base64QR = "";
-                using (var qrGenerator = new QRCoder.QRCodeGenerator())
-                using (var qrCodeData = qrGenerator.CreateQrCode(ticket.TicketCode, QRCoder.QRCodeGenerator.ECCLevel.Q))
-                using (var qrCode = new QRCoder.PngByteQRCode(qrCodeData))
-                {
-                    byte[] qrCodeBytes = qrCode.GetGraphic(20);
-                    base64QR = $"data:image/png;base64,{Convert.ToBase64String(qrCodeBytes)}";
+                    // Sinh mã QR check-in
+                    string base64QR = "";
+                    using (var qrGenerator = new QRCoder.QRCodeGenerator())
+                    using (var qrCodeData = qrGenerator.CreateQrCode(ticket.TicketCode, QRCoder.QRCodeGenerator.ECCLevel.Q))
+                    using (var qrCode = new QRCoder.PngByteQRCode(qrCodeData))
+                    {
+                        byte[] qrCodeBytes = qrCode.GetGraphic(20);
+                        base64QR = $"data:image/png;base64,{Convert.ToBase64String(qrCodeBytes)}";
+                    }
+
+                    return new BookSlotResponse
+                    {
+                        IsSuccess = true,
+                        Message = "Đặt chỗ đỗ xe thành công! Bạn có thể quét mã check-in khi tới bãi.",
+                        TicketCode = ticket.TicketCode,
+                        SlotName = slot.SlotName,
+                        BookingTime = newSession.BookingTime,
+                        QrCodeBase64 = base64QR,
+                        RequiresPayment = false
+                    };
                 }
 
-                return new BookSlotResponse
+                // TRƯỜNG HỢP 2: TỪ 2 TIẾNG TRỞ LÊN -> Yêu cầu thanh toán tiền đặt cọc giữ chỗ qua VNPAY
+                else
                 {
-                    IsSuccess = true,
-                    Message = "Đặt chỗ đỗ xe thành công! Vui lòng tới bãi và quét mã check-in trong vòng 15 phút.",
-                    TicketCode = ticket.TicketCode,
-                    SlotId = newSession.SlotId.ToString(),
-                    BookingTime = newSession.BookingTime ?? DateTime.UtcNow,
-                    QrCodeBase64 = base64QR
-                };
+                    // Tính số tiền cọc
+                    int extraHours = (int)Math.Floor(diff.TotalHours) - 1;
+                    if (extraHours < 1) extraHours = 1;
+                    decimal hourlyRate = PricingHelper.GetHourlyRate(request.TypeId);
+                    decimal depositAmount = extraHours * hourlyRate;
+
+                    var ticket = new Ticket
+                    {
+                        TicketCode = $"QR_{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}",
+                        TicketStatus = "Pending" // Vé tạm thời chưa hoạt động cho đến khi thanh toán xong
+                    };
+
+                    slot.SlotStatus = ParkingStatuses.SlotReserved;
+
+                    var newSession = new ParkingSession
+                    {
+                        UserId = userId,
+                        SlotId = request.SlotId,
+                        LicenseVehicle = request.LicenseVehicle,
+                        TypeId = request.TypeId,
+                        BookingTime = now,
+                        CheckInTime = null,
+                        CheckOutTime = null,
+                        SessionStatus = ParkingStatuses.SessionReserved, // Hoặc một trạng thái PendingPayment riêng
+                        Ticket = ticket,
+                        IsDeleted = false
+                    };
+
+                    await _parkingRepository.CreateSessionAsync(newSession, slot);
+
+                    // Tạo hóa đơn tạm ở trạng thái PENDING
+                    string txnRef = "DEP" + DateTime.UtcNow.Ticks; // Tiền tố DEP ký hiệu Deposit đặt cọc
+                    var invoice = new Invoice
+                    {
+                        Session = newSession,
+                        TotalAmount = depositAmount,
+                        PaymentMethod = "VNPAY",
+                        PaymentStatus = "PENDING",
+                        TransactionCode = txnRef,
+                        CreatedDate = now,
+                        UpdatedDate = null // Mặc định khởi tạo để trống
+                    };
+
+                    await _context.Invoices.AddAsync(invoice);
+                    await _context.SaveChangesAsync();
+                    await transaction.CommitAsync();
+
+                    // Khởi tạo tham số gửi lên cổng VNPAY
+                    var vnpay = new VnPayLibrary();
+                    vnpay.AddRequestData("vnp_Version", _vnPayConfig.Version);
+                    vnpay.AddRequestData("vnp_Command", _vnPayConfig.Command);
+                    vnpay.AddRequestData("vnp_TmnCode", _vnPayConfig.TmnCode);
+                    vnpay.AddRequestData("vnp_Amount", ((long)(depositAmount * 100)).ToString());
+
+                    var vnTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
+                    var vnNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vnTimeZone);
+                    vnpay.AddRequestData("vnp_CreateDate", vnNow.ToString("yyyyMMddHHmmss"));
+
+                    vnpay.AddRequestData("vnp_CurrCode", "VND");
+                    vnpay.AddRequestData("vnp_IpAddr", "127.0.0.1"); // Có thể lấy IP thực tế của Client
+                    vnpay.AddRequestData("vnp_Locale", "vn");
+                    vnpay.AddRequestData("vnp_OrderInfo", $"Thanh toan dat coc do xe phien {newSession.SessionId}");
+                    vnpay.AddRequestData("vnp_OrderType", "other");
+                    vnpay.AddRequestData("vnp_ReturnUrl", _vnPayConfig.ReturnUrl);
+                    vnpay.AddRequestData("vnp_TxnRef", txnRef);
+
+                    string paymentUrl = vnpay.CreateRequestUrl(_vnPayConfig.BaseUrl, _vnPayConfig.HashSecret);
+
+                    return new BookSlotResponse
+                    {
+                        IsSuccess = true,
+                        Message = $"Thời gian đặt trước trên 2 tiếng. Vui lòng thanh toán số tiền cọc {depositAmount:N0} VND để hoàn tất giữ chỗ.",
+                        TicketCode = ticket.TicketCode,
+                        SlotName = slot.SlotName,
+                        BookingTime = newSession.BookingTime,
+                        RequiresPayment = true,
+                        PaymentUrl = paymentUrl,
+                        InvoiceId = invoice.InvoiceId
+                    };
+                }
             }
             catch (Exception)
             {
@@ -139,7 +240,7 @@ namespace ParkingBuilding.Service.Service
 
             if (cleanLicense != null)
             {
-                var alreadyInParking = await _repository.GetActiveSessionByLicensePlateAsync(cleanLicense);
+                var alreadyInParking = await _parkingRepository.GetActiveSessionByLicensePlateAsync(cleanLicense);
                 if (alreadyInParking != null)
                 {
                     _logger.LogWarning("Check-in thất bại: Xe biển số '{LicensePlate}' đã có một phiên đỗ xe đang hoạt động trong bãi (SessionId: {SessionId}).",
@@ -157,11 +258,11 @@ namespace ParkingBuilding.Service.Service
             {
                 if (int.TryParse(cleanTicketCode, out int ticketId))
                 {
-                    session = await _repository.GetReservedSessionByTicketIdAsync(ticketId);
+                    session = await _parkingRepository.GetReservedSessionByTicketIdAsync(ticketId);
                 }
                 else
                 {
-                    session = await _repository.GetReservedSessionByTicketCodeAsync(cleanTicketCode);
+                    session = await _parkingRepository.GetReservedSessionByTicketCodeAsync(cleanTicketCode);
                 }
 
                 if (session != null && cleanLicense != null)
@@ -183,7 +284,7 @@ namespace ParkingBuilding.Service.Service
             // =============================================================================
             else if (cleanLicense != null)
             {
-                session = await _repository.GetReservedSessionByLicenseAsync(cleanLicense);
+                session = await _parkingRepository.GetReservedSessionByLicenseAsync(cleanLicense);
             }
 
             if (session == null)
@@ -213,7 +314,7 @@ namespace ParkingBuilding.Service.Service
                 session.Ticket.TicketStatus = ParkingStatuses.TicketActive;
             }
 
-            await _repository.UpdateSessionAndSlotAsync(session, session.Slot!);
+            await _parkingRepository.UpdateSessionAndSlotAsync(session, session.Slot!);
             _logger.LogInformation("Check-in THÀNH CÔNG: Xe '{LicensePlate}' đã vào bãi. Ô đỗ phân phối: {SlotName}. SessionId: {SessionId}.",
         cleanLicense ?? session.LicenseVehicle, session.Slot?.SlotName ?? "N/A", session.SessionId);
             return true;
@@ -243,7 +344,7 @@ namespace ParkingBuilding.Service.Service
                 return new WalkInResponse { Status = "Error", TicketCode = "Vui lòng nhập biển số xe hợp lệ!" };
             }
 
-            var activeSession = await _repository.GetActiveSessionByLicensePlateAsync(cleanLicense);
+            var activeSession = await _parkingRepository.GetActiveSessionByLicensePlateAsync(cleanLicense);
             if (activeSession != null)
             {
                 return new WalkInResponse
@@ -253,7 +354,7 @@ namespace ParkingBuilding.Service.Service
                 };
             }
 
-            var reservedSession = await _repository.GetReservedSessionByLicenseAsync(cleanLicense);
+            var reservedSession = await _parkingRepository.GetReservedSessionByLicenseAsync(cleanLicense);
             if (reservedSession != null)
             {
                 return new WalkInResponse
@@ -271,13 +372,21 @@ namespace ParkingBuilding.Service.Service
 
             string? checkInImageUrl = (string.IsNullOrWhiteSpace(request.CheckInImageUrl) || request.CheckInImageUrl.Trim().ToLower() == "string") ? null : request.CheckInImageUrl;
             
-            var newSession = await _repository.CreateWalkInSessionWithLockAsync(cleanLicense, request.VehicleTypeId, checkInImageUrl, ticket);
+            var newSession = await _parkingRepository.CreateWalkInSessionWithLockAsync(cleanLicense, request.VehicleTypeId, checkInImageUrl, ticket);
             if (newSession == null)
             {
                 return new WalkInResponse { Status = "Full", TicketCode = "Thành thật xin lỗi, bãi xe hiện tại đã hết chỗ trống cho loại xe này!" };
             }
             
-            var slot = newSession.Slot ?? await _repository.GetSlotByIdAsync(newSession.SlotId);
+            var slot = newSession.Slot ?? await _parkingRepository.GetSlotByIdAsync(newSession.SlotId);
+            if (slot == null)
+            {
+                return new WalkInResponse
+                {
+                    Status = "Error",
+                    TicketCode = $"Hệ thống không tìm thấy slot id tương ứng"
+                };
+            }
 
             return new WalkInResponse
             {
@@ -324,15 +433,15 @@ namespace ParkingBuilding.Service.Service
 
             if (cleanTicketCode != null)
             {
-                session = await _repository.GetActiveSessionByTicketCodeAsync(cleanTicketCode);
+                session = await _parkingRepository.GetActiveSessionByTicketCodeAsync(cleanTicketCode);
             }
             else if (request.SessionId.HasValue && request.SessionId.Value > 0)
             {
-                session = await _repository.GetActiveSessionByIdAsync(request.SessionId.Value);
+                session = await _parkingRepository.GetActiveSessionByIdAsync(request.SessionId.Value);
             }
             else if (cleanCheckoutPlate != null)
             {
-                session = await _repository.GetActiveSessionByLicensePlateAsync(cleanCheckoutPlate);
+                session = await _parkingRepository.GetActiveSessionByLicensePlateAsync(cleanCheckoutPlate);
             }
 
             if (session == null)
@@ -383,7 +492,7 @@ namespace ParkingBuilding.Service.Service
             // =========================================================================
             _logger.LogInformation("Đối khớp biển số thành công cho Session {SessionId}.", session.SessionId);
 
-            var staff = await _repository.GetStaffByIdAsync(currentStaffId);
+            var staff = await _parkingRepository.GetStaffByIdAsync(currentStaffId);
             string staffName = staff?.Username ?? "Nhân viên hệ thống";
 
             DateTime checkInTime = session.CheckInTime ?? throw new Exception("Dữ liệu giờ vào của lượt đỗ này không hợp lệ.");
@@ -425,7 +534,7 @@ namespace ParkingBuilding.Service.Service
                         session.CheckOutTime = checkOutTime;
                         session.CheckOutImageUrl = (request.CheckOutImageUrl?.Trim().ToLower() == "string") ? null : request.CheckOutImageUrl;
 
-                        await _repository.UpdateSessionAndSlotAsync(session, null!);
+                        await _parkingRepository.UpdateSessionAndSlotAsync(session, null!);
 
                         if (request.PaymentMethod.ToUpper() == "VNPAY")
                         {
@@ -434,7 +543,7 @@ namespace ParkingBuilding.Service.Service
                             session.Invoice.TransactionCode = txnRef;
                             session.Invoice.PaymentMethod = "VNPAY";
 
-                            await _repository.UpdateSessionAndSlotAsync(session, null!);
+                            await _parkingRepository.UpdateSessionAndSlotAsync(session, null!);
 
                             _logger.LogInformation("Tạo link VNPay phí phát sinh cho giao dịch {SessionId}. Mã Ref: {TxnRef}", session.SessionId, txnRef);
 
@@ -484,7 +593,7 @@ namespace ParkingBuilding.Service.Service
                         {
                             // Thanh toán bằng tiền mặt phần phát sinh thêm
                             session.Invoice.PaymentMethod = "CASH";
-                            await _repository.UpdateSessionAndSlotAsync(session, null!);
+                            await _parkingRepository.UpdateSessionAndSlotAsync(session, null!);
 
                             _logger.LogInformation("Phí phát sinh thanh toán bằng tiền mặt: {Amount} VNĐ cho Session {SessionId}.", additionalFee, session.SessionId);
 
@@ -523,13 +632,13 @@ namespace ParkingBuilding.Service.Service
                     session.Ticket.TicketStatus = ParkingStatuses.TicketCompleted;
                 }
 
-                var slot = session.Slot ?? await _repository.GetSlotByIdAsync(session.SlotId);
+                var slot = session.Slot ?? await _parkingRepository.GetSlotByIdAsync(session.SlotId);
                 if (slot != null)
                 {
                     slot.SlotStatus = ParkingStatuses.SlotAvailable;
                 }
 
-                await _repository.UpdateSessionAndSlotAsync(session, slot!);
+                await _parkingRepository.UpdateSessionAndSlotAsync(session, slot!);
 
                 _logger.LogInformation("Check-out THÀNH CÔNG (Đã thanh toán qua App & Còn hạn): Xe '{Plate}' đã ra bãi. Giải phóng ô {SlotName}. SessionId: {SessionId}.",
                     cleanCheckoutPlate, slot?.SlotName ?? "N/A", session.SessionId);
@@ -575,8 +684,8 @@ namespace ParkingBuilding.Service.Service
                 session.CheckOutTime = checkOutTime;
                 session.CheckOutImageUrl = (request.CheckOutImageUrl?.Trim().ToLower() == "string") ? null : request.CheckOutImageUrl;
 
-                await _repository.UpdateSessionAndSlotAsync(session, null!);
-                await _repository.AddInvoiceAsync(invoice);
+                await _parkingRepository.UpdateSessionAndSlotAsync(session, null!);
+                await _parkingRepository.AddInvoiceAsync(invoice);
 
                 _logger.LogInformation("Tạo yêu cầu thanh toán VNPay lúc ra cho xe {Plate}. Số tiền: {Amount} VNĐ. Mã Ref: {TxnRef}",
                     cleanCheckoutPlate, totalAmount, txnRef);
@@ -639,8 +748,8 @@ namespace ParkingBuilding.Service.Service
                 session.CheckOutTime = checkOutTime;
                 session.CheckOutImageUrl = (request.CheckOutImageUrl?.Trim().ToLower() == "string") ? null : request.CheckOutImageUrl;
 
-                await _repository.UpdateSessionAndSlotAsync(session, null!);
-                await _repository.AddInvoiceAsync(invoice);
+                await _parkingRepository.UpdateSessionAndSlotAsync(session, null!);
+                await _parkingRepository.AddInvoiceAsync(invoice);
 
                 _logger.LogInformation("Tạo yêu cầu thanh toán Tiền mặt lúc ra cho xe {Plate}. Hóa đơn: {InvoiceId}, Thu ngân ID: {StaffId}. Số tiền: {Amount} VNĐ.",
                     cleanCheckoutPlate, invoice.InvoiceId, currentStaffId, totalAmount);
@@ -673,7 +782,7 @@ namespace ParkingBuilding.Service.Service
         // Luong 5 DANH SACH SLOT XE
         public async Task<List<ParkingSlotResponseDto>> GetSlotsByFloorIdAsync(int floorId)
         {
-            var slots = await _repository.GetSlotsByFloorIdAsync(floorId);
+            var slots = await _parkingRepository.GetSlotsByFloorIdAsync(floorId);
 
             return slots.Select(s => new ParkingSlotResponseDto
             {
