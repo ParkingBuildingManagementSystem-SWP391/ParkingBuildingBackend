@@ -13,6 +13,7 @@ namespace ParkingBuilding.Service.DTOs
         public double OccupancyRate { get; set; } // (Occupied / Total) * 100
 
         public decimal TodayRevenue { get; set; }
+        public decimal TotalRevenue { get; set; }
         public string CurrentShiftName { get; set; } = string.Empty;
         public decimal CurrentShiftRevenue { get; set; }
 

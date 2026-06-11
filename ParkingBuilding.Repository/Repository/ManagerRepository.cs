@@ -168,5 +168,13 @@ namespace ParkingBuilding.Repository.Repository
                         .ThenInclude(u => u.Role)
                 .FirstOrDefaultAsync(s => s.SlotId == slotId && !s.IsDeleted);
         }
+
+        public async Task<decimal> GetTotalRevenueAsync()
+        {
+            return await _context.Invoices
+                .Where(i => i.PaymentStatus.Trim() == "SUCCESS")
+                .SumAsync(i => (decimal?)i.TotalAmount) ?? 0m;
+        }
+
     }
 }

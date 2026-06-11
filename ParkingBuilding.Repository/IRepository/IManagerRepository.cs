@@ -24,5 +24,7 @@ namespace ParkingBuilding.Repository.IRepository
         Task<List<ParkingSession>> GetParkingSessionsForExportAsync(DateTime startDateUtc, DateTime endDateUtc, int? vehicleTypeId);
 
         Task<ParkingSlot?> GetSlotDetailWithActiveSessionAsync(int slotId);
+        Task<decimal> GetTotalRevenueAsync();
+
     }
 }
