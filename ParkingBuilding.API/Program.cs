@@ -70,6 +70,14 @@ namespace ParkingBuilding.API
             builder.Services.AddScoped<ISessionRepository, SessionRepository>();
             builder.Services.AddScoped<ISlotRepository, SlotRepository>();
 
+            // Đăng ký Repository của phân hệ Manager
+            builder.Services.AddScoped<IManagerRepository, ManagerRepository>();
+
+            // Đăng ký Service của phân hệ Manager
+            builder.Services.AddScoped<IManagerService, ManagerService>();
+
+
+
             var jwtSecret = builder.Configuration["JwtSettings:Secret"] ?? "DefaultSuperSecretKeyThatIsAtLeast32BytesLong";
             var key = Encoding.UTF8.GetBytes(jwtSecret);
 
