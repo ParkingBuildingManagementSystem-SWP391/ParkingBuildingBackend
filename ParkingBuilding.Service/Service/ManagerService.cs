@@ -79,6 +79,7 @@ namespace ParkingBuilding.Service.Service
             var floorOccupancy = await _managerRepository.GetFloorOccupancyDetailAsync();
 
             var todayRevenue = await _managerRepository.GetRevenueSinceAsync(startOfTodayUtc);
+            var totalRevenue = await _managerRepository.GetTotalRevenueAsync();
             var shiftRevenue = await _managerRepository.GetRevenueRangeAsync(shiftStartUtc, shiftEndUtc);
 
             // 4. Ánh xạ kết quả trả về
@@ -91,6 +92,7 @@ namespace ParkingBuilding.Service.Service
                 AvailableSlotsCount = availableSlots,
                 OccupancyRate = totalSlots > 0 ? Math.Round((double)occupiedSlots / totalSlots * 100, 2) : 0,
                 TodayRevenue = todayRevenue,
+                TotalRevenue = totalRevenue,
                 CurrentShiftName = shiftName,
                 CurrentShiftRevenue = shiftRevenue,
                 VehiclesInBuildingDetail = vehiclesByType.Select(v => new VehicleTypeCountDto
