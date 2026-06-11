@@ -19,5 +19,9 @@ namespace ParkingBuilding.Service.IService
 
 
         Task<List<ParkingSlotResponseDto>> GetSlotsByFloorIdAsync(int floorId);
+
+        // Thêm khai báo method này vào Interface IParkingService
+        Task<MyBookingsDashboardDto> GetMyBookingsAsync(int userId);
+
     }
 }

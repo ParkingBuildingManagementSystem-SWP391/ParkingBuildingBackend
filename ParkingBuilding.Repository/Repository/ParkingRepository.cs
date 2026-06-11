@@ -322,5 +322,20 @@ namespace ParkingBuilding.Repository.Repository
                 .Where(s => s.FloorId == floorId && !s.IsDeleted)
                 .ToListAsync();
         }
+
+
+        // Thêm method này vào class ParkingRepository
+        public async Task<List<ParkingSession>> GetSessionsByUserIdAsync(int userId)
+        {
+            return await _context.ParkingSessions
+                .Include(s => s.Slot)
+                    .ThenInclude(slot => slot.Floor)
+                .Include(s => s.Ticket)
+                .Include(s => s.Invoice) // Nạp hóa đơn để lấy thông tin chi tiêu
+                .Where(s => s.UserId == userId && s.IsDeleted == false)
+                .OrderByDescending(s => s.BookingTime)
+                .ToListAsync();
+        }
+
     }
 }

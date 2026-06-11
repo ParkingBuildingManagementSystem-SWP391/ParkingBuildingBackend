@@ -39,6 +39,10 @@ namespace ParkingBuilding.Repository.IRepository
 
 
         Task<List<ParkingSlot>> GetSlotsByFloorIdAsync(int floorId);
-        
+
+        // Thêm khai báo method này vào Interface IParkingRepository
+        Task<List<ParkingSession>> GetSessionsByUserIdAsync(int userId);
+
+
     }
 }

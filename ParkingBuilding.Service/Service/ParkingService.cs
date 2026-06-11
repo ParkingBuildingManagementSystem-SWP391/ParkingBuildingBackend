@@ -792,6 +792,54 @@ namespace ParkingBuilding.Service.Service
                 TypeId = s.TypeId
             }).ToList();
         }
+
+
+        // Thêm method này vào class ParkingService
+        public async Task<MyBookingsDashboardDto> GetMyBookingsAsync(int userId)
+        {
+            _logger.LogInformation("Bắt đầu lấy danh sách phiên đỗ xe của người dùng {UserId} từ Repository.", userId);
+
+            var sessions = await _parkingRepository.GetSessionsByUserIdAsync(userId);
+
+            _logger.LogInformation("Đã tìm thấy {Count} phiên đỗ xe của người dùng {UserId} từ database.", sessions.Count, userId);
+
+            // 1. Ánh xạ danh sách chi tiết
+            var bookingsList = sessions.Select(s => new MyBookingResponseDto
+            {
+                SessionId = s.SessionId,
+                TypeId = s.TypeId,
+                BookingTime = s.BookingTime,
+                SessionStatus = s.SessionStatus.Trim(),
+                FloorName = s.Slot?.Floor?.FloorName ?? "N/A",
+                SlotName = s.Slot?.SlotName ?? "N/A",
+                LicenseVehicle = s.LicenseVehicle,
+                TicketCode = s.Ticket?.TicketCode,
+                CheckInTime = s.CheckInTime,
+                CheckOutTime = s.CheckOutTime,
+                TotalAmount = s.Invoice?.TotalAmount,
+                PaymentStatus = s.Invoice?.PaymentStatus,
+                PaymentMethod = s.Invoice?.PaymentMethod
+            }).ToList();
+
+            // 2. Tính toán tổng hợp số liệu (Summary)
+            var dashboard = new MyBookingsDashboardDto
+            {
+                TotalBookings = bookingsList.Count,
+                ActiveBookings = bookingsList.Count(b => b.SessionStatus == "Reserved" || b.SessionStatus == "InProgress"),
+                CompletedBookings = bookingsList.Count(b => b.SessionStatus == "Completed"),
+                CanceledBookings = bookingsList.Count(b => b.SessionStatus == "Canceled"),
+                TotalAmountSpent = bookingsList
+                    .Where(b => b.PaymentStatus == "SUCCESS" && b.TotalAmount.HasValue)
+                    .Sum(b => b.TotalAmount!.Value),
+                BookingsList = bookingsList
+            };
+
+            _logger.LogInformation("Thống kê thành công cho người dùng {UserId}. Tổng số tiền chi tiêu: {TotalAmountSpent} VND.", userId, dashboard.TotalAmountSpent);
+
+            return dashboard;
+        }
+
+
     }
-        
+
 }

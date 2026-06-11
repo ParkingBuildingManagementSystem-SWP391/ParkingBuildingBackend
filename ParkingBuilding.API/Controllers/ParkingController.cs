@@ -153,5 +153,41 @@ namespace ParkingBuilding.API.Controllers
                 return BadRequest(new { isSuccess = false, message = ex.Message });
             }
         }
+
+        // Thêm endpoint này vào class ParkingController
+        [Authorize(Roles = "Registered_Driver")]
+        [HttpGet("my-bookings")]
+        public async Task<IActionResult> GetMyBookings()
+        {
+            try
+            {
+                // Trích xuất UserId trực tiếp từ JWT Token của tài xế đang đăng nhập
+                var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+
+                if (string.IsNullOrEmpty(userIdClaim))
+                {
+                    return Unauthorized(new
+                    {
+                        isSuccess = false,
+                        message = "Không tìm thấy thông tin User trong Token."
+                    });
+                }
+
+                int userId = int.Parse(userIdClaim);
+
+                var response = await _parkingService.GetMyBookingsAsync(userId);
+
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new
+                {
+                    isSuccess = false,
+                    message = ex.Message
+                });
+            }
+        }
+
     }
 }
