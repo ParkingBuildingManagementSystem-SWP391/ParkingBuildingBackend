@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace ParkingBuilding.Service.DTOs
@@ -14,8 +14,6 @@ namespace ParkingBuilding.Service.DTOs
 
         public decimal TodayRevenue { get; set; }
         public decimal TotalRevenue { get; set; }
-        public string CurrentShiftName { get; set; } = string.Empty;
-        public decimal CurrentShiftRevenue { get; set; }
 
         public List<VehicleTypeCountDto> VehiclesInBuildingDetail { get; set; } = new();
         public List<FloorStatusDto> FloorOccupancyDetail { get; set; } = new();
