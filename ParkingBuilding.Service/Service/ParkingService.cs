@@ -787,11 +787,13 @@ namespace ParkingBuilding.Service.Service
 
             return slots.Select(s => new ParkingSlotResponseDto
             {
+                SlotId = s.SlotId,
                 SlotName = s.SlotName,
                 SlotStatus = s.SlotStatus,
                 TypeId = s.TypeId
             }).ToList();
         }
+
 
 
         // Thêm method này vào class ParkingService

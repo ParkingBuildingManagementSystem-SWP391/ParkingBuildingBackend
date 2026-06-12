@@ -1,4 +1,4 @@
-﻿using OfficeOpenXml;
+using OfficeOpenXml;
 using OfficeOpenXml.Style;
 using QuestPDF.Fluent;
 using QuestPDF.Helpers;
@@ -34,40 +34,6 @@ namespace ParkingBuilding.Service.Service
             var startOfTodayLocal = new DateTime(nowLocal.Year, nowLocal.Month, nowLocal.Day, 0, 0, 0);
             var startOfTodayUtc = TimeZoneInfo.ConvertTimeToUtc(startOfTodayLocal, vnTimeZone);
 
-            // 2. Tính ca hiện tại (Ca 1: 06h-14h | Ca 2: 14h-22h | Ca 3: 22h-06h sáng hôm sau)
-            var currentHour = nowLocal.Hour;
-            DateTime shiftStartLocal, shiftEndLocal;
-            string shiftName;
-
-            if (currentHour >= 6 && currentHour < 14)
-            {
-                shiftName = "Ca Sáng (06:00 - 14:00)";
-                shiftStartLocal = new DateTime(nowLocal.Year, nowLocal.Month, nowLocal.Day, 6, 0, 0);
-                shiftEndLocal = new DateTime(nowLocal.Year, nowLocal.Month, nowLocal.Day, 14, 0, 0);
-            }
-            else if (currentHour >= 14 && currentHour < 22)
-            {
-                shiftName = "Ca Chiều (14:00 - 22:00)";
-                shiftStartLocal = new DateTime(nowLocal.Year, nowLocal.Month, nowLocal.Day, 14, 0, 0);
-                shiftEndLocal = new DateTime(nowLocal.Year, nowLocal.Month, nowLocal.Day, 22, 0, 0);
-            }
-            else
-            {
-                shiftName = "Ca Đêm (22:00 - 06:00)";
-                if (currentHour >= 22)
-                {
-                    shiftStartLocal = new DateTime(nowLocal.Year, nowLocal.Month, nowLocal.Day, 22, 0, 0);
-                    shiftEndLocal = new DateTime(nowLocal.Year, nowLocal.Month, nowLocal.Day, 6, 0, 0).AddDays(1);
-                }
-                else
-                {
-                    shiftStartLocal = new DateTime(nowLocal.Year, nowLocal.Month, nowLocal.Day, 22, 0, 0).AddDays(-1);
-                    shiftEndLocal = new DateTime(nowLocal.Year, nowLocal.Month, nowLocal.Day, 6, 0, 0);
-                }
-            }
-
-            var shiftStartUtc = TimeZoneInfo.ConvertTimeToUtc(shiftStartLocal, vnTimeZone);
-            var shiftEndUtc = TimeZoneInfo.ConvertTimeToUtc(shiftEndLocal, vnTimeZone);
 
             // 3. Truy vấn dữ liệu thống kê từ Repository
             var totalSlots = await _managerRepository.GetTotalSlotsCountAsync();
@@ -80,7 +46,6 @@ namespace ParkingBuilding.Service.Service
 
             var todayRevenue = await _managerRepository.GetRevenueSinceAsync(startOfTodayUtc);
             var totalRevenue = await _managerRepository.GetTotalRevenueAsync();
-            var shiftRevenue = await _managerRepository.GetRevenueRangeAsync(shiftStartUtc, shiftEndUtc);
 
             // 4. Ánh xạ kết quả trả về
             var response = new DashboardSummaryResponse
@@ -93,8 +58,6 @@ namespace ParkingBuilding.Service.Service
                 OccupancyRate = totalSlots > 0 ? Math.Round((double)occupiedSlots / totalSlots * 100, 2) : 0,
                 TodayRevenue = todayRevenue,
                 TotalRevenue = totalRevenue,
-                CurrentShiftName = shiftName,
-                CurrentShiftRevenue = shiftRevenue,
                 VehiclesInBuildingDetail = vehiclesByType.Select(v => new VehicleTypeCountDto
                 {
                     VehicleTypeName = v.TypeName,
