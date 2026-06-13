@@ -8,7 +8,7 @@ namespace ParkingBuilding.Service.DTOs
 {
     public class CashPaymentDto
     {
-        public long SessionId { get; set; }
+        public string TicketCode { get; set; } = null!;
         public decimal AmountReceived { get; set; }
     }
 }
