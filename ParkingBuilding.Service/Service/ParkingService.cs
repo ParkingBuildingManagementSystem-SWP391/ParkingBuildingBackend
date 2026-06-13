@@ -401,18 +401,7 @@ namespace ParkingBuilding.Service.Service
             };
         }
 
-        // =========================================================================
-        //              LUỒNG 4: XỬ LÝ KHÁCH CHECK-OUT KHI RỜI BÃI 
-        // =========================================================================
-        /// <summary>
-        /// LUỒNG 4: Kiểm tra an ninh và tính tiền khi xe rời bãi (Check-out).
-        /// - Đối khớp biển số lúc vào và lúc ra để chống tráo xe gian lận.
-        /// - Làm tròn thời gian đỗ xe lên theo giờ và tính toán tổng phí.
-        /// - LƯU Ý ÂN HẠN (Grace Period): Nếu khách đã thanh toán trước qua App:
-        ///   + Trong 15 phút: Giải phóng ô đỗ và cho xe ra.
-        ///   + Quá 15 phút: Tính toán phí phát sinh thêm, chuyển hóa đơn thành PENDING để thu tiền chênh lệch.
-        /// - Nếu chưa thanh toán trước: Tạo hóa đơn PENDING (CASH hoặc VNPAY) chờ nhân viên/khách hàng xử lý.
-        /// </summary>
+        
         public async Task<CheckoutResponse> CheckoutVehicleAsync(CheckoutRequest request, int currentStaffId)
         {
             if (request == null)
