@@ -53,14 +53,14 @@ namespace ParkingBuilding.API.Controllers
             }
 
             int currentStaffId = int.Parse(staffIdClaim);
-            _logger.LogInformation("Nhân viên {StaffId} bắt đầu xác nhận thanh toán tiền mặt cho phiên {SessionId}.", currentStaffId, request.SessionId);
+            _logger.LogInformation("Nhân viên {StaffId} bắt đầu xác nhận thanh toán tiền mặt cho vé {TicketCode}.", currentStaffId, request.TicketCode);
 
             var result = await _paymentService.ProcessCashPaymentAsync(request, currentStaffId);
-            if (!result.Success) 
-            {
-                _logger.LogWarning("Thanh toán tiền mặt thất bại cho phiên {SessionId}: {Message}", request.SessionId, result.Message);
-                return BadRequest(result.Message);
-            }
+            if (!result.Success)
+                {
+                _logger.LogWarning("Thanh toán tiền mặt thất bại cho vé {TicketCode}: {Message}", request.TicketCode, result.Message);
+                    return BadRequest(result.Message);
+                }
 
             return Ok(result);
         }
