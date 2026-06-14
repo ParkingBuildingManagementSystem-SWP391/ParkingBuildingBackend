@@ -50,21 +50,24 @@ namespace ParkingBuilding.API.BackgroundServices
                                 try
                                 {
                                     session.SessionStatus = ParkingStatuses.SessionCanceled;
-
                                     var slot = session.Slot;
                                     if (slot != null)
                                     {
                                         slot.SlotStatus = ParkingStatuses.SlotAvailable;
                                     }
-
                                     if (session.Ticket != null)
                                     {
                                         session.Ticket.TicketStatus = ParkingStatuses.TicketExpired;
                                     }
-
+                                    // Cập nhật trạng thái hóa đơn sang FAILED nếu là hóa đơn cọc quá hạn chưa thanh toán
+                                    if (session.Invoice != null)
+                                    {
+                                        session.Invoice.PaymentStatus = "FAILED";
+                                        session.Invoice.UpdatedDate = DateTime.UtcNow;
+                                    }
+                                    // Hàm UpdateSessionAndSlotAsync sử dụng SaveChangesAsync sẽ lưu luôn thay đổi của session.Invoice vào DB
                                     await parkingRepo.UpdateSessionAndSlotAsync(session, slot);
-
-                                    _logger.LogWarning($"Đã tự động hủy lịch đặt của xe: {session.LicenseVehicle} (Session ID: {session.SessionId})");
+                                    _logger.LogWarning($"Đã tự động hủy lịch đặt của xe: {session.LicenseVehicle} (Session ID: {session.SessionId}) do không thanh toán cọc hoặc không check-in đúng hẹn.");
                                 }
                                 catch (Exception ex)
                                 {

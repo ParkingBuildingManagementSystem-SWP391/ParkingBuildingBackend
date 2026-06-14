@@ -87,7 +87,7 @@ namespace ParkingBuilding.Service.Service
                         CheckOutTime = null,
                         CheckInImageUrl = null,
                         CheckOutImageUrl = null,
-                        SessionStatus = ParkingStatuses.SessionInProgress, // Đặt trạng thái theo yêu cầu
+                        SessionStatus = ParkingStatuses.SessionReserved, // Đặt trạng thái chờ xe đến check-in
                         Ticket = ticket,
                         IsDeleted = false
                     };
