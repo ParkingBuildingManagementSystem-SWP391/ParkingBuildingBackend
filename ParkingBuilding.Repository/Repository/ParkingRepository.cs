@@ -147,7 +147,13 @@ namespace ParkingBuilding.Repository.Repository
             return await _context.ParkingSessions
                 .Include(ps => ps.Slot)
                 .Include(ps => ps.Ticket)
-                .Where(ps => ps.SessionStatus == ParkingStatuses.SessionReserved && ps.BookingTime < expiredLimit && !ps.IsDeleted)
+                .Include(ps => ps.Invoice) // Nạp thêm Invoice để kiểm tra trạng thái thanh toán cọc
+                .Where(ps => ps.SessionStatus == ParkingStatuses.SessionReserved
+                             && ps.BookingTime < expiredLimit
+                             && !ps.IsDeleted
+                             // Chỉ hủy nếu: không có hóa đơn cọc (đặt dưới 2 tiếng quá hạn) 
+                             // HOẶC có hóa đơn nhưng trạng thái vẫn là PENDING (chưa thanh toán sau 15p)
+                             && (ps.Invoice == null || ps.Invoice.PaymentStatus == "PENDING"))
                 .ToListAsync();
         }
 
@@ -282,8 +288,9 @@ namespace ParkingBuilding.Repository.Repository
                 .Include(s => s.Ticket)
                 .Include(s => s.Type)
                 .Include(s => s.Invoice)
-                .FirstOrDefaultAsync(s => s.LicenseVehicle == licensePlate
-                                       && s.SessionStatus.Trim() == ParkingStatuses.SessionInProgress);
+                .FirstOrDefaultAsync(s => s.LicenseVehicle.Trim().ToUpper() == licensePlate.Trim().ToUpper()
+                                       && s.SessionStatus.Trim() == ParkingStatuses.SessionInProgress
+                                       && !s.IsDeleted);
         }
 
         public async Task AddInvoiceAsync(Invoice invoice)
