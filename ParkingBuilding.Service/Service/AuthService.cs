@@ -150,6 +150,12 @@ namespace ParkingBuilding.Service.Service
 
                 throw new BadHttpRequestException("Email hoặc mật khẩu không chính xác!");
             }
+            if (string.IsNullOrEmpty(user.PasswordHash))
+            {
+                _logger.LogWarning("Đăng nhập thất bại: Tài khoản '{Email}' đăng ký qua Google (mật khẩu rỗng) cố gắng đăng nhập truyền thống. Yêu cầu đến từ IP: {IP}.", request.Email, ipAddress);
+                throw new BadHttpRequestException("Email hoặc mật khẩu không chính xác!");
+            }
+
 
             bool isPasswordValid = BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash);
             if (!isPasswordValid)
