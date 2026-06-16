@@ -1,16 +1,17 @@
 using Google;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using ParkingBuilding.Repository.Entities;
 using ParkingBuilding.Repository.IRepository;
 using ParkingBuilding.Service.DTOs;
 using ParkingBuilding.Service.IService;
 using ParkingBuilding.Service.Service.Helpers;
-using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using System.Transactions;
 
 namespace ParkingBuilding.Service.Service
 {
@@ -249,19 +250,41 @@ namespace ParkingBuilding.Service.Service
 
             decimal calculatedFee = (decimal)durationHours * hourlyRate;
 
-            // 2. Tạo mã giao dịch duy nhất vnp_TxnRef
-            string txnRef = "INV" + DateTime.UtcNow.Ticks;
-
-            // 3. Tạo hóa đơn PENDING trong hệ thống
-            var invoice = new Invoice
+            // Tái sử dụng hóa đơn PENDING hoặc FAILED cũ nếu có để tránh tạo trùng bản ghi
+            var invoice = await _context.Invoices
+                           .FirstOrDefaultAsync(i => i.SessionId == request.SessionId && (i.PaymentStatus == "PENDING" || i.PaymentStatus == "FAILED"));
+            
+            string txnRef;
+            decimal finalAmount;
+            
+            if (invoice != null)
             {
-                SessionId = (int)request.SessionId,
-                TotalAmount = calculatedFee,
-                PaymentMethod = "VNPAY",
-                PaymentStatus = "PENDING",
-                TransactionCode = txnRef,
-                CreatedDate = DateTime.UtcNow
-            };
+                txnRef = (invoice.TransactionCode != null && invoice.TransactionCode.StartsWith("DEP"))
+                                    ? "DEP" + DateTime.UtcNow.Ticks
+                                    : "INV" + DateTime.UtcNow.Ticks;
+                
+                invoice.TransactionCode = txnRef;
+                invoice.PaymentStatus = "PENDING";
+                invoice.CreatedDate = DateTime.UtcNow;
+                invoice.PaymentMethod = "VNPAY";
+                _context.Invoices.Update(invoice);
+                await _context.SaveChangesAsync();
+                finalAmount = invoice.TotalAmount;
+            }
+            else
+            {
+                txnRef = "INV" + DateTime.UtcNow.Ticks;
+                invoice = new Invoice{
+                    SessionId = (int)request.SessionId,
+                    TotalAmount = calculatedFee,
+                    PaymentMethod = "VNPAY",
+                    PaymentStatus = "PENDING",
+                    TransactionCode = txnRef,
+                    CreatedDate = DateTime.UtcNow
+                    };
+                await _invoiceRepo.AddAsync(invoice);
+                finalAmount = calculatedFee;
+            }
 
             // Lưu hóa đơn tạm thời qua IInvoiceRepository
             await _invoiceRepo.AddAsync(invoice);
@@ -281,13 +304,13 @@ namespace ParkingBuilding.Service.Service
             vnpay.AddRequestData("vnp_Locale", "vn");
             vnpay.AddRequestData("vnp_OrderInfo", $"Thanh toan phi do xe phien {session.SessionId}");
             vnpay.AddRequestData("vnp_OrderType", "other");
-            vnpay.AddRequestData("vnp_ReturnUrl", config.ReturnUrl);
-            vnpay.AddRequestData("vnp_TxnRef", invoice.TransactionCode);
+            vnpay.AddRequestData("vnp_ReturnUrl", config.ReturnUrl + "?invoiceId=" + invoice.InvoiceId);
+            vnpay.AddRequestData("vnp_TxnRef", txnRef);
 
             string paymentUrl = vnpay.CreateRequestUrl(config.BaseUrl, config.HashSecret);
 
             _logger.LogInformation("Tạo link VNPay thành công: Phiên {SessionId}, Hóa đơn PENDING {InvoiceId}, Mã giao dịch {TxnRef}. Số tiền: {Amount} VNĐ.",
-                session.SessionId, invoice.InvoiceId, txnRef, calculatedFee);
+                session.SessionId, invoice.InvoiceId, txnRef, finalAmount);
 
             return new PaymentResultDto
             {
@@ -343,7 +366,7 @@ namespace ParkingBuilding.Service.Service
                     return new PaymentResultDto { Success = false, Message = "Không tìm thấy hóa đơn cần thanh toán cho phiên này." };
                 }
 
-                if (invoice.PaymentStatus != "PENDING")
+                if (invoice.PaymentStatus != "PENDING" && invoice.PaymentStatus != "FAILED")
                 {
                     _logger.LogWarning("Thanh toán tiền mặt thất bại: Hóa đơn {InvoiceId} của phiên {SessionId} có trạng thái là {Status} (yêu cầu PENDING).",
                         invoice.InvoiceId, session.SessionId, invoice.PaymentStatus);
@@ -466,7 +489,11 @@ namespace ParkingBuilding.Service.Service
 
             _logger.LogInformation("Người dùng {UserId} đã truy vấn thành công trạng thái hóa đơn {InvoiceId}. Trạng thái hiện tại: {Status}.",
                 currentUserId, invoiceId, invoice.PaymentStatus);
-
+            if (invoice.PaymentStatus == "SUCCESS" && invoice.Session != null && invoice.Session.CheckOutTime != null)
+                            {
+                                return "SUCCESS_EXIT";
+                            }
+            
             return invoice.PaymentStatus;
         }
 

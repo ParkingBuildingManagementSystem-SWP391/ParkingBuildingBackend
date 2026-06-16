@@ -1,4 +1,4 @@
-﻿using ParkingBuilding.Repository.Entities;
+using ParkingBuilding.Repository.Entities;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -13,7 +13,7 @@ namespace ParkingBuilding.Repository.IRepository
         Task<ParkingSlot?> GetSlotByIdAsync(int slotId);
         Task<ParkingSlot?> GetSlotByIdForBookingWithLockAsync(int slotId);
 
-        Task<bool> HasActiveReservationAsync(int userId); 
+        Task<bool> HasActiveReservationAsync(int userId, int typeId); 
         Task CreateSessionAsync(ParkingSession session, ParkingSlot slot);
 
         Task<ParkingSession?> GetReservedSessionByLicenseAsync(string licenseVehicle);
