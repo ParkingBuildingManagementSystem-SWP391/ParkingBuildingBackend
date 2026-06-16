@@ -45,10 +45,10 @@ namespace ParkingBuilding.Service.Service
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
-                // 1. Kiểm tra xem người dùng có lượt đặt chỗ nào chưa hoàn thành không
-                var hasActiveBooking = await _parkingRepository.HasActiveReservationAsync(userId);
+                // 1. Kiểm tra xem người dùng có lượt đặt chỗ nào chưa hoàn thành cùng loại xe này không
+                var hasActiveBooking = await _parkingRepository.HasActiveReservationAsync(userId, request.TypeId);
                 if (hasActiveBooking)
-                    throw new Exception("Bạn đang có một lượt đặt chỗ chưa hoàn thành. Vui lòng check-in hoặc hủy trước khi đặt chỗ mới.");
+                    throw new Exception("Bạn đang có một lượt đặt chỗ chưa hoàn thành cho loại xe này. Vui lòng check-in hoặc hủy trước khi đặt chỗ mới.");
 
                 // 2. Khóa dòng dữ liệu ô đỗ và kiểm tra tính hợp lệ
                 var slot = await _parkingRepository.GetSlotByIdForBookingWithLockAsync(request.SlotId);
@@ -184,7 +184,7 @@ namespace ParkingBuilding.Service.Service
                     vnpay.AddRequestData("vnp_Locale", "vn");
                     vnpay.AddRequestData("vnp_OrderInfo", $"Thanh toan dat coc do xe phien {newSession.SessionId}");
                     vnpay.AddRequestData("vnp_OrderType", "other");
-                    vnpay.AddRequestData("vnp_ReturnUrl", _vnPayConfig.ReturnUrl);
+                    vnpay.AddRequestData("vnp_ReturnUrl", _vnPayConfig.ReturnUrl + "?invoiceId=" + invoice.InvoiceId);
                     vnpay.AddRequestData("vnp_TxnRef", txnRef);
 
                     string paymentUrl = vnpay.CreateRequestUrl(_vnPayConfig.BaseUrl, _vnPayConfig.HashSecret);
@@ -467,7 +467,6 @@ namespace ParkingBuilding.Service.Service
                     {
                         IsSuccess = false,
                         Message = $"HỆ THỐNG CHẶN: Biển số lúc ra ({cleanCheckoutPlate}) không khớp lúc vào ({checkInPlate})! Nghi ngờ tráo xe gian lận.",
-                        SessionId = session.SessionId,
                         TicketCode = session.Ticket?.TicketCode ?? "N/A",
                         SlotName = session.Slot?.SlotName ?? "N/A",
                         CheckInLicensePlate = checkInPlate,
@@ -556,7 +555,7 @@ namespace ParkingBuilding.Service.Service
                                 vnpay.AddRequestData("vnp_Locale", "vn");
                                 vnpay.AddRequestData("vnp_OrderInfo", $"Thanh toan phi phat sinh do xe phien {session.SessionId}");
                                 vnpay.AddRequestData("vnp_OrderType", "other");
-                                vnpay.AddRequestData("vnp_ReturnUrl", _vnPayConfig.ReturnUrl);
+                                vnpay.AddRequestData("vnp_ReturnUrl", _vnPayConfig.ReturnUrl + "?invoiceId=" + session.Invoice.InvoiceId);
                                 vnpay.AddRequestData("vnp_TxnRef", txnRef);
 
                                 string paymentUrl = vnpay.CreateRequestUrl(_vnPayConfig.BaseUrl, _vnPayConfig.HashSecret);
@@ -565,7 +564,6 @@ namespace ParkingBuilding.Service.Service
                                 {
                                     IsSuccess = true,
                                     Message = $"Quá thời gian ân hạn 20 phút. Vui lòng quét mã QR VNPay để thanh toán thêm phí phát sinh: {additionalFee:N0} VNĐ.",
-                                    SessionId = session.SessionId,
                                     TicketCode = session.Ticket?.TicketCode ?? "N/A",
                                     SlotName = session.Slot?.SlotName ?? "N/A",
                                     CheckInLicensePlate = checkInPlate,
@@ -595,7 +593,6 @@ namespace ParkingBuilding.Service.Service
                                 {
                                     IsSuccess = true,
                                     Message = $"Quá thời gian ân hạn 20 phút. Yêu cầu thanh toán thêm phí phát sinh bằng TIỀN MẶT: {additionalFee:N0} VNĐ.",
-                                    SessionId = session.SessionId,
                                     TicketCode = session.Ticket?.TicketCode ?? "N/A",
                                     SlotName = session.Slot?.SlotName ?? "N/A",
                                     CheckInLicensePlate = checkInPlate,
@@ -643,7 +640,6 @@ namespace ParkingBuilding.Service.Service
                     {
                         IsSuccess = true,
                         Message = "Khách hàng đã tự thanh toán trước qua App thành công. Vui lòng cho xe ra!",
-                        SessionId = session.SessionId,
                         TicketCode = session.Ticket?.TicketCode ?? "N/A",
                         SlotName = slot?.SlotName ?? "N/A",
                         CheckInLicensePlate = checkInPlate,
@@ -707,7 +703,6 @@ namespace ParkingBuilding.Service.Service
                         {
                             IsSuccess = true,
                             Message = "Tiền đặt cọc đã đủ chi trả toàn bộ phí đỗ xe. Vui lòng cho xe ra!",
-                            SessionId = session.SessionId,
                             TicketCode = session.Ticket?.TicketCode ?? "N/A",
                             SlotName = pSlot?.SlotName ?? "N/A",
                             CheckInLicensePlate = checkInPlate,
@@ -725,21 +720,21 @@ namespace ParkingBuilding.Service.Service
                             PaymentUrl = null
                         };
                     }
+
                     // Kịch bản 2.2: Phải thu thêm phần chênh lệch phát sinh
                     else
                     {
+                        string txnRef = "INV" + DateTime.UtcNow.Ticks + "_" + depositAmount;
                         // Cập nhật thông tin hóa đơn hiện tại thành PENDING để chuẩn bị thanh toán
                         session.Invoice.PaymentStatus = "PENDING";
                         session.Invoice.TotalAmount = additionalAmount; // VNPay và quầy Cash sẽ đọc số tiền này để thu
                         session.Invoice.PaymentMethod = request.PaymentMethod.ToUpper();
                         session.Invoice.StaffId = currentStaffId;
                         session.Invoice.UpdatedDate = DateTime.UtcNow;
+                        session.Invoice.TransactionCode = txnRef;
 
                         if (request.PaymentMethod.ToUpper() == "VNPAY")
                         {
-                            string txnRef = "INV" + DateTime.UtcNow.Ticks;
-                            session.Invoice.TransactionCode = txnRef;
-
                             _context.Invoices.Update(session.Invoice);
                             _context.ParkingSessions.Update(session);
                             await _context.SaveChangesAsync();
@@ -763,7 +758,7 @@ namespace ParkingBuilding.Service.Service
                             vnpay.AddRequestData("vnp_Locale", "vn");
                             vnpay.AddRequestData("vnp_OrderInfo", $"Thanh toan phi phat sinh do xe phien {session.SessionId}");
                             vnpay.AddRequestData("vnp_OrderType", "other");
-                            vnpay.AddRequestData("vnp_ReturnUrl", _vnPayConfig.ReturnUrl);
+                            vnpay.AddRequestData("vnp_ReturnUrl", _vnPayConfig.ReturnUrl + "?invoiceId=" + session.Invoice.InvoiceId);
                             vnpay.AddRequestData("vnp_TxnRef", txnRef);
 
                             string paymentUrl = vnpay.CreateRequestUrl(_vnPayConfig.BaseUrl, _vnPayConfig.HashSecret);
@@ -772,7 +767,6 @@ namespace ParkingBuilding.Service.Service
                             {
                                 IsSuccess = true,
                                 Message = $"Cần thanh toán thêm số tiền chênh lệch sau cọc: {additionalAmount:N0} VNĐ. Quét mã QR VNPay để thanh toán.",
-                                SessionId = session.SessionId,
                                 TicketCode = session.Ticket?.TicketCode ?? "N/A",
                                 SlotName = session.Slot?.SlotName ?? "N/A",
                                 CheckInLicensePlate = checkInPlate,
@@ -805,7 +799,6 @@ namespace ParkingBuilding.Service.Service
                             {
                                 IsSuccess = true,
                                 Message = $"Yêu cầu thanh toán tiền mặt số tiền chênh lệch sau cọc: {additionalAmount:N0} VNĐ.",
-                                SessionId = session.SessionId,
                                 TicketCode = session.Ticket?.TicketCode ?? "N/A",
                                 SlotName = session.Slot?.SlotName ?? "N/A",
                                 CheckInLicensePlate = checkInPlate,
@@ -823,6 +816,117 @@ namespace ParkingBuilding.Service.Service
                                 PaymentUrl = null
                             };
                         }
+                    }
+
+                }
+                // KỊCH BẢN 2.3: PHIÊN ĐỖ XE ĐÃ CÓ HÓA ĐƠN Ở TRẠNG THÁI PENDING HOẶC FAILED (SẬP MẠNG HOẶC ĐỔI PHƯƠNG THỨC THANH TOÁN)
+               
+                else if (session.Invoice != null && (session.Invoice.PaymentStatus == "PENDING" || session.Invoice.PaymentStatus == "FAILED"))
+                {
+                    var invoice = session.Invoice;
+                    decimal depositAmount = 0;
+
+                    // Lấy lại tiền cọc cũ đã lưu trong đuôi TransactionCode nếu có
+                    if (!string.IsNullOrEmpty(invoice.TransactionCode) && invoice.TransactionCode.Contains("_"))
+                    {
+                        var parts = invoice.TransactionCode.Split('_');
+                        if (parts.Length > 1 && decimal.TryParse(parts[1], out decimal parsedDeposit))
+                        {
+                            depositAmount = parsedDeposit;
+                        }
+                    }
+
+                    decimal actualAmountToPay = totalAmount - depositAmount;
+                    if (actualAmountToPay <= 0) actualAmountToPay = 0;
+
+                    string txnRef = "INV" + DateTime.UtcNow.Ticks + (depositAmount > 0 ? "_" + depositAmount : "");
+
+                    invoice.TotalAmount = actualAmountToPay;
+                    invoice.PaymentMethod = request.PaymentMethod.ToUpper();
+                    invoice.PaymentStatus = "PENDING";
+                    invoice.StaffId = currentStaffId;
+                    invoice.UpdatedDate = DateTime.UtcNow;
+                    invoice.TransactionCode = txnRef;
+
+                    if (request.PaymentMethod.ToUpper() == "VNPAY")
+                    {
+                        _context.Invoices.Update(invoice);
+                        _context.ParkingSessions.Update(session);
+                        await _context.SaveChangesAsync();
+                        await dbTransaction.CommitAsync();
+
+                        _logger.LogInformation("Kịch bản 2.3 - Cập nhật yêu cầu thanh toán VNPay (hóa đơn {InvoiceId}) số tiền chênh lệch sau cọc: {Amount} VNĐ cho Session {SessionId}. Mã Ref: {TxnRef}",
+                            invoice.InvoiceId, actualAmountToPay, session.SessionId, txnRef);
+
+                        var vnpay = new VnPayLibrary();
+                        vnpay.AddRequestData("vnp_Version", _vnPayConfig.Version);
+                        vnpay.AddRequestData("vnp_Command", _vnPayConfig.Command);
+                        vnpay.AddRequestData("vnp_TmnCode", _vnPayConfig.TmnCode);
+                        vnpay.AddRequestData("vnp_Amount", ((long)(actualAmountToPay * 100)).ToString());
+                        var vnTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
+                        var vnNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vnTimeZone);
+                        vnpay.AddRequestData("vnp_CreateDate", vnNow.ToString("yyyyMMddHHmmss"));
+
+                        vnpay.AddRequestData("vnp_CurrCode", "VND");
+                        vnpay.AddRequestData("vnp_IpAddr", "127.0.0.1");
+                        vnpay.AddRequestData("vnp_Locale", "vn");
+                        vnpay.AddRequestData("vnp_OrderInfo", $"Thanh toan phi do xe phien {session.SessionId}");
+                        vnpay.AddRequestData("vnp_OrderType", "other");
+                        vnpay.AddRequestData("vnp_ReturnUrl", _vnPayConfig.ReturnUrl + "?invoiceId=" + invoice.InvoiceId);
+                        vnpay.AddRequestData("vnp_TxnRef", txnRef);
+
+                        string paymentUrl = vnpay.CreateRequestUrl(_vnPayConfig.BaseUrl, _vnPayConfig.HashSecret);
+
+                        return new CheckoutResponse
+                        {
+                            IsSuccess = true,
+                            Message = $"Cập nhật VNPay thành công. Số tiền chênh lệch sau cọc: {actualAmountToPay:N0} VNĐ. Quét mã QR để thanh toán.",
+                            TicketCode = session.Ticket?.TicketCode ?? "N/A",
+                            SlotName = session.Slot?.SlotName ?? "N/A",
+                            CheckInLicensePlate = checkInPlate,
+                            CheckOutLicensePlate = cleanCheckoutPlate ?? "",
+                            IsLicensePlateMatched = true,
+                            CheckInImageUrl = session.CheckInImageUrl,
+                            CheckOutImageUrl = session.CheckOutImageUrl,
+                            CheckInTime = checkInTime,
+                            CheckOutTime = checkOutTime,
+                            DurationHours = durationHours,
+                            TotalAmount = actualAmountToPay,
+                            StaffName = staffName,
+                            InvoiceId = invoice.InvoiceId,
+                            IsPaid = false,
+                            PaymentUrl = paymentUrl
+                        };
+                    }
+                    else
+                    {
+                        // CASH
+                        _context.Invoices.Update(invoice);
+                        _context.ParkingSessions.Update(session);
+                        await _context.SaveChangesAsync();
+                        await dbTransaction.CommitAsync();
+                        _logger.LogInformation("Kịch bản 2.3 - Cập nhật yêu cầu thanh toán Tiền mặt (hóa đơn {InvoiceId}) số tiền chênh lệch sau cọc: {Amount} VNĐ cho Session {SessionId}.",
+                            invoice.InvoiceId, actualAmountToPay, session.SessionId);
+                        return new CheckoutResponse
+                        {
+                            IsSuccess = true,
+                            Message = $"Cập nhật Tiền mặt thành công. Số tiền cần thu: {actualAmountToPay:N0} VNĐ.",
+                            TicketCode = session.Ticket?.TicketCode ?? "N/A",
+                            SlotName = session.Slot?.SlotName ?? "N/A",
+                            CheckInLicensePlate = checkInPlate,
+                            CheckOutLicensePlate = cleanCheckoutPlate ?? "",
+                            IsLicensePlateMatched = true,
+                            CheckInImageUrl = session.CheckInImageUrl,
+                            CheckOutImageUrl = session.CheckOutImageUrl,
+                            CheckInTime = checkInTime,
+                            CheckOutTime = checkOutTime,
+                            DurationHours = durationHours,
+                            TotalAmount = actualAmountToPay,
+                            StaffName = staffName,
+                            InvoiceId = invoice.InvoiceId,
+                            IsPaid = false,
+                            PaymentUrl = null
+                        };
                     }
                 }
 
@@ -875,7 +979,6 @@ namespace ParkingBuilding.Service.Service
                     {
                         IsSuccess = true,
                         Message = "Vui lòng quét mã QR VNPay để thanh toán.",
-                        SessionId = session.SessionId,
                         TicketCode = session.Ticket?.TicketCode ?? "N/A",
                         SlotName = session.Slot?.SlotName ?? "N/A",
                         CheckInLicensePlate = checkInPlate,
@@ -919,7 +1022,6 @@ namespace ParkingBuilding.Service.Service
                     {
                         IsSuccess = true,
                         Message = $"Yêu cầu thanh toán tiền mặt. Số tiền cần thu: {totalAmount} VNĐ.",
-                        SessionId = session.SessionId,
                         TicketCode = session.Ticket?.TicketCode ?? "N/A",
                         SlotName = session.Slot?.SlotName ?? "N/A",
                         CheckInLicensePlate = checkInPlate,

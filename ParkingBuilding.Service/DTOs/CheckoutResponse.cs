@@ -10,8 +10,6 @@ namespace ParkingBuilding.Service.DTOs
     {
         public bool IsSuccess { get; set; }
         public string Message { get; set; } = null!;
-
-        public int SessionId { get; set; }
         public string TicketCode { get; set; } = null!;
         public string SlotName { get; set; } = null!;
 

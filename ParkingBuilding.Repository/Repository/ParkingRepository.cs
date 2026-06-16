@@ -15,10 +15,10 @@ namespace ParkingBuilding.Repository.Repository
             _context = context;
         }
 
-        public async Task<bool> HasActiveReservationAsync(int userId)
+        public async Task<bool> HasActiveReservationAsync(int userId, int typeId)
         {
             return await _context.ParkingSessions
-                .AnyAsync(s => s.UserId == userId && s.SessionStatus.Trim() == ParkingStatuses.SessionReserved && !s.IsDeleted);
+                .AnyAsync(s => s.UserId == userId && s.TypeId == typeId && s.SessionStatus.Trim() == ParkingStatuses.SessionReserved && !s.IsDeleted);
         }
 
         public async Task<ParkingSlot?> GetSlotByIdAsync(int slotId)
