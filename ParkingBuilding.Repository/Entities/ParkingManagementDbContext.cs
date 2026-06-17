@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 
@@ -220,6 +220,8 @@ public partial class ParkingManagementDbContext : DbContext
             entity.ToTable("VehiclesType");
 
             entity.Property(e => e.TypeName).HasMaxLength(255);
+
+            entity.Property(e => e.HourlyRate).HasColumnType("decimal(18, 2)");
         });
 
         OnModelCreatingPartial(modelBuilder);

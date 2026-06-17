@@ -123,5 +123,38 @@ namespace ParkingBuilding.API.Controllers
                 return StatusCode(500, "Internal server error.");
             }
         }
+
+        /// <summary>
+        /// Cấu hình biểu phí đỗ xe theo giờ (Chỉ áp dụng cho Manager/Admin).
+        /// </summary>
+        [HttpPut("update-pricing")]
+        public async Task<IActionResult> UpdatePricing([FromBody] UpdateVehiclePriceRequest request)
+        {
+            _logger.LogInformation("Manager requested to update price for VehicleTypeId={TypeId} to {Price} VND",
+                request.VehicleTypeId, request.NewPrice);
+
+            if (request.NewPrice < 0)
+            {
+                return BadRequest("Giá cấu hình không được nhỏ hơn 0.");
+            }
+
+            try
+            {
+                var isSuccess = await _managerService.UpdateVehicleTypePriceAsync(request.VehicleTypeId, request.NewPrice);
+                if (!isSuccess)
+                {
+                    _logger.LogWarning("Failed to update pricing: VehicleTypeId={TypeId} not found", request.VehicleTypeId);
+                    return NotFound("Không tìm thấy loại xe yêu cầu.");
+                }
+
+                _logger.LogInformation("Successfully updated pricing for VehicleTypeId={TypeId}", request.VehicleTypeId);
+                return Ok(new { isSuccess = true, message = "Cập nhật biểu phí đỗ xe thành công!" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi quản lý cập nhật giá.");
+                return StatusCode(500, "Lỗi máy chủ khi cập nhật.");
+            }
+        }
     }
 }

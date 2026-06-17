@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace ParkingBuilding.Repository.Entities;
@@ -8,6 +8,9 @@ public partial class VehiclesType
     public int TypeId { get; set; }
 
     public string TypeName { get; set; } = null!;
+
+    public decimal HourlyRate { get; set; }
+
 
     public bool IsDeleted { get; set; }
 

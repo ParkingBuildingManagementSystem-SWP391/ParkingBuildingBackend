@@ -46,6 +46,8 @@ namespace ParkingBuilding.Service.Service
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
+
+
                 // Kiểm tra và chuẩn hóa biển số xe của yêu cầu đặt chỗ
                 if (!LicensePlateHelper.IsValidLicensePlate(request.LicenseVehicle, out string cleanedVehiclePlate))
                 {
@@ -130,8 +132,8 @@ namespace ParkingBuilding.Service.Service
                     // Tính số tiền cọc
                     int extraHours = (int)Math.Floor(diff.TotalHours) - 1;
                     if (extraHours < 1) extraHours = 1;
-                    decimal hourlyRate = PricingHelper.GetHourlyRate(request.TypeId);
-                    decimal depositAmount = extraHours * hourlyRate;
+                    var vehicleType = await _context.VehiclesTypes.FirstOrDefaultAsync(vt => vt.TypeId == request.TypeId);
+                    decimal hourlyRate = vehicleType?.HourlyRate ?? 2000m; decimal depositAmount = extraHours * hourlyRate;
 
                     var ticket = new Ticket
                     {
@@ -526,7 +528,9 @@ namespace ParkingBuilding.Service.Service
                 double durationHours = Math.Ceiling(duration.TotalHours);
                 if (durationHours <= 0) durationHours = 1;
 
-                decimal hourlyRate = Helpers.PricingHelper.GetHourlyRate(session.TypeId);
+                var vehicleType = await _context.VehiclesTypes.FirstOrDefaultAsync(vt => vt.TypeId == session.TypeId);
+                decimal hourlyRate = vehicleType?.HourlyRate ?? 2000m;
+
                 decimal totalAmount = (decimal)durationHours * hourlyRate;
 
                 // Gán thông tin checkout tạm thời cho Session
