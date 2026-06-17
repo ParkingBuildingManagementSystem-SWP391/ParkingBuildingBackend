@@ -401,14 +401,20 @@ namespace ParkingBuilding.Service.Service
             }
         }
 
-        public async Task<bool> UpdateVehicleTypePriceAsync(int typeId, decimal newPrice)
+        public async Task<bool> UpdateVehicleTypePricingAsync(int typeId, decimal dayRate, decimal nightRate, decimal fullDayRate, int? maxHoursPerTurn)
         {
             var vehicleType = await _context.VehiclesTypes.FirstOrDefaultAsync(vt => vt.TypeId == typeId);
             if (vehicleType == null) return false;
 
-            vehicleType.HourlyRate = newPrice;
+            vehicleType.DayRate = dayRate;
+            vehicleType.NightRate = nightRate;
+            vehicleType.FullDayRate = fullDayRate;
+            vehicleType.MaxHoursPerTurn = maxHoursPerTurn;
+
             await _context.SaveChangesAsync();
             return true;
         }
+
+
     }
 }

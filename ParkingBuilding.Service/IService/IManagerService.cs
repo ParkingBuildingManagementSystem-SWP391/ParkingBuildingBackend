@@ -1,4 +1,4 @@
-﻿using ParkingBuilding.Service.DTOs;
+using ParkingBuilding.Service.DTOs;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 
@@ -10,6 +10,6 @@ namespace ParkingBuilding.Service.IService
         Task<List<TrafficStatsResponse>> GetTrafficStatisticsAsync(TrafficStatsRequest request);
         Task<ReportExportResponse> ExportReportAsync(ReportExportRequest request);
         Task<SlotDetailResponse?> GetSlotDetailAsync(int slotId);
-        Task<bool> UpdateVehicleTypePriceAsync(int typeId, decimal newPrice);
+        Task<bool> UpdateVehicleTypePricingAsync(int typeId, decimal dayRate, decimal nightRate, decimal fullDayRate, int? maxHoursPerTurn);
     }
 }
