@@ -9,8 +9,10 @@ public partial class VehiclesType
 
     public string TypeName { get; set; } = null!;
 
-    public decimal HourlyRate { get; set; }
-
+    public decimal DayRate { get; set; }
+    public decimal NightRate { get; set; }
+    public decimal FullDayRate { get; set; }
+    public int? MaxHoursPerTurn { get; set; }
 
     public bool IsDeleted { get; set; }
 

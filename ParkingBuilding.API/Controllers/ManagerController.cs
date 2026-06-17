@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using ParkingBuilding.Service.DTOs;
@@ -125,22 +125,28 @@ namespace ParkingBuilding.API.Controllers
         }
 
         /// <summary>
-        /// Cấu hình biểu phí đỗ xe theo giờ (Chỉ áp dụng cho Manager/Admin).
+        /// Cấu hình biểu phí đỗ xe theo ca/lượt (Chỉ áp dụng cho Manager/Admin).
         /// </summary>
         [HttpPut("update-pricing")]
         public async Task<IActionResult> UpdatePricing([FromBody] UpdateVehiclePriceRequest request)
         {
-            _logger.LogInformation("Manager requested to update price for VehicleTypeId={TypeId} to {Price} VND",
-                request.VehicleTypeId, request.NewPrice);
+            _logger.LogInformation("Manager requested to update pricing for VehicleTypeId={TypeId}: DayRate={DayRate}, NightRate={NightRate}, FullDayRate={FullDayRate}, MaxHoursPerTurn={MaxHoursPerTurn}",
+                request.VehicleTypeId, request.DayRate, request.NightRate, request.FullDayRate, request.MaxHoursPerTurn);
 
-            if (request.NewPrice < 0)
+            if (request.DayRate < 0 || request.NightRate < 0 || request.FullDayRate < 0)
             {
                 return BadRequest("Giá cấu hình không được nhỏ hơn 0.");
             }
 
             try
             {
-                var isSuccess = await _managerService.UpdateVehicleTypePriceAsync(request.VehicleTypeId, request.NewPrice);
+                var isSuccess = await _managerService.UpdateVehicleTypePricingAsync(
+                    request.VehicleTypeId, 
+                    request.DayRate, 
+                    request.NightRate, 
+                    request.FullDayRate, 
+                    request.MaxHoursPerTurn);
+
                 if (!isSuccess)
                 {
                     _logger.LogWarning("Failed to update pricing: VehicleTypeId={TypeId} not found", request.VehicleTypeId);

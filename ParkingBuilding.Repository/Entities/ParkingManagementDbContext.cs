@@ -220,8 +220,9 @@ public partial class ParkingManagementDbContext : DbContext
             entity.ToTable("VehiclesType");
 
             entity.Property(e => e.TypeName).HasMaxLength(255);
-
-            entity.Property(e => e.HourlyRate).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.DayRate).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.NightRate).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.FullDayRate).HasColumnType("decimal(18, 2)");
         });
 
         OnModelCreatingPartial(modelBuilder);

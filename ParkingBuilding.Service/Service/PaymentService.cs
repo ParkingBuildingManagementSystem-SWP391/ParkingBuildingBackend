@@ -125,14 +125,11 @@ namespace ParkingBuilding.Service.Service
                 var sessionForFee = await _sessionRepo.GetByIdAsync(invoice.SessionId);
                 if (sessionForFee != null)
                 {
-                    var vehicleType = await _context.VehiclesTypes.FirstOrDefaultAsync(vt => vt.TypeId == sessionForFee.TypeId);
-                    decimal hourlyRate = vehicleType?.HourlyRate ?? 2000m; DateTime checkInTime = sessionForFee.CheckInTime ?? DateTime.UtcNow;
+                    var vehicleType = await _context.VehiclesTypes.FirstOrDefaultAsync(vt => vt.TypeId == sessionForFee.TypeId)
+                                      ?? throw new Exception("Loại xe của phiên đỗ không tồn tại.");
+                    DateTime checkInTime = sessionForFee.CheckInTime ?? DateTime.UtcNow;
                     DateTime checkOutTime = sessionForFee.CheckOutTime ?? DateTime.UtcNow;
-                    TimeSpan duration = checkOutTime - checkInTime;
-                    double durationHours = Math.Ceiling(duration.TotalHours);
-
-                    if (durationHours <= 0) durationHours = 1;
-                    decimal totalSessionAmount = (decimal)durationHours * hourlyRate;
+                    decimal totalSessionAmount = ParkingPricingCalculator.CalculateFee(checkInTime, checkOutTime, vehicleType);
 
                     invoice.TotalAmount = totalSessionAmount;
                     _logger.LogInformation("VNPay Confirm: Cập nhật TotalAmount của hóa đơn {TxnRef} thành {TotalAmount} VND (gồm cọc + phí checkout).",
@@ -240,15 +237,11 @@ namespace ParkingBuilding.Service.Service
                 return new PaymentResultDto { Success = false, Message = "Bạn không có quyền thanh toán cho phiên đỗ xe này!" };
             }
 
-            var vehicleType = await _context.VehiclesTypes.FirstOrDefaultAsync(vt => vt.TypeId == session.TypeId);
-            decimal hourlyRate = vehicleType?.HourlyRate ?? 2000m;
+            var vehicleType = await _context.VehiclesTypes.FirstOrDefaultAsync(vt => vt.TypeId == session.TypeId)
+                              ?? throw new Exception("Loại xe của phiên đỗ không tồn tại.");
             DateTime checkInTime = session.CheckInTime ?? DateTime.UtcNow;
             DateTime checkOutTime = DateTime.UtcNow;
-            TimeSpan duration = checkOutTime - checkInTime;
-            double durationHours = Math.Ceiling(duration.TotalHours);
-            if (durationHours <= 0) durationHours = 1;
-
-            decimal calculatedFee = (decimal)durationHours * hourlyRate;
+            decimal calculatedFee = ParkingPricingCalculator.CalculateFee(checkInTime, checkOutTime, vehicleType);
 
             // Tái sử dụng hóa đơn PENDING hoặc FAILED cũ nếu có để tránh tạo trùng bản ghi
             var invoice = await _context.Invoices
@@ -391,13 +384,9 @@ namespace ParkingBuilding.Service.Service
                 DateTime checkInTime = session.CheckInTime ?? DateTime.UtcNow;
 
                 // 4. Tính toán tổng chi phí của cả phiên đỗ xe thực tế để ghi nhận tổng số tiền giao dịch cuối cùng
-                TimeSpan duration = checkOutTime - checkInTime;
-                double durationHours = Math.Ceiling(duration.TotalHours);
-                if (durationHours <= 0) durationHours = 1;
-
-                var vehicleType = await _context.VehiclesTypes.FirstOrDefaultAsync(vt => vt.TypeId == session.TypeId);
-                decimal hourlyRate = vehicleType?.HourlyRate ?? 2000m;
-                decimal totalSessionAmount = (decimal)durationHours * hourlyRate;
+                var vehicleType = await _context.VehiclesTypes.FirstOrDefaultAsync(vt => vt.TypeId == session.TypeId)
+                                  ?? throw new Exception("Loại xe của phiên đỗ không tồn tại.");
+                decimal totalSessionAmount = ParkingPricingCalculator.CalculateFee(checkInTime, checkOutTime, vehicleType);
 
                 // 5. Cập nhật hóa đơn hiện tại thành thành công (Không tạo dòng mới)
                 invoice.TotalAmount = totalSessionAmount; // Ghi nhận tổng số tiền (cọc + tiền mặt đã thu thêm)

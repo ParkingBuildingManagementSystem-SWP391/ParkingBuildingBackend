@@ -130,11 +130,9 @@ namespace ParkingBuilding.Service.Service
                 else
                 {
                     // Tính số tiền cọc
-                    int extraHours = (int)Math.Floor(diff.TotalHours) - 1;
-                    if (extraHours < 1) extraHours = 1;
-                    var vehicleType = await _context.VehiclesTypes.FirstOrDefaultAsync(vt => vt.TypeId == request.TypeId);
-                    decimal hourlyRate = vehicleType?.HourlyRate ?? 2000m; decimal depositAmount = extraHours * hourlyRate;
-
+                    var vehicleType = await _context.VehiclesTypes.FirstOrDefaultAsync(vt => vt.TypeId == request.TypeId)
+                                      ?? throw new Exception("Loại xe yêu cầu không tồn tại.");
+                    decimal depositAmount = ParkingPricingCalculator.CalculateFee(now, request.ExpectedCheckInTime, vehicleType);
                     var ticket = new Ticket
                     {
                         TicketCode = $"QR_{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}",
@@ -528,10 +526,9 @@ namespace ParkingBuilding.Service.Service
                 double durationHours = Math.Ceiling(duration.TotalHours);
                 if (durationHours <= 0) durationHours = 1;
 
-                var vehicleType = await _context.VehiclesTypes.FirstOrDefaultAsync(vt => vt.TypeId == session.TypeId);
-                decimal hourlyRate = vehicleType?.HourlyRate ?? 2000m;
-
-                decimal totalAmount = (decimal)durationHours * hourlyRate;
+                var vehicleType = await _context.VehiclesTypes.FirstOrDefaultAsync(vt => vt.TypeId == session.TypeId)
+                                  ?? throw new Exception("Loại xe của phiên đỗ không tồn tại.");
+                decimal totalAmount = ParkingPricingCalculator.CalculateFee(checkInTime, checkOutTime, vehicleType);
 
                 // Gán thông tin checkout tạm thời cho Session
                 session.CheckOutImageUrl = (request.CheckOutImageUrl?.Trim().ToLower() == "string") ? null : request.CheckOutImageUrl;
