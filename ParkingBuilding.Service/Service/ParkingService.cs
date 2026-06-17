@@ -1,12 +1,13 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using ParkingBuilding.Repository.Entities;
 using ParkingBuilding.Repository.IRepository;
 using ParkingBuilding.Service.DTOs;
 using ParkingBuilding.Service.IService;
 using ParkingBuilding.Service.Service.Helpers;
-using Microsoft.Extensions.Logging;
 using System;
+using System.Net.NetworkInformation;
 
 
 namespace ParkingBuilding.Service.Service
@@ -45,6 +46,12 @@ namespace ParkingBuilding.Service.Service
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
+                // Kiểm tra và chuẩn hóa biển số xe của yêu cầu đặt chỗ
+                if (!LicensePlateHelper.IsValidLicensePlate(request.LicenseVehicle, out string cleanedVehiclePlate))
+                {
+                    throw new ArgumentException(LicensePlateHelper.GetErrorMessage());
+                }
+                request.LicenseVehicle = cleanedVehiclePlate; // Gán biển số xe đã được loại bỏ ký tự rác và viết hoa
                 // 1. Kiểm tra xem người dùng có lượt đặt chỗ nào chưa hoàn thành cùng loại xe này không
                 var hasActiveBooking = await _parkingRepository.HasActiveReservationAsync(userId, request.TypeId);
                 if (hasActiveBooking)
@@ -231,7 +238,15 @@ namespace ParkingBuilding.Service.Service
 
 
             string? cleanTicketCode = string.IsNullOrWhiteSpace(request.TicketCode) ? null : request.TicketCode.Trim();
-            string? cleanLicense = string.IsNullOrWhiteSpace(request.LicenseVehicle) ? null : request.LicenseVehicle.Trim().ToUpper();
+            string? cleanLicense = null;
+            if (!string.IsNullOrWhiteSpace(request.LicenseVehicle) && request.LicenseVehicle.Trim().ToLower() != "string")
+            {
+                if (!LicensePlateHelper.IsValidLicensePlate(request.LicenseVehicle, out string validatedPlate))
+                {
+                    throw new ArgumentException(LicensePlateHelper.GetErrorMessage());
+                }
+                cleanLicense = validatedPlate;
+            }
 
             if (cleanTicketCode == null && cleanLicense == null)
             {
@@ -337,13 +352,20 @@ namespace ParkingBuilding.Service.Service
                 return new WalkInResponse { Status = "Error", TicketCode = "Yêu cầu dữ liệu không hợp lệ!" };
             }
 
-            string? cleanLicense = (string.IsNullOrWhiteSpace(request.LicenseVehicle) || request.LicenseVehicle.Trim().ToLower() == "string")
-            ? null : request.LicenseVehicle.Trim().ToUpper();
-
-            if (request == null || cleanLicense == null)
+            if (request == null || string.IsNullOrWhiteSpace(request.LicenseVehicle) || request.LicenseVehicle.Trim().ToLower() == "string")
             {
-                return new WalkInResponse { Status = "Error", TicketCode = "Vui lòng nhập biển số xe hợp lệ!" };
+                return new WalkInResponse { Status = "Error", TicketCode = "Vui lòng cung cấp biển số xe!" };
             }
+            
+            if (!LicensePlateHelper.IsValidLicensePlate(request.LicenseVehicle, out string cleanedLicense))
+            {
+                return new WalkInResponse
+                {
+                    Status = "Error",
+                    TicketCode = LicensePlateHelper.GetErrorMessage()
+                };              
+            }
+            string cleanLicense = cleanedLicense;
 
             var activeSession = await _parkingRepository.GetActiveSessionByLicensePlateAsync(cleanLicense);
             if (activeSession != null)
@@ -413,8 +435,16 @@ namespace ParkingBuilding.Service.Service
             string? cleanTicketCode = (string.IsNullOrEmpty(request.TicketCode) || request.TicketCode.Trim().ToLower() == "string")
                 ? null : request.TicketCode.Trim();
 
-            string? cleanCheckoutPlate = (string.IsNullOrEmpty(request.CheckoutLicensePlate) || request.CheckoutLicensePlate.Trim().ToLower() == "string")
-                ? null : request.CheckoutLicensePlate.Trim().ToUpper();
+            if (string.IsNullOrWhiteSpace(request.CheckoutLicensePlate) || request.CheckoutLicensePlate.Trim().ToLower() == "string")
+            {
+                throw new ArgumentException("Yêu cầu nhập biển số xe thực tế lúc ra bãi để kiểm tra an ninh đối khớp.");
+            }
+            
+            if (!LicensePlateHelper.IsValidLicensePlate(request.CheckoutLicensePlate, out string cleanedCheckoutPlate))
+            {
+                throw new ArgumentException(LicensePlateHelper.GetErrorMessage());               
+            }
+            string cleanCheckoutPlate = cleanedCheckoutPlate;
 
             _logger.LogInformation("Bắt đầu xử lý check-out: Vé={TicketCode}, Biển số={Plate}, SessionId={SessionId}, Phương thức thanh toán={Method}",
                 cleanTicketCode ?? "N/A", cleanCheckoutPlate ?? "N/A", request.SessionId ?? 0, request.PaymentMethod);
