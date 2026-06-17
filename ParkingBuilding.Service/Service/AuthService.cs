@@ -173,24 +173,13 @@ namespace ParkingBuilding.Service.Service
             _logger.LogInformation("Đăng nhập thành công: Người dùng '{Email}' (Vai trò: {Role}) đã đăng nhập thành công từ IP {IP}.",
                 user.Email, user.Role.RoleName, ipAddress);
 
-            var phoneNum = string.Empty;
-
-            if(user.PhoneNumber == null)
-            {
-                phoneNum = "Chưa có số điện thoại";
-            }
-            else
-            {
-                phoneNum = user.PhoneNumber;
-            }    
-
             return new AuthResponse
             {
                 Token = token,
                 Username = user.Username,
                 Email = user.Email,
                 RoleName = user.Role.RoleName,
-                PhoneNumber = phoneNum
+                PhoneNumber = user.PhoneNumber ?? "Chưa có số điện thoại"
             };
         }
 

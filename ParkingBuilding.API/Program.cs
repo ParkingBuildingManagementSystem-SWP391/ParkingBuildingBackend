@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
-
+using ParkingBuilding.API.Filters;
 using Microsoft.IdentityModel.Tokens;
 using ParkingBuilding.API.BackgroundServices;
 using ParkingBuilding.Repository.Entities;
@@ -106,6 +106,7 @@ namespace ParkingBuilding.API
 
             builder.Services.AddSwaggerGen(options =>
             {
+                options.SchemaFilter<DefaultStringSchemaFilter>();
                 options.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.Models.OpenApiSecurityScheme
                 {
                     Name = "Authorization",
