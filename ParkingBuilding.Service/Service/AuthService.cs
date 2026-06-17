@@ -248,8 +248,8 @@ namespace ParkingBuilding.Service.Service
                 Token = token,
                 Username = user!.Username,
                 Email = user.Email,
-                RoleName = user.Role.PhoneNumber = user.PhoneNumber ?? "Chưa có số điện thoại"
-
+                RoleName = user.Role.RoleName,
+                PhoneNumber = user.PhoneNumber ?? "Chưa có số điện thoại"
             };
         }
 
