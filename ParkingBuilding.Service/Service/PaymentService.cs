@@ -125,8 +125,8 @@ namespace ParkingBuilding.Service.Service
                 var sessionForFee = await _sessionRepo.GetByIdAsync(invoice.SessionId);
                 if (sessionForFee != null)
                 {
-                    decimal hourlyRate = Helpers.PricingHelper.GetHourlyRate(sessionForFee.TypeId);
-                    DateTime checkInTime = sessionForFee.CheckInTime ?? DateTime.UtcNow;
+                    var vehicleType = await _context.VehiclesTypes.FirstOrDefaultAsync(vt => vt.TypeId == sessionForFee.TypeId);
+                    decimal hourlyRate = vehicleType?.HourlyRate ?? 2000m; DateTime checkInTime = sessionForFee.CheckInTime ?? DateTime.UtcNow;
                     DateTime checkOutTime = sessionForFee.CheckOutTime ?? DateTime.UtcNow;
                     TimeSpan duration = checkOutTime - checkInTime;
                     double durationHours = Math.Ceiling(duration.TotalHours);
@@ -240,8 +240,8 @@ namespace ParkingBuilding.Service.Service
                 return new PaymentResultDto { Success = false, Message = "Bạn không có quyền thanh toán cho phiên đỗ xe này!" };
             }
 
-            decimal hourlyRate = Helpers.PricingHelper.GetHourlyRate(session.TypeId);
-
+            var vehicleType = await _context.VehiclesTypes.FirstOrDefaultAsync(vt => vt.TypeId == session.TypeId);
+            decimal hourlyRate = vehicleType?.HourlyRate ?? 2000m;
             DateTime checkInTime = session.CheckInTime ?? DateTime.UtcNow;
             DateTime checkOutTime = DateTime.UtcNow;
             TimeSpan duration = checkOutTime - checkInTime;
@@ -395,7 +395,8 @@ namespace ParkingBuilding.Service.Service
                 double durationHours = Math.Ceiling(duration.TotalHours);
                 if (durationHours <= 0) durationHours = 1;
 
-                decimal hourlyRate = Helpers.PricingHelper.GetHourlyRate(session.TypeId);
+                var vehicleType = await _context.VehiclesTypes.FirstOrDefaultAsync(vt => vt.TypeId == session.TypeId);
+                decimal hourlyRate = vehicleType?.HourlyRate ?? 2000m;
                 decimal totalSessionAmount = (decimal)durationHours * hourlyRate;
 
                 // 5. Cập nhật hóa đơn hiện tại thành thành công (Không tạo dòng mới)

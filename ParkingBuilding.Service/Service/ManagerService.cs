@@ -1,12 +1,13 @@
+using Microsoft.EntityFrameworkCore;
 using OfficeOpenXml;
 using OfficeOpenXml.Style;
-using QuestPDF.Fluent;
-using QuestPDF.Helpers;
-using QuestPDF.Infrastructure;
 using ParkingBuilding.Repository.Entities;
 using ParkingBuilding.Repository.IRepository;
 using ParkingBuilding.Service.DTOs;
 using ParkingBuilding.Service.IService;
+using QuestPDF.Fluent;
+using QuestPDF.Helpers;
+using QuestPDF.Infrastructure;
 using System;
 using System.Collections.Generic;
 using System.Drawing;
@@ -19,10 +20,12 @@ namespace ParkingBuilding.Service.Service
     public class ManagerService : IManagerService
     {
         private readonly IManagerRepository _managerRepository;
-
-        public ManagerService(IManagerRepository managerRepository)
+        private readonly ParkingManagementDbContext _context;
+        public ManagerService(IManagerRepository managerRepository, ParkingManagementDbContext context)
         {
             _managerRepository = managerRepository;
+            _context = context;
+
         }
 
         public async Task<DashboardSummaryResponse> GetDashboardSummaryAsync()
@@ -396,6 +399,16 @@ namespace ParkingBuilding.Service.Service
                 document.GeneratePdf(stream);
                 return stream.ToArray();
             }
+        }
+
+        public async Task<bool> UpdateVehicleTypePriceAsync(int typeId, decimal newPrice)
+        {
+            var vehicleType = await _context.VehiclesTypes.FirstOrDefaultAsync(vt => vt.TypeId == typeId);
+            if (vehicleType == null) return false;
+
+            vehicleType.HourlyRate = newPrice;
+            await _context.SaveChangesAsync();
+            return true;
         }
     }
 }
