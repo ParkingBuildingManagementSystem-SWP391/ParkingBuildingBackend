@@ -1,6 +1,8 @@
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ParkingBuilding.Service.DTOs;
 using ParkingBuilding.Service.IService;
+using System.Security.Claims;
 
 namespace ParkingBuilding.API.Controllers
 {
