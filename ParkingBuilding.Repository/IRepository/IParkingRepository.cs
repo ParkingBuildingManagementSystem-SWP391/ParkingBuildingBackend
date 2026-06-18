@@ -19,7 +19,7 @@ namespace ParkingBuilding.Repository.IRepository
         Task<ParkingSession?> GetReservedSessionByLicenseAsync(string licenseVehicle);
         Task<ParkingSession?> GetReservedSessionByTicketIdAsync(int ticketId);
 
-        Task UpdateSessionAndSlotAsync(ParkingSession session, ParkingSlot slot);
+        Task UpdateSessionAndSlotAsync(ParkingSession session, ParkingSlot? slot);
 
         Task<ParkingSlot?> GetAvailableSlotForWalkInAsync(int vehicleTypeId);
         Task<List<ParkingSession>> GetExpiredReservationsAsync();

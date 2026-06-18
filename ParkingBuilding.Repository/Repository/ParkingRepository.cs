@@ -82,7 +82,7 @@ namespace ParkingBuilding.Repository.Repository
                 .FirstOrDefaultAsync(s => s.TicketId == ticketId
                                        && s.SessionStatus.Trim() == ParkingStatuses.SessionReserved);
         }
-        public async Task UpdateSessionAndSlotAsync(ParkingSession session, ParkingSlot slot)
+        public async Task UpdateSessionAndSlotAsync(ParkingSession session, ParkingSlot? slot)
         {
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
@@ -143,19 +143,32 @@ namespace ParkingBuilding.Repository.Repository
 
         public async Task<List<ParkingSession>> GetExpiredReservationsAsync()
         {
-            var expiredLimit = DateTime.UtcNow.AddMinutes(-15);
+            var now = DateTime.UtcNow;
+
+            // Hạn trễ đơn không cọc hoặc cọc PENDING: quá 15 phút
+            var limitShortTerm = now.AddMinutes(-15);
+
+            // Hạn trễ đơn đã cọc Deposited: quá 2 tiếng (No-Show)
+            var limitLongTerm = now.AddHours(-2);
+
             return await _context.ParkingSessions
                 .Include(ps => ps.Slot)
                 .Include(ps => ps.Ticket)
-                .Include(ps => ps.Invoice) // Nạp thêm Invoice để kiểm tra trạng thái thanh toán cọc
+                .Include(ps => ps.Invoice)
                 .Where(ps => ps.SessionStatus == ParkingStatuses.SessionReserved
-                             && ps.BookingTime < expiredLimit
                              && !ps.IsDeleted
-                             // Chỉ hủy nếu: không có hóa đơn cọc (đặt dưới 2 tiếng quá hạn) 
-                             // HOẶC có hóa đơn nhưng trạng thái vẫn là PENDING (chưa thanh toán sau 15p)
-                             && (ps.Invoice == null || ps.Invoice.PaymentStatus == "PENDING"))
+                             && (
+                                 // Trường hợp 1: Không cọc hoặc cọc PENDING quá 15 phút so với ExpectedCheckInTime
+                                 ((ps.Invoice == null || ps.Invoice.PaymentStatus == "PENDING") && ps.ExpectedCheckInTime < limitShortTerm)
+
+                                 ||
+
+                                 // Trường hợp 2: Đã cọc Deposited nhưng quá 2 tiếng so với ExpectedCheckInTime (No-Show)
+                                 (ps.Invoice != null && ps.Invoice.PaymentStatus == "Deposited" && ps.ExpectedCheckInTime < limitLongTerm)
+                             ))
                 .ToListAsync();
         }
+
 
 
         public async Task<ParkingSession?> GetActiveSessionByTicketCodeAsync(string ticketCode)

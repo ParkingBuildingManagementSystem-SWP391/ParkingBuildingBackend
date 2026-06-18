@@ -199,5 +199,35 @@ namespace ParkingBuilding.API.Controllers
             }
         }
 
+        // API: Driver hủy đặt chỗ trước khi check-in
+        [Authorize(Roles = "Registered_Driver")]
+        [HttpPost("cancel-booking/{sessionId}")]
+        public async Task<IActionResult> CancelBooking(int sessionId)
+        {
+            try
+            {
+                var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userIdClaim))
+                {
+                    return Unauthorized(new { isSuccess = false, message = "Không tìm thấy thông tin User trong Token." });
+                }
+
+                int userId = int.Parse(userIdClaim);
+                var response = await _bookingService.CancelBookingAsync(userId, sessionId);
+
+                if (!response.IsSuccess)
+                {
+                    return BadRequest(response);
+                }
+
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { isSuccess = false, message = ex.Message });
+            }
+        }
+
+
     }
 }
