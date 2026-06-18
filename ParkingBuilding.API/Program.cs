@@ -80,6 +80,9 @@ namespace ParkingBuilding.API
             // Đăng ký Service của phân hệ Manager
             builder.Services.AddScoped<IManagerService, ManagerService>();
 
+            // Đăng ký UnitOfWork
+            builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+
 
 
             var jwtSecret = builder.Configuration["JwtSettings:Secret"] ?? "DefaultSuperSecretKeyThatIsAtLeast32BytesLong";
