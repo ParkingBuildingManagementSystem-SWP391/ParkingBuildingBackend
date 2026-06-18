@@ -146,6 +146,8 @@ public partial class ParkingManagementDbContext : DbContext
                 .HasForeignKey(d => d.UserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK__ParkingSe__UserI__60A75C0F");
+
+            entity.Property(e => e.ExpectedCheckInTime).HasColumnType("datetime");
         });
 
         modelBuilder.Entity<ParkingSlot>(entity =>

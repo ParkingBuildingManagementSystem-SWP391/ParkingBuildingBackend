@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace ParkingBuilding.Repository.Entities;
@@ -31,6 +31,9 @@ public partial class ParkingSession
 
     public bool IsDeleted { get; set; }
 
+    public DateTime? ExpectedCheckInTime { get; set; }
+
+
     public virtual ICollection<IncidentReport> IncidentReports { get; set; } = new List<IncidentReport>();
 
     public virtual Invoice? Invoice { get; set; }
@@ -42,4 +45,5 @@ public partial class ParkingSession
     public virtual VehiclesType Type { get; set; } = null!;
 
     public virtual User User { get; set; } = null!;
+
 }

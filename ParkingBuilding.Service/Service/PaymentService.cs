@@ -419,7 +419,7 @@ namespace ParkingBuilding.Service.Service
         /// </summary>
         public async Task<string?> GetPaymentStatusAsync(int invoiceId, int currentUserId, string currentUserRole)
         {
-            var invoice = await _invoiceRepo.GetByIdAsync(invoiceId);
+            var invoice = await _invoiceRepo.GetFirstOrDefaultAsync(i => i.InvoiceId == invoiceId, i => i.Session);
             if (invoice == null)
             {
                 _logger.LogWarning("Truy vấn trạng thái thanh toán thất bại: Không tìm thấy hóa đơn có ID {InvoiceId}.", invoiceId);
