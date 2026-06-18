@@ -34,7 +34,11 @@ namespace ParkingBuilding.API
 
             builder.Services.AddScoped<IParkingRepository, ParkingRepository>();
 
-            builder.Services.AddScoped<IParkingService, ParkingService>();
+            builder.Services.AddScoped<IVnPayService, VnPayService>();
+            builder.Services.AddScoped<IBookingService, BookingService>();
+            builder.Services.AddScoped<ICheckInService, CheckInService>();
+            builder.Services.AddScoped<ICheckOutService, CheckOutService>();
+            builder.Services.AddScoped<IParkingQueryService, ParkingQueryService>();
 
             builder.Services.AddHostedService<BookingCancellationProcessor>();
 

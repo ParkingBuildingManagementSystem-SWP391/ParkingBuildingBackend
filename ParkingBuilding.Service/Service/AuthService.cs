@@ -7,7 +7,7 @@ using ParkingBuilding.Service.DTOs;
 using ParkingBuilding.Service.IService;
 using Microsoft.Extensions.Logging;
 using System;
-
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 
 namespace ParkingBuilding.Service.Service
@@ -18,20 +18,22 @@ namespace ParkingBuilding.Service.Service
     /// </summary>
     public class AuthService : IAuthService
     {
-        private readonly IUserRepository _userRepository;
+        private readonly IUnitOfWork _unitOfWork;
         private readonly ITokenService _tokenService;
         private readonly IEmailService _emailService;
         private readonly IMemoryCache _cache;
         private readonly IConfiguration _config;
         private readonly ILogger<AuthService> _logger;
+
         public AuthService(
-            IUserRepository userRepository,
+            IUnitOfWork unitOfWork,
             ITokenService tokenService,
             IEmailService emailService,
             IMemoryCache cache,
-            IConfiguration config, ILogger<AuthService> logger)
+            IConfiguration config,
+            ILogger<AuthService> logger)
         {
-            _userRepository = userRepository;
+            _unitOfWork = unitOfWork;
             _tokenService = tokenService;
             _emailService = emailService;
             _cache = cache;
@@ -47,7 +49,7 @@ namespace ParkingBuilding.Service.Service
         /// </summary>
         public async Task<string> RegisterAsync(RegisterRequest request)
         {
-            var existingUser = await _userRepository.GetByEmailAsync(request.Email);
+            var existingUser = await _unitOfWork.Users.GetByEmailAsync(request.Email);
             if (existingUser != null)
             {
                 throw new BadHttpRequestException("Email này đã được sử dụng bởi tài khoản khác!");
@@ -83,7 +85,6 @@ namespace ParkingBuilding.Service.Service
             return "Mã OTP đã được gửi qua Email của bạn. Vui lòng xác thực để hoàn tất!";
         }
 
-
         /// <summary>
         /// Xác thực đăng ký (Bước 2):
         /// - So khớp mã OTP người dùng nhập với OTP lưu trong MemoryCache.
@@ -102,7 +103,7 @@ namespace ParkingBuilding.Service.Service
             }
 
             // 3. Lấy Role mặc định
-            var defaultRole = await _userRepository.GetRoleByNameAsync("Registered_Driver");
+            var defaultRole = await _unitOfWork.Users.GetRoleByNameAsync("Registered_Driver");
             if (defaultRole == null)
             {
                 throw new Exception("Hệ thống chưa thiết lập Role này.");
@@ -117,12 +118,12 @@ namespace ParkingBuilding.Service.Service
                 IsDeleted = false
             };
 
-            await _userRepository.AddAsync(user);
-            await _userRepository.SaveChangesAsync();
+            await _unitOfWork.Users.AddAsync(user);
+            await _unitOfWork.SaveChangesAsync();
 
             _cache.Remove(request.Email);
 
-            var dbUser = await _userRepository.GetByEmailAsync(user.Email);
+            var dbUser = await _unitOfWork.Users.GetByEmailAsync(user.Email);
 
             var token = _tokenService.GenerateJwtToken(dbUser!);
 
@@ -143,7 +144,7 @@ namespace ParkingBuilding.Service.Service
         /// </summary>
         public async Task<AuthResponse> LoginAsync(LoginRequest request, string ipAddress)
         {
-            var user = await _userRepository.GetByEmailAsync(request.Email);
+            var user = await _unitOfWork.Users.GetByEmailAsync(request.Email);
             if (user == null)
             {
                 // GHI LOG WARNING: Không tồn tại email này trong hệ thống
@@ -156,7 +157,6 @@ namespace ParkingBuilding.Service.Service
                 _logger.LogWarning("Đăng nhập thất bại: Tài khoản '{Email}' đăng ký qua Google (mật khẩu rỗng) cố gắng đăng nhập truyền thống. Yêu cầu đến từ IP: {IP}.", request.Email, ipAddress);
                 throw new BadHttpRequestException("Email hoặc mật khẩu không chính xác!");
             }
-
 
             bool isPasswordValid = BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash);
             if (!isPasswordValid)
@@ -183,7 +183,6 @@ namespace ParkingBuilding.Service.Service
             };
         }
 
-
         /// <summary>
         /// Đăng nhập liên kết bằng tài khoản Google (Single Sign-On).
         /// - Xác thực Google ID Token gửi từ Front-end.
@@ -205,11 +204,11 @@ namespace ParkingBuilding.Service.Service
                 throw new BadHttpRequestException("Google ID Token không hợp lệ!");
             }
 
-            var user = await _userRepository.GetByEmailAsync(payload.Email);
+            var user = await _unitOfWork.Users.GetByEmailAsync(payload.Email);
 
             if (user == null)
             {
-                var defaultRole = await _userRepository.GetRoleByNameAsync("Registered_Driver");
+                var defaultRole = await _unitOfWork.Users.GetRoleByNameAsync("Registered_Driver");
                 if (defaultRole == null)
                 {
                     throw new Exception("Hệ thống chưa thiết lập Role 'Member' mặc định.");
@@ -224,10 +223,10 @@ namespace ParkingBuilding.Service.Service
                     IsDeleted = false
                 };
 
-                await _userRepository.AddAsync(user);
-                await _userRepository.SaveChangesAsync();
+                await _unitOfWork.Users.AddAsync(user);
+                await _unitOfWork.SaveChangesAsync();
 
-                user = await _userRepository.GetByEmailAsync(user.Email);
+                user = await _unitOfWork.Users.GetByEmailAsync(user.Email);
             }
 
             var token = _tokenService.GenerateJwtToken(user!);
@@ -241,7 +240,5 @@ namespace ParkingBuilding.Service.Service
                 PhoneNumber = user.PhoneNumber ?? "Chưa có số điện thoại"
             };
         }
-
-        
     }
 }

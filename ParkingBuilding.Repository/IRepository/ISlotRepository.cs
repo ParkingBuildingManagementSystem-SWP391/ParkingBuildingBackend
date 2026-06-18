@@ -7,10 +7,8 @@ using System.Threading.Tasks;
 
 namespace ParkingBuilding.Repository.IRepository
 {
-    public interface ISlotRepository
+    public interface ISlotRepository : IGenericRepository<ParkingSlot>
     {
-        Task<ParkingSlot?> GetByIdAsync(int slotId);
-        Task UpdateAsync(ParkingSlot slot);
         Task<ParkingSlot?> GetByNameAsync(string name);
     }
 }

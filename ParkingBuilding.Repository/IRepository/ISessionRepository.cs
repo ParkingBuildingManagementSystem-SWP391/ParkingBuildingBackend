@@ -7,9 +7,7 @@ using System.Threading.Tasks;
 
 namespace ParkingBuilding.Repository.IRepository
 {
-    public interface ISessionRepository
+    public interface ISessionRepository : IGenericRepository<ParkingSession>
     {
-        Task<ParkingSession?> GetByIdAsync(long sessionId);
-        Task UpdateAsync(ParkingSession session);
     }
 }

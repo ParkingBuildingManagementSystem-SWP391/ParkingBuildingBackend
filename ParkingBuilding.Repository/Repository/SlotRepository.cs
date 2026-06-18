@@ -12,30 +12,15 @@ namespace ParkingBuilding.Repository.Repository
     /// <summary>
     /// Repository quản lý truy cập cơ sở dữ liệu cho bảng ParkingSlots (Ô đỗ xe).
     /// </summary>
-    public class SlotRepository : ISlotRepository
+    public class SlotRepository : GenericRepository<ParkingSlot>, ISlotRepository
     {
-        private readonly ParkingManagementDbContext _context;
-
-        public SlotRepository(ParkingManagementDbContext context)
+        public SlotRepository(ParkingManagementDbContext context) : base(context)
         {
-            _context = context;
-        }
-
-        public async Task<ParkingSlot?> GetByIdAsync(int slotId)
-        {
-            return await _context.ParkingSlots.FirstOrDefaultAsync(s => s.SlotId == slotId);
         }
 
         public async Task<ParkingSlot?> GetByNameAsync(string name)
         {
             return await _context.ParkingSlots.FirstOrDefaultAsync(s => s.SlotName == name);
-
-        }
-
-        public async Task UpdateAsync(ParkingSlot slot)
-        {
-            _context.ParkingSlots.Update(slot);
-            await _context.SaveChangesAsync();
         }
     }
 }

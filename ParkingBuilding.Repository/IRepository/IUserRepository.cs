@@ -9,13 +9,10 @@ using System.Threading.Tasks;
 
 namespace ParkingBuilding.Repository.IRepository
 {
-    public interface IUserRepository
+    public interface IUserRepository : IGenericRepository<User>
     {
         Task<User?> GetByEmailAsync(string email);
-        Task AddAsync(User user);
-        Task<bool> SaveChangesAsync();
         Task<Role?> GetRoleByNameAsync(string roleName);
         Task<IEnumerable<User>> GetAllUsersWithRolesAsync();
-        Task<User?> GetByIdAsync(int userId);
     }
 }

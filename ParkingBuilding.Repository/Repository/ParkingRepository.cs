@@ -293,34 +293,6 @@ namespace ParkingBuilding.Repository.Repository
                                        && !s.IsDeleted);
         }
 
-        public async Task AddInvoiceAsync(Invoice invoice)
-        {
-            var sessionId = invoice.SessionId > 0 ? invoice.SessionId : (invoice.Session?.SessionId ?? 0);
-            var existingInvoice = await _context.Invoices.FirstOrDefaultAsync(i => i.SessionId == sessionId);
-
-            if (existingInvoice != null)
-            {
-                if (existingInvoice.PaymentStatus != "SUCCESS")
-                {
-                    existingInvoice.TotalAmount = invoice.TotalAmount;
-                    existingInvoice.PaymentMethod = invoice.PaymentMethod;
-                    existingInvoice.PaymentStatus = invoice.PaymentStatus;
-                    existingInvoice.UpdatedDate = DateTime.UtcNow;
-
-                    // Luôn cập nhật mã giao dịch mới nhất để khớp với QR Code/URL thanh toán vừa được sinh ra
-                    existingInvoice.TransactionCode = invoice.TransactionCode;
-
-                    _context.Invoices.Update(existingInvoice);
-                    await _context.SaveChangesAsync();
-                    invoice.InvoiceId = existingInvoice.InvoiceId;
-                }
-            }
-            else
-            {
-                await _context.Invoices.AddAsync(invoice);
-                await _context.SaveChangesAsync();
-            }
-        }
 
 
         public async Task<List<ParkingSlot>> GetSlotsByFloorIdAsync(int floorId)
