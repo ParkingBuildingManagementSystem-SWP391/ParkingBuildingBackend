@@ -16,26 +16,26 @@ namespace ParkingBuilding.Service.Service
     /// </summary>
     public class AdminService : IAdminService
     {
-        public readonly IUserRepository _userRepository;
+        private readonly IUnitOfWork _unitOfWork;
 
-        public AdminService(IUserRepository userRepository)
+        public AdminService(IUnitOfWork unitOfWork)
         {
-            _userRepository = userRepository;
+            _unitOfWork = unitOfWork;
         }
+
         /// <summary>
         /// Cập nhật thông tin tài khoản người dùng hoặc thay đổi phân quyền (Role) của họ trong hệ thống.
         /// </summary>
         public async Task<bool> updateUserAsync(UpdateUserRequestDto request)
         {
-
-            var user = await _userRepository.GetByIdAsync(request.UserId);
+            var user = await _unitOfWork.Users.GetByIdAsync(request.UserId);
             if (user == null)
             {
                 throw new KeyNotFoundException($"Không tìm thấy tài khoản người dùng với ID: {request.UserId}");
             }
-            if (request.RoleName != "")
+            if (!string.IsNullOrEmpty(request.RoleName))
             {
-                var role = await _userRepository.GetRoleByNameAsync(request.RoleName);
+                var role = await _unitOfWork.Users.GetRoleByNameAsync(request.RoleName);
                 if (role == null)
                 {
                     throw new ArgumentException($"Hệ thống không tồn tại phân quyền có tên: '{request.RoleName}'. Vui lòng kiểm tra lại!");
@@ -43,22 +43,22 @@ namespace ParkingBuilding.Service.Service
                 user.RoleId = role.RoleId;
             }
 
-            if (request.phoneNumber != "")
+            if (!string.IsNullOrEmpty(request.phoneNumber))
             {
                 user.PhoneNumber = request.phoneNumber;
             }
 
-            if (request.userName != "")
+            if (!string.IsNullOrEmpty(request.userName))
             {
                 user.Username = request.userName;
             }
 
-            if (request.email != "")
+            if (!string.IsNullOrEmpty(request.email))
             {
                 user.Email = request.email;
             }
 
-            return await _userRepository.SaveChangesAsync();
+            return await _unitOfWork.SaveChangesAsync();
         }
 
         /// <summary>
@@ -66,14 +66,14 @@ namespace ParkingBuilding.Service.Service
         /// </summary>
         public async Task<UserResponseDto> CreateUserAsync(CreateUserRequestDto request)
         {
-            var existingUser = await _userRepository.GetByEmailAsync(request.Email);
+            var existingUser = await _unitOfWork.Users.GetByEmailAsync(request.Email);
             if (existingUser != null)
             {
                 throw new ArgumentException("Email này đã được sử dụng bởi tài khoản khác trong hệ thống.");
             }
 
             // 2. Kiểm tra Role có tồn tại hợp lệ hay không
-            var role = await _userRepository.GetRoleByNameAsync(request.RoleName);
+            var role = await _unitOfWork.Users.GetRoleByNameAsync(request.RoleName);
             if (role == null)
             {
                 throw new KeyNotFoundException($"Không tìm thấy vai trò '{request.RoleName}' trong hệ thống.");
@@ -94,8 +94,8 @@ namespace ParkingBuilding.Service.Service
             };
 
             // 5. Lưu vào Database
-            await _userRepository.AddAsync(newUser);
-            var isSuccess = await _userRepository.SaveChangesAsync();
+            await _unitOfWork.Users.AddAsync(newUser);
+            var isSuccess = await _unitOfWork.SaveChangesAsync();
             if (!isSuccess)
             {
                 throw new Exception("Lỗi hệ thống! Không thể tạo tài khoản vào lúc này.");
@@ -117,7 +117,7 @@ namespace ParkingBuilding.Service.Service
         /// </summary>
         public async Task<IEnumerable<UserResponseDto>> GetAllUsersAsync()
         {
-            var users = await _userRepository.GetAllUsersWithRolesAsync();
+            var users = await _unitOfWork.Users.GetAllUsersWithRolesAsync();
 
             return users.Select(u => new UserResponseDto
             {

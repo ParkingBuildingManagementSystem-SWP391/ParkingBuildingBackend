@@ -11,27 +11,29 @@ namespace ParkingBuilding.Repository.Repository
     /// <summary>
     /// Repository quản lý truy cập cơ sở dữ liệu cho bảng ParkingSessions (Phiên đỗ xe).
     /// </summary>
-    public class SessionRepository : ISessionRepository
+    public class SessionRepository : GenericRepository<ParkingSession>, ISessionRepository
     {
-        private readonly ParkingManagementDbContext _context;
-
-        public SessionRepository(ParkingManagementDbContext context)
+        public SessionRepository(ParkingManagementDbContext context) : base(context)
         {
-            _context = context;
         }
 
-        public async Task<ParkingSession?> GetByIdAsync(long sessionId)
+        public override async Task<ParkingSession?> GetByIdAsync(object id)
         {
-            return await _context.ParkingSessions
-                .Include(s => s.Slot)
-                .Include(s => s.Ticket)
-                .FirstOrDefaultAsync(s => s.SessionId == sessionId);
-        }
-
-        public async Task UpdateAsync(ParkingSession session)
-        {
-            _context.ParkingSessions.Update(session);
-            await _context.SaveChangesAsync();
+            if (id is int sessionId)
+            {
+                return await _context.ParkingSessions
+                    .Include(s => s.Slot)
+                    .Include(s => s.Ticket)
+                    .FirstOrDefaultAsync(s => s.SessionId == sessionId);
+            }
+            else if (id is long longSessionId)
+            {
+                return await _context.ParkingSessions
+                    .Include(s => s.Slot)
+                    .Include(s => s.Ticket)
+                    .FirstOrDefaultAsync(s => s.SessionId == (int)longSessionId);
+            }
+            return await base.GetByIdAsync(id);
         }
     }
 }

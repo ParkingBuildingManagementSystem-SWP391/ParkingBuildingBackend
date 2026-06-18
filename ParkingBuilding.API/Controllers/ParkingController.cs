@@ -15,11 +15,21 @@ namespace ParkingBuilding.API.Controllers
     /// </summary>
     public class ParkingController : ControllerBase
     {
-        private readonly IParkingService _parkingService;
+        private readonly IBookingService _bookingService;
+        private readonly ICheckInService _checkInService;
+        private readonly ICheckOutService _checkOutService;
+        private readonly IParkingQueryService _parkingQueryService;
 
-        public ParkingController(IParkingService parkingService)
+        public ParkingController(
+            IBookingService bookingService,
+            ICheckInService checkInService,
+            ICheckOutService checkOutService,
+            IParkingQueryService parkingQueryService)
         {
-            _parkingService = parkingService;
+            _bookingService = bookingService;
+            _checkInService = checkInService;
+            _checkOutService = checkOutService;
+            _parkingQueryService = parkingQueryService;
         }
 
         // API 1: Khách đặt chỗ trước 
@@ -43,7 +53,7 @@ namespace ParkingBuilding.API.Controllers
 
                 int userId = int.Parse(userIdClaim);
 
-                BookSlotResponse response = await _parkingService.BookSlotAsync(userId, request);
+                BookSlotResponse response = await _bookingService.BookSlotAsync(userId, request);
 
                 return Ok(response);
             }
@@ -65,7 +75,7 @@ namespace ParkingBuilding.API.Controllers
         {
             try
             {
-                var isSuccess = await _parkingService.CheckInVehicleAsync(request);
+                var isSuccess = await _checkInService.CheckInVehicleAsync(request);
 
                 if (isSuccess)
                     return Ok(new { message = "Check-in thành công! Mời xe tiến qua thanh chắn vào bãi." });
@@ -90,7 +100,7 @@ namespace ParkingBuilding.API.Controllers
         {
             try
             {
-                var result = await _parkingService.WalkInCheckInAsync(request);
+                var result = await _checkInService.WalkInCheckInAsync(request);
 
                 if (result.Status == "Error" || result.Status == "Full")
                 {
@@ -130,7 +140,7 @@ namespace ParkingBuilding.API.Controllers
 
                 int currentStaffId = int.Parse(staffIdClaim);
 
-                CheckoutResponse response = await _parkingService.CheckoutVehicleAsync(request, currentStaffId); 
+                CheckoutResponse response = await _checkOutService.CheckoutVehicleAsync(request, currentStaffId);
                 return Ok(response);
             }
             catch (Exception ex)
@@ -145,7 +155,7 @@ namespace ParkingBuilding.API.Controllers
         {
             try
             {
-                var slots = await _parkingService.GetSlotsByFloorIdAsync(floorId);
+                var slots = await _parkingQueryService.GetSlotsByFloorIdAsync(floorId);
                 return Ok(slots);
             }
             catch (Exception ex)
@@ -175,7 +185,7 @@ namespace ParkingBuilding.API.Controllers
 
                 int userId = int.Parse(userIdClaim);
 
-                var response = await _parkingService.GetMyBookingsAsync(userId);
+                var response = await _parkingQueryService.GetMyBookingsAsync(userId);
 
                 return Ok(response);
             }

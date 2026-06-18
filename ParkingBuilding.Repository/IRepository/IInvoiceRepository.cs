@@ -7,10 +7,7 @@ using System.Threading.Tasks;
 
 namespace ParkingBuilding.Repository.IRepository
 {
-    public interface IInvoiceRepository
+    public interface IInvoiceRepository : IGenericRepository<Invoice>
     {
-        Task AddAsync(Invoice invoice);
-        Task<Invoice?> GetByIdAsync(int invoiceId);
-
     }
 }
