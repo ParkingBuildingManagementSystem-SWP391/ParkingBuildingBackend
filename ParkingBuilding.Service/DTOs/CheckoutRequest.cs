@@ -1,19 +1,21 @@
 ﻿using System;
 using System.ComponentModel;
+using System.ComponentModel.DataAnnotations;
 
 namespace ParkingBuilding.Service.DTOs
 {
     public class CheckoutRequest
     {
         [DefaultValue("")]
-        public string? TicketCode { get; set; }
-
-        public int? SessionId { get; set; }
+        [Required]
+        public string TicketCode { get; set; } = string.Empty;
 
         [DefaultValue("")]
+        [Required]
         public string? CheckoutLicensePlate { get; set; }
 
         [DefaultValue("")]
+        [Required]
         public string? CheckOutImageUrl { get; set; }
 
         [DefaultValue("CASH")]

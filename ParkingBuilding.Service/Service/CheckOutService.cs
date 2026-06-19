@@ -41,9 +41,12 @@ namespace ParkingBuilding.Service.Service
                 throw new ArgumentNullException(nameof(request));
             }
 
-            string? cleanTicketCode = (string.IsNullOrEmpty(request.TicketCode) || request.TicketCode.Trim().ToLower() == "string")
-                ? null : request.TicketCode.Trim();
-
+            string cleanTicketCode = request.TicketCode.Trim();
+            if (string.IsNullOrEmpty(cleanTicketCode) || cleanTicketCode.ToLower() == "string")
+            {
+                throw new ArgumentException("Yêu cầu nhập mã vé (TicketCode) hợp lệ.");
+            }
+            
             if (string.IsNullOrWhiteSpace(request.CheckoutLicensePlate) || request.CheckoutLicensePlate.Trim().ToLower() == "string")
             {
                 throw new ArgumentException("Yêu cầu nhập biển số xe thực tế lúc ra bãi để kiểm tra an ninh đối khớp.");
@@ -51,35 +54,23 @@ namespace ParkingBuilding.Service.Service
             
             if (!LicensePlateHelper.IsValidLicensePlate(request.CheckoutLicensePlate, out string cleanedCheckoutPlate))
             {
-                throw new ArgumentException(LicensePlateHelper.GetErrorMessage());               
+                throw new ArgumentException(LicensePlateHelper.GetErrorMessage());
             }
             string cleanCheckoutPlate = cleanedCheckoutPlate;
-
-            _logger.LogInformation("Bắt đầu xử lý check-out: Vé={TicketCode}, Biển số={Plate}, SessionId={SessionId}, Phương thức thanh toán={Method}",
-                cleanTicketCode ?? "N/A", cleanCheckoutPlate ?? "N/A", request.SessionId ?? 0, request.PaymentMethod);
-
+            
+            _logger.LogInformation("Bắt đầu xử lý check-out: Vé={TicketCode}, Biển số={Plate}, Phương thức thanh toán={Method}",
+            cleanTicketCode, cleanCheckoutPlate, request.PaymentMethod);
+            
             using var dbTransaction = await _context.Database.BeginTransactionAsync();
             try
             {
-                ParkingSession? session = null;
-
-                if (cleanTicketCode != null)
-                {
-                    session = await _parkingRepository.GetActiveSessionByTicketCodeAsync(cleanTicketCode);
-                }
-                else if (request.SessionId.HasValue && request.SessionId.Value > 0)
-                {
-                    session = await _parkingRepository.GetActiveSessionByIdAsync(request.SessionId.Value);
-                }
-                else if (cleanCheckoutPlate != null)
-                {
-                    session = await _parkingRepository.GetActiveSessionByLicensePlateAsync(cleanCheckoutPlate);
-                }
-
+                // Tìm kiếm phiên đỗ xe đang hoạt động (SessionInProgress) dựa trên TicketCode
+                ParkingSession ? session = await _parkingRepository.GetActiveSessionByTicketCodeAsync(cleanTicketCode);
+                
                 if (session == null)
                 {
-                    _logger.LogWarning("Check-out thất bại: Không tìm thấy phiên đỗ xe đang hoạt động phù hợp.");
-                    throw new Exception("Không tìm thấy phiên đỗ xe đang hoạt động phù hợp với thông tin cung cấp.");
+                    _logger.LogWarning("Check-out thất bại: Không tìm thấy phiên đỗ xe hoạt động cho vé {TicketCode}.", cleanTicketCode);
+                    throw new Exception("Không tìm thấy phiên đỗ xe đang hoạt động phù hợp với mã vé cung cấp.");
                 }
 
                 if (string.IsNullOrEmpty(cleanCheckoutPlate))
@@ -616,7 +607,7 @@ namespace ParkingBuilding.Service.Service
             catch (Exception ex)
             {
                 await dbTransaction.RollbackAsync();
-                _logger.LogError(ex, "Lỗi hệ thống khi xử lý check-out cho SessionId {SessionId} hoặc Ticket {TicketCode}", request.SessionId, request.TicketCode);
+                _logger.LogError(ex, "Lỗi hệ thống khi xử lý check-out cho Ticket {TicketCode}", cleanTicketCode);
                 throw;
             }
         }
