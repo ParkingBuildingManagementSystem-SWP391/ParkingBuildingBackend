@@ -11,6 +11,7 @@ using ParkingBuilding.Service.IService;
 using ParkingBuilding.Service.Service;
 
 using System.Text;
+using ParkingBuilding.Service.Helpers;
 
 namespace ParkingBuilding.API
 {
@@ -83,6 +84,14 @@ namespace ParkingBuilding.API
             // Đăng ký UnitOfWork
             builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
+            // Đăng ký cấu hình Cloudinary
+            builder.Services.Configure<CloudinarySettings>(builder.Configuration.GetSection("CloudinarySettings"));
+
+            // Đăng ký dịch vụ lưu trữ hình ảnh Cloudinary
+            builder.Services.AddScoped<IImageStorageService, CloudinaryStorageService>();
+
+            // Đăng ký HttpClient cho IAiRecognitionService gọi FastAPI AI
+            builder.Services.AddHttpClient<IAiRecognitionService, FastApiLicensePlateService>();
 
 
             var jwtSecret = builder.Configuration["JwtSettings:Secret"] ?? "DefaultSuperSecretKeyThatIsAtLeast32BytesLong";

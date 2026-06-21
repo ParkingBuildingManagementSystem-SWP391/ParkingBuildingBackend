@@ -13,13 +13,19 @@ namespace ParkingBuilding.Service.Service
     {
         private readonly IParkingRepository _parkingRepository;
         private readonly ILogger<CheckInService> _logger;
+        private readonly IImageStorageService _imageStorageService;
+        private readonly IAiRecognitionService _aiRecognitionService;
 
         public CheckInService(
             IParkingRepository parkingRepository,
-            ILogger<CheckInService> logger)
+            ILogger<CheckInService> logger,
+            IImageStorageService imageStorageService,
+            IAiRecognitionService aiRecognitionService)
         {
             _parkingRepository = parkingRepository;
             _logger = logger;
+            _imageStorageService = imageStorageService;
+            _aiRecognitionService = aiRecognitionService;
         }
 
         public async Task<bool> CheckInVehicleAsync(CheckInRequest request)
@@ -32,6 +38,18 @@ namespace ParkingBuilding.Service.Service
             _logger.LogInformation("Bắt đầu xử lý check-in cho xe biển số: {LicensePlate}, Vé/Mã QR: {TicketCode}",
                 request.LicenseVehicle, request.TicketCode);
 
+            string? checkInImageUrl = null;
+            if (request.ImageFile != null && request.ImageFile.Length > 0)
+            {
+                // Gọi dịch vụ lưu trữ ảnh độc lập
+                checkInImageUrl = await _imageStorageService.UploadImageAsync(request.ImageFile, "parking_checkin");
+
+                // Gọi dịch vụ AI độc lập
+                string detectedPlate = await _aiRecognitionService.PredictLicensePlateAsync(checkInImageUrl);
+                request.LicenseVehicle = detectedPlate;
+            }
+            _logger.LogInformation("Bắt đầu xử lý check-in cho xe biển số: {LicensePlate}, Vé: {TicketCode}",
+                request.LicenseVehicle, request.TicketCode);
             string? cleanTicketCode = string.IsNullOrWhiteSpace(request.TicketCode) ? null : request.TicketCode.Trim();
             string? cleanLicense = null;
             if (!string.IsNullOrWhiteSpace(request.LicenseVehicle) && request.LicenseVehicle.Trim().ToLower() != "string")
@@ -100,7 +118,7 @@ namespace ParkingBuilding.Service.Service
 
             session.SessionStatus = ParkingStatuses.SessionInProgress;
             session.CheckInTime = DateTime.UtcNow;
-            session.CheckInImageUrl = string.IsNullOrWhiteSpace(request.CheckInImageUrl) ? null : request.CheckInImageUrl;
+            session.CheckInImageUrl = checkInImageUrl;
             if (session.Slot != null)
             {
                 if (session.Slot.SlotStatus == ParkingStatuses.SlotOccupied)
@@ -128,6 +146,23 @@ namespace ParkingBuilding.Service.Service
             if (request == null)
             {
                 return new WalkInResponse { Status = "Error", TicketCode = "Yêu cầu dữ liệu không hợp lệ!" };
+            }
+
+            string? checkInImageUrl = null;
+            if (request.ImageFile != null && request.ImageFile.Length > 0)
+            {
+                // Gọi dịch vụ lưu trữ ảnh
+                checkInImageUrl = await _imageStorageService.UploadImageAsync(request.ImageFile, "parking_checkin");
+                if (request.VehicleTypeId == 1) // Xe đạp
+                {
+                    request.LicenseVehicle = $"BIKE_{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}";
+                }
+                else // Xe máy hoặc Ô tô
+                {
+                    // Gọi dịch vụ AI
+                    string detectedPlate = await _aiRecognitionService.PredictLicensePlateAsync(checkInImageUrl);
+                    request.LicenseVehicle = detectedPlate;
+                }
             }
 
             if (string.IsNullOrWhiteSpace(request.LicenseVehicle) || request.LicenseVehicle.Trim().ToLower() == "string")
@@ -171,8 +206,10 @@ namespace ParkingBuilding.Service.Service
                 TicketStatus = ParkingStatuses.TicketActive
             };
 
-            string? checkInImageUrl = (string.IsNullOrWhiteSpace(request.CheckInImageUrl) || request.CheckInImageUrl.Trim().ToLower() == "string") ? null : request.CheckInImageUrl;
-            
+
+            //
+
+            //
             var newSession = await _parkingRepository.CreateWalkInSessionWithLockAsync(cleanLicense, request.VehicleTypeId, checkInImageUrl, ticket);
             if (newSession == null)
             {

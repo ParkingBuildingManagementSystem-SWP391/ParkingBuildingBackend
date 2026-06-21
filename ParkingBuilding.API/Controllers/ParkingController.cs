@@ -71,7 +71,7 @@ namespace ParkingBuilding.API.Controllers
         /// </summary>
         [Authorize(Roles = "Staff")] 
         [HttpPost("check-in")]
-        public async Task<IActionResult> CheckInVehicle([FromBody] CheckInRequest request)
+        public async Task<IActionResult> CheckInVehicle([FromForm] CheckInRequest request)
         {
             try
             {
@@ -96,7 +96,7 @@ namespace ParkingBuilding.API.Controllers
         /// </summary>
         [Authorize(Roles = "Staff")]
         [HttpPost("walk-in")]
-        public async Task<IActionResult> WalkInCheckIn([FromBody] WalkInRequest request)
+        public async Task<IActionResult> WalkInCheckIn([FromForm] WalkInRequest request)
         {
             try
             {
@@ -130,7 +130,7 @@ namespace ParkingBuilding.API.Controllers
         /// </summary>
         [Authorize(Roles = "Staff")]
         [HttpPost("check-out")]                         
-        public async Task<IActionResult> CheckOutVehicle([FromBody] CheckoutRequest request)
+        public async Task<IActionResult> CheckOutVehicle([FromForm] CheckoutRequest request)
         {
             try
             {

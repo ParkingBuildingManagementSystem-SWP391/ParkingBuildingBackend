@@ -1,4 +1,4 @@
-﻿using System;
+using Microsoft.AspNetCore.Http; // Thêm thư viện này
 using System.ComponentModel;
 
 namespace ParkingBuilding.Service.DTOs
@@ -11,7 +11,8 @@ namespace ParkingBuilding.Service.DTOs
         [DefaultValue("")]
         public string? TicketCode { get; set; }
 
-        [DefaultValue("")]
-        public string? CheckInImageUrl { get; set; }
+
+        // THÊM: Nhận file ảnh từ React FormData
+        public IFormFile? ImageFile { get; set; }
     }
 }
