@@ -1,4 +1,4 @@
-﻿using System;
+using Microsoft.AspNetCore.Http;
 using System.ComponentModel;
 
 namespace ParkingBuilding.Service.DTOs
@@ -11,7 +11,9 @@ namespace ParkingBuilding.Service.DTOs
         [DefaultValue("")]
         public string? TicketCode { get; set; }
 
-        [DefaultValue("")]
-        public string? CheckInImageUrl { get; set; }
+        public IFormFile? ImageFile { get; set; }
+
+        // THÊM THUỘC TÍNH NÀY: Nhận URL từ Frontend gửi lên ở bước xác nhận
+        public string? ImageUrl { get; set; }
     }
 }

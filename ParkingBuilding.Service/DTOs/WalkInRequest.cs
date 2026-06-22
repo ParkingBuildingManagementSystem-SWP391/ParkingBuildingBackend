@@ -1,21 +1,14 @@
-using System;
-using System.Collections.Generic;
-using System.ComponentModel;
-using System.ComponentModel.DataAnnotations;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
 
 namespace ParkingBuilding.Service.DTOs
 {
     public class WalkInRequest
     {
-        [Required]
-        [DefaultValue("")]
-        public string LicenseVehicle { get; set; } = null!;
-        [Required]
+        public string? LicenseVehicle { get; set; }
         public int VehicleTypeId { get; set; }
-        [Required]
-        public string? CheckInImageUrl { get; set; }        
+        public IFormFile? ImageFile { get; set; }
+
+        // THÊM THUỘC TÍNH NÀY
+        public string? ImageUrl { get; set; }
     }
 }
