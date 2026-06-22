@@ -154,6 +154,10 @@ namespace ParkingBuilding.Service.Service
                 string staffName = staff?.Username ?? "Nhân viên hệ thống";
 
                 DateTime checkInTime = session.CheckInTime ?? throw new Exception("Dữ liệu giờ vào của lượt đỗ này không hợp lệ.");
+                // Fix: EF Core đọc DateTime từ SQL Server với Kind=Unspecified.
+                // Hệ thống lưu UTC nên normalize về Utc để tính duration và ca ngày/đêm đúng.
+                if (checkInTime.Kind == DateTimeKind.Unspecified)
+                    checkInTime = DateTime.SpecifyKind(checkInTime, DateTimeKind.Utc);
                 DateTime checkOutTime = DateTime.UtcNow;
 
                 TimeSpan duration = checkOutTime - checkInTime;
