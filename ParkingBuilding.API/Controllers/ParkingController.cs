@@ -19,17 +19,23 @@ namespace ParkingBuilding.API.Controllers
         private readonly ICheckInService _checkInService;
         private readonly ICheckOutService _checkOutService;
         private readonly IParkingQueryService _parkingQueryService;
+        private readonly IImageStorageService _imageStorageService;
+        private readonly IAiRecognitionService _aiRecognitionService;
 
         public ParkingController(
             IBookingService bookingService,
             ICheckInService checkInService,
             ICheckOutService checkOutService,
-            IParkingQueryService parkingQueryService)
+            IParkingQueryService parkingQueryService,
+            IImageStorageService imageStorageService,
+            IAiRecognitionService aiRecognitionService)
         {
             _bookingService = bookingService;
             _checkInService = checkInService;
             _checkOutService = checkOutService;
             _parkingQueryService = parkingQueryService;
+            _imageStorageService = imageStorageService;
+            _aiRecognitionService = aiRecognitionService;
         }
 
         // API 1: Khách đặt chỗ trước 
@@ -71,7 +77,7 @@ namespace ParkingBuilding.API.Controllers
         /// </summary>
         [Authorize(Roles = "Staff")] 
         [HttpPost("check-in")]
-        public async Task<IActionResult> CheckInVehicle([FromBody] CheckInRequest request)
+        public async Task<IActionResult> CheckInVehicle([FromForm] CheckInRequest request)
         {
             try
             {
@@ -96,7 +102,7 @@ namespace ParkingBuilding.API.Controllers
         /// </summary>
         [Authorize(Roles = "Staff")]
         [HttpPost("walk-in")]
-        public async Task<IActionResult> WalkInCheckIn([FromBody] WalkInRequest request)
+        public async Task<IActionResult> WalkInCheckIn([FromForm] WalkInRequest request)
         {
             try
             {
@@ -130,7 +136,7 @@ namespace ParkingBuilding.API.Controllers
         /// </summary>
         [Authorize(Roles = "Staff")]
         [HttpPost("check-out")]                         
-        public async Task<IActionResult> CheckOutVehicle([FromBody] CheckoutRequest request)
+        public async Task<IActionResult> CheckOutVehicle([FromForm] CheckoutRequest request)
         {
             try
             {
@@ -228,6 +234,51 @@ namespace ParkingBuilding.API.Controllers
             }
         }
 
+        [Authorize(Roles = "Staff")]
+        [HttpPost("recognize")]
+        public async Task<IActionResult> RecognizePlate([FromForm] RecognizePlateRequest request)
+        {
+            try
+            {
+                if (request.ImageFile == null || request.ImageFile.Length == 0)
+                    return BadRequest(new { isSuccess = false, message = "Vui lòng cung cấp file ảnh phương tiện." });
+
+                // 1. Upload lên thư mục tạm của Cloudinary
+                var uploadResult = await _imageStorageService.UploadImageDetailedAsync(request.ImageFile, "parking_temp");
+
+                // 2. Gọi dịch vụ Python AI bằng URL gốc (RawUrl)
+                bool isMotorbike = (request.VehicleTypeId == 2);
+
+                string detectedPlate = "";
+                try
+                {
+                    detectedPlate = await _aiRecognitionService.PredictLicensePlateAsync(uploadResult.RawUrl);
+                }
+                catch (Exception aiEx)
+                {
+                    return Ok(new
+                    {
+                        isSuccess = true,
+                        imageUrl = uploadResult.OptimizedUrl,
+                        rawImageUrl = uploadResult.RawUrl,
+                        predictedPlate = "",
+                        message = $"Không thể nhận dạng tự động: {aiEx.Message}. Vui lòng nhập tay."
+                    });
+                }
+
+                return Ok(new
+                {
+                    isSuccess = true,
+                    imageUrl = uploadResult.OptimizedUrl,
+                    rawImageUrl = uploadResult.RawUrl,
+                    predictedPlate = detectedPlate
+                });
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { isSuccess = false, message = ex.Message });
+            }
+        }
 
     }
 }

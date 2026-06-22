@@ -1,24 +1,16 @@
-﻿using System;
-using System.ComponentModel;
-using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Http;
 
 namespace ParkingBuilding.Service.DTOs
 {
     public class CheckoutRequest
     {
-        [DefaultValue("")]
-        [Required]
-        public string TicketCode { get; set; } = string.Empty;
-
-        [DefaultValue("")]
-        [Required]
+        public string? TicketCode { get; set; }
+        public int? SessionId { get; set; }
         public string? CheckoutLicensePlate { get; set; }
-
-        [DefaultValue("")]
-        [Required]
-        public string? CheckOutImageUrl { get; set; }
-
-        [DefaultValue("CASH")]
         public string PaymentMethod { get; set; } = "CASH";
+        public IFormFile? ImageFile { get; set; }
+
+        // THÊM THUỘC TÍNH NÀY
+        public string? ImageUrl { get; set; }
     }
 }

@@ -11,6 +11,7 @@ using ParkingBuilding.Service.IService;
 using ParkingBuilding.Service.Service;
 
 using System.Text;
+using ParkingBuilding.Service.Helpers;
 
 namespace ParkingBuilding.API
 {
@@ -24,7 +25,6 @@ namespace ParkingBuilding.API
 
             builder.Services.AddControllers();
             builder.Services.AddEndpointsApiExplorer();
-            builder.Services.AddSwaggerGen();
 
             var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
             
@@ -46,10 +46,15 @@ namespace ParkingBuilding.API
             {
                 options.AddPolicy("AllowClient", policy =>
                 {
-                    policy.WithOrigins("https://localhost:7008") 
-                          .AllowAnyHeader()
-                          .AllowAnyMethod()
-                          .AllowCredentials();
+                    policy
+                        .WithOrigins(
+                            "https://localhost:7008",                    // Local dev
+                            "https://mindy.huydevops.id.vn",            // Production Backend (self)
+                            "https://parking-building-frontend.vercel.app" // Vercel FE (đổi lại đúng domain)
+                        )
+                        .AllowAnyHeader()
+                        .AllowAnyMethod()
+                        .AllowCredentials();
                 });
             });
 
@@ -83,6 +88,17 @@ namespace ParkingBuilding.API
             // Đăng ký UnitOfWork
             builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
+            // Đăng ký cấu hình Cloudinary
+            builder.Services.Configure<CloudinarySettings>(builder.Configuration.GetSection("CloudinarySettings"));
+
+            // Đăng ký dịch vụ lưu trữ hình ảnh Cloudinary
+            builder.Services.AddScoped<IImageStorageService, CloudinaryStorageService>();
+
+            // Đăng ký HttpClient kèm cấu hình Timeout tối đa 10 giây tránh nghẽn
+            builder.Services.AddHttpClient<IAiRecognitionService, FastApiLicensePlateService>(client =>
+            {
+                client.Timeout = TimeSpan.FromSeconds(10);
+            });
 
 
             var jwtSecret = builder.Configuration["JwtSettings:Secret"] ?? "DefaultSuperSecretKeyThatIsAtLeast32BytesLong";
