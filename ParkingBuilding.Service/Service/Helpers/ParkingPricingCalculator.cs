@@ -84,9 +84,25 @@ namespace ParkingBuilding.Service.Service.Helpers
             }
         }
 
+        /// <summary>
+        /// EF Core đọc DateTime từ SQL Server về với Kind = Unspecified.
+        /// ConvertTimeFromUtc() yêu cầu Kind = Utc, nên phải normalize trước.
+        /// Toàn bộ hệ thống lưu UTC nên SpecifyKind(Utc) là an toàn.
+        /// </summary>
+        private static DateTime NormalizeToUtc(DateTime dt)
+        {
+            if (dt.Kind == DateTimeKind.Unspecified)
+                return DateTime.SpecifyKind(dt, DateTimeKind.Utc);
+            return dt;
+        }
+
         // Kiểm tra xem khoảng thời gian có giao thoa với Ca Ngày (6h - 18h) không
         private static bool OverlapsDayShift(DateTime start, DateTime end)
         {
+            // Normalize Kind trước khi convert (fix bug EF Core đọc từ SQL Server)
+            start = NormalizeToUtc(start);
+            end   = NormalizeToUtc(end);
+
             // Chuyển sang múi giờ địa phương Việt Nam để lấy Hour chính xác
             var tz = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
             DateTime localStart = TimeZoneInfo.ConvertTimeFromUtc(start, tz);
@@ -114,6 +130,10 @@ namespace ParkingBuilding.Service.Service.Helpers
         // Kiểm tra xem khoảng thời gian có giao thoa với Ca Đêm (18h - 6h hôm sau) không
         private static bool OverlapsNightShift(DateTime start, DateTime end)
         {
+            // Normalize Kind trước khi convert (fix bug EF Core đọc từ SQL Server)
+            start = NormalizeToUtc(start);
+            end   = NormalizeToUtc(end);
+
             var tz = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
             DateTime localStart = TimeZoneInfo.ConvertTimeFromUtc(start, tz);
             DateTime localEnd = TimeZoneInfo.ConvertTimeFromUtc(end, tz);

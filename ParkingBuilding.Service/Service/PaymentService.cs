@@ -119,8 +119,11 @@ namespace ParkingBuilding.Service.Service
                 {
                     var vehicleType = await _context.VehiclesTypes.FirstOrDefaultAsync(vt => vt.TypeId == sessionForFee.TypeId)
                                       ?? throw new Exception("Loại xe của phiên đỗ không tồn tại.");
-                    DateTime checkInTime = sessionForFee.CheckInTime ?? DateTime.UtcNow;
+                    DateTime checkInTime  = sessionForFee.CheckInTime  ?? DateTime.UtcNow;
                     DateTime checkOutTime = sessionForFee.CheckOutTime ?? DateTime.UtcNow;
+                    // Fix: EF Core trả về Kind=Unspecified từ SQL Server
+                    if (checkInTime.Kind  == DateTimeKind.Unspecified) checkInTime  = DateTime.SpecifyKind(checkInTime,  DateTimeKind.Utc);
+                    if (checkOutTime.Kind == DateTimeKind.Unspecified) checkOutTime = DateTime.SpecifyKind(checkOutTime, DateTimeKind.Utc);
                     decimal totalSessionAmount = ParkingPricingCalculator.CalculateFee(checkInTime, checkOutTime, vehicleType);
 
                     invoice.TotalAmount = totalSessionAmount;
@@ -346,7 +349,10 @@ namespace ParkingBuilding.Service.Service
                 }
 
                 DateTime checkOutTime = session.CheckOutTime ?? DateTime.UtcNow;
-                DateTime checkInTime = session.CheckInTime ?? DateTime.UtcNow;
+                DateTime checkInTime  = session.CheckInTime  ?? DateTime.UtcNow;
+                // Fix: EF Core trả về Kind=Unspecified từ SQL Server
+                if (checkInTime.Kind  == DateTimeKind.Unspecified) checkInTime  = DateTime.SpecifyKind(checkInTime,  DateTimeKind.Utc);
+                if (checkOutTime.Kind == DateTimeKind.Unspecified) checkOutTime = DateTime.SpecifyKind(checkOutTime, DateTimeKind.Utc);
 
                 var vehicleType = await _context.VehiclesTypes.FirstOrDefaultAsync(vt => vt.TypeId == session.TypeId)
                                   ?? throw new Exception("Loại xe của phiên đỗ không tồn tại.");
