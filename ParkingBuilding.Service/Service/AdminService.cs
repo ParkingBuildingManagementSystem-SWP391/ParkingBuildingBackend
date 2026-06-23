@@ -128,5 +128,74 @@ namespace ParkingBuilding.Service.Service
                 Role = u.Role.RoleName 
             });
         }
+
+        // 1. Lấy toàn bộ danh sách phiên đỗ (không điều kiện)
+        public async Task<List<ParkingSessionResponeDto>> GetAllParkingSessionsAsync()
+        {
+            // Gọi Repo lấy dữ liệu thô
+            var sessions = await _unitOfWork.Sessions.GetAllSessionsWithDetailsAsync();
+            
+            // Map dữ liệu Entity -> DTO gọn gàng để gửi về Client
+            return sessions.Select(s => new ParkingSessionResponeDto
+            {
+                SlotName = s.Slot?.SlotName ?? "Không xác định",
+                TypeId = s.TypeId,
+                TicketCode = s.Ticket?.TicketCode,
+                SessionStatus = s.SessionStatus.Trim() // Cắt bỏ khoảng trắng thừa
+            }).ToList();
+        }
+
+        // 2. Lấy danh sách kèm theo các bộ lọc
+        public async Task<List<ParkingSessionResponeDto>> GetParkingSessionsWithFiltersAsync(
+            string? licenseVehicle,
+            string? slotName,
+            string? username,
+            int? typeId,
+            string? sessionStatus,
+            DateTime? fromDate,
+            DateTime? toDate)
+        {
+            // Chuyển múi giờ về UTC nếu dữ liệu lưu trữ là UTC và tham số gửi lên là Local Time
+            DateTime? utcFrom = fromDate?.ToUniversalTime();
+            DateTime? utcTo = toDate?.ToUniversalTime();
+
+            // Gọi Repo lọc dữ liệu dưới database
+            var sessions = await _unitOfWork.Sessions.GetSessionsWithFiltersAsync(
+                licenseVehicle, slotName, username, typeId, sessionStatus, utcFrom, utcTo);
+
+            // Chuyển đổi kết quả sang DTO
+            return sessions.Select(s => new ParkingSessionResponeDto
+            {
+                SlotName = s.Slot?.SlotName ?? "Không xác định",
+                TypeId = s.TypeId,
+                TicketCode = s.Ticket?.TicketCode,
+                SessionStatus = s.SessionStatus.Trim()
+            }).ToList();
+        }
+
+        // 3. Tra cứu chi tiết phiên đỗ qua mã vé xe
+        public async Task<ParkingSessionDetailResponeDto?> GetSessionDetailByTicketCodeAsync(string ticketCode)
+        {
+            var session = await _unitOfWork.Sessions.GetSessionDetailByTicketCodeAsync(ticketCode);
+            if (session == null)
+            {
+                return null; // Không tìm thấy
+            }
+
+            // Trả về DTO chứa đầy đủ thông tin chi tiết bao gồm ảnh chụp
+            return new ParkingSessionDetailResponeDto
+            {
+                Username = session.User?.Username ?? "Khách vãng lai",
+                SlotName = session.Slot?.SlotName ?? "N/A",
+                LicenseVehicle = session.LicenseVehicle,
+                TypeId = session.TypeId,
+                BookingTime = session.BookingTime,
+                CheckInTime = session.CheckInTime,
+                CheckOutTime = session.CheckOutTime,
+                CheckInImageUrl = session.CheckInImageUrl,
+                CheckOutImageUrl = session.CheckOutImageUrl,
+                SessionStatus = session.SessionStatus.Trim()
+            };
+        }
     }
 }
