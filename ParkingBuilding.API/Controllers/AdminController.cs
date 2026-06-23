@@ -100,5 +100,81 @@ namespace ParkingBuilding.API.Controllers
                 return StatusCode(500, new { error = "Lỗi hệ thống khi tạo người dùng: " + ex.Message });
             }
         }
+
+        [HttpGet("sessions")]
+        /// <summary>
+        /// API 1: Lấy danh sách toàn bộ các phiên đỗ xe hiện có (Không điều kiện).
+        /// - Quyền truy cập: Chỉ Admin.
+        /// </summary>
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> GetAllParkingSessions()
+        {
+            try
+            {
+                var sessions = await _adminService.GetAllParkingSessionsAsync();
+                return Ok(sessions);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = "Lỗi hệ thống khi lấy danh sách phiên đỗ: " + ex.Message });
+            }
+        }
+
+        [HttpGet("sessions/search")]
+        /// <summary>
+        /// API 2: Tìm kiếm và lọc danh sách các phiên đỗ xe theo nhiều tiêu chí.
+        /// - Tiêu chí lọc: Biển số, Tên ô đỗ, Tên tài xế, Loại xe, Trạng thái, Khoảng thời gian.
+        /// - Quyền truy cập: Chỉ Admin.
+        /// </summary>
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> GetParkingSessionsWithFilters(
+            [FromQuery] string? licenseVehicle,
+            [FromQuery] string? slotName,
+            [FromQuery] string? username,
+            [FromQuery] int? typeId,
+            [FromQuery] string? sessionStatus,
+            [FromQuery] DateTime? fromDate,
+            [FromQuery] DateTime? toDate)
+        {
+            try
+            {
+                var sessions = await _adminService.GetParkingSessionsWithFiltersAsync(
+                    licenseVehicle, slotName, username, typeId, sessionStatus, fromDate, toDate);
+                return Ok(sessions);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = "Lỗi hệ thống khi tìm kiếm phiên đỗ xe: " + ex.Message });
+            }
+        }
+
+        [HttpGet("sessions/by-ticket/{ticketCode}")]
+        /// <summary>
+        /// API 3: Truy vết chi tiết phiên đỗ xe dựa theo mã vé (TicketCode).
+        /// - Quyền truy cập: Chỉ Admin.
+        /// </summary>
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> GetSessionDetailByTicketCode(string ticketCode)
+        {
+            try
+            {
+                if (string.IsNullOrWhiteSpace(ticketCode))
+                {
+                    return BadRequest(new { error = "Vui lòng cung cấp mã vé (TicketCode) hợp lệ!" });
+                }
+
+                var sessionDetail = await _adminService.GetSessionDetailByTicketCodeAsync(ticketCode);
+                if (sessionDetail == null)
+                {
+                    return NotFound(new { error = $"Không tìm thấy phiên đỗ xe nào có TicketCode: '{ticketCode}'" });
+                }
+
+                return Ok(sessionDetail);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = "Lỗi hệ thống khi lấy chi tiết phiên đỗ xe: " + ex.Message });
+            }
+        }
     }
 }

@@ -18,6 +18,6 @@ namespace ParkingBuilding.Service.DTOs
         [Required]
         public int TypeId { get; set; }
         [Required]
-        public DateTime ExpectedCheckInTime { get; set; } // Thời gian xe dự kiến vào bãi
+        public DateTime ExpectedCheckInTime { get; set; } = DateTime.Now;// Thời gian xe dự kiến vào bãi
     }
 }
