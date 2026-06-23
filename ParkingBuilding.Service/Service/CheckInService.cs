@@ -64,11 +64,18 @@ namespace ParkingBuilding.Service.Service
             string? cleanLicense = null;
             if (!string.IsNullOrWhiteSpace(request.LicenseVehicle) && request.LicenseVehicle.Trim().ToLower() != "string")
             {
-                if (!LicensePlateHelper.IsValidLicensePlate(request.LicenseVehicle, out string validatedPlate))
+                if (request.LicenseVehicle.StartsWith("BIKE_"))
                 {
-                    throw new ArgumentException(LicensePlateHelper.GetErrorMessage());
+                    cleanLicense = request.LicenseVehicle.Trim().ToUpper();
                 }
-                cleanLicense = validatedPlate;
+                else
+                {
+                    if (!LicensePlateHelper.IsValidLicensePlate(request.LicenseVehicle, out string validatedPlate))
+                    {
+                        throw new ArgumentException(LicensePlateHelper.GetErrorMessage());
+                    }
+                    cleanLicense = validatedPlate;
+                }
             }
 
             if (cleanTicketCode == null && cleanLicense == null)
@@ -159,45 +166,61 @@ namespace ParkingBuilding.Service.Service
             }
 
             string? checkInImageUrl = null;
-                        if (!string.IsNullOrEmpty(request.ImageUrl))
-                            {
+            if (!string.IsNullOrEmpty(request.ImageUrl))
+            {
                 checkInImageUrl = request.ImageUrl;
-                            }
-                        else if (request.ImageFile != null && request.ImageFile.Length > 0)
-                            {
+            }
+            else if (request.ImageFile != null && request.ImageFile.Length > 0)
+            {
                 checkInImageUrl = await _imageStorageService.UploadImageAsync(request.ImageFile, "parking_checkin");
-                                if (request.VehicleTypeId == 1) // Xe đạp
-                                    {
+            }
+
+            // Tự động sinh biển số ảo cho xe đạp hoặc chạy nhận diện biển số xe cơ giới
+            if (request.VehicleTypeId == 1) // Xe đạp
+            {
+                if (string.IsNullOrEmpty(request.LicenseVehicle) || request.LicenseVehicle == "string" || !request.LicenseVehicle.StartsWith("BIKE_"))
+                {
                     request.LicenseVehicle = $"BIKE_{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}";
-                                    }
-                                else if (string.IsNullOrEmpty(request.LicenseVehicle) || request.LicenseVehicle == "string")
-                                    {
-                                        try
+                }
+            }
+            else if (string.IsNullOrEmpty(request.LicenseVehicle) || request.LicenseVehicle == "string")
+            {
+                if (request.ImageFile != null && request.ImageFile.Length > 0 && !string.IsNullOrEmpty(checkInImageUrl))
+                {
+                    try
                     {
                         string detectedPlate = await _aiRecognitionService.PredictLicensePlateAsync(checkInImageUrl);
                         request.LicenseVehicle = detectedPlate;
-                                            }
-                                        catch (Exception ex)
+                    }
+                    catch (Exception ex)
                     {
                         _logger.LogWarning("AI Nhận diện Walk-in lỗi: {Msg}", ex.Message);
-                                            }
-                                    }
-                                }
+                    }
+                }
+            }
 
-                if (string.IsNullOrWhiteSpace(request.LicenseVehicle) || request.LicenseVehicle.Trim().ToLower() == "string")
+            if (string.IsNullOrWhiteSpace(request.LicenseVehicle) || request.LicenseVehicle.Trim().ToLower() == "string")
             {
                 return new WalkInResponse { Status = "Error", TicketCode = "Vui lòng cung cấp biển số xe!" };
             }
             
-            if (!LicensePlateHelper.IsValidLicensePlate(request.LicenseVehicle, out string cleanedLicense))
+            string cleanLicense;
+            if (request.VehicleTypeId == 1 || request.LicenseVehicle.StartsWith("BIKE_"))
             {
-                return new WalkInResponse
-                {
-                    Status = "Error",
-                    TicketCode = LicensePlateHelper.GetErrorMessage()
-                };              
+                cleanLicense = request.LicenseVehicle.Trim().ToUpper();
             }
-            string cleanLicense = cleanedLicense;
+            else
+            {
+                if (!LicensePlateHelper.IsValidLicensePlate(request.LicenseVehicle, out string cleanedLicense))
+                {
+                    return new WalkInResponse
+                    {
+                        Status = "Error",
+                        TicketCode = LicensePlateHelper.GetErrorMessage()
+                    };              
+                }
+                cleanLicense = cleanedLicense;
+            }
 
             var activeSession = await _parkingRepository.GetActiveSessionByLicensePlateAsync(cleanLicense);
             if (activeSession != null)
@@ -297,8 +320,8 @@ namespace ParkingBuilding.Service.Service
                 return new ScanCheckInResponse { IsSuccess = false, Message = "Không tìm thấy thông tin đặt chỗ." };
             }
 
-            // ĐỐI CHIẾU BIỂN SỐ XE THỰC TẾ VS BIỂN ĐĂNG KÝ TRÊN VÉ ĐẶT CHỖ
-            if (!string.IsNullOrEmpty(detectedPlate) && detectedPlate.Trim().ToLower() != "string")
+            // ĐỐI CHIẾU BIỂN SỐ XE THỰC TẾ VS BIỂN ĐĂNG KÝ TRÊN VÉ ĐẶT CHỖ (Chỉ xe cơ giới, bỏ qua xe đạp)
+            if (session.TypeId != 1 && !string.IsNullOrEmpty(detectedPlate) && detectedPlate.Trim().ToLower() != "string")
             {
                 var cleanDetected = detectedPlate.Trim().Replace("-", "").Replace(".", "").ToUpper();
                 var cleanRegistered = session.LicenseVehicle.Trim().Replace("-", "").Replace(".", "").ToUpper();

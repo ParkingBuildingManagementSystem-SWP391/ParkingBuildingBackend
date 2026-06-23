@@ -38,9 +38,25 @@ namespace ParkingBuilding.Service.Service
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
-                if (!LicensePlateHelper.IsValidLicensePlate(request.LicenseVehicle, out string cleanedVehiclePlate))
+                string cleanedVehiclePlate;
+                if (request.TypeId == 1) // Xe đạp
                 {
-                    throw new ArgumentException(LicensePlateHelper.GetErrorMessage());
+                    if (string.IsNullOrEmpty(request.LicenseVehicle) || request.LicenseVehicle == "string" || !request.LicenseVehicle.StartsWith("BIKE_"))
+                    {
+                        cleanedVehiclePlate = $"BIKE_{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}";
+                    }
+                    else
+                    {
+                        cleanedVehiclePlate = request.LicenseVehicle.Trim().ToUpper();
+                    }
+                }
+                else
+                {
+                    if (!LicensePlateHelper.IsValidLicensePlate(request.LicenseVehicle, out string cleanedPlate))
+                    {
+                        throw new ArgumentException(LicensePlateHelper.GetErrorMessage());
+                    }
+                    cleanedVehiclePlate = cleanedPlate;
                 }
                 request.LicenseVehicle = cleanedVehiclePlate; 
 
