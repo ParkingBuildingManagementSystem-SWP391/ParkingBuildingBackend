@@ -7,5 +7,7 @@ namespace ParkingBuilding.Service.IService
     {
         Task<bool> CheckInVehicleAsync(CheckInRequest request);
         Task<WalkInResponse> WalkInCheckInAsync(WalkInRequest request);
+        Task<ScanCheckInResponse> ScanQrCheckInAsync(string ticketCode, string? detectedPlate);
+
     }
 }

@@ -256,5 +256,68 @@ namespace ParkingBuilding.Service.Service
                 Status = ParkingStatuses.SessionInProgress
             };
         }
+
+        public async Task<ScanCheckInResponse> ScanQrCheckInAsync(string ticketCode, string? detectedPlate)
+        {
+            if (string.IsNullOrWhiteSpace(ticketCode))
+            {
+                return new ScanCheckInResponse { IsSuccess = false, Message = "Mã QR vé không hợp lệ." };
+            }
+
+            var cleanTicketCode = ticketCode.Trim();
+            ParkingSession? session = null;
+
+            if (int.TryParse(cleanTicketCode, out int ticketId))
+            {
+                session = await _parkingRepository.GetReservedSessionByTicketIdAsync(ticketId);
+            }
+            else
+            {
+                session = await _parkingRepository.GetReservedSessionByTicketCodeAsync(cleanTicketCode);
+                if (session == null)
+                {
+                    session = await _parkingRepository.GetReservedSessionByLicenseAsync(cleanTicketCode);
+                }
+            }
+
+            if (session == null)
+            {
+                return new ScanCheckInResponse { IsSuccess = false, Message = "Không tìm thấy thông tin đặt chỗ." };
+            }
+
+            // ĐỐI CHIẾU BIỂN SỐ XE THỰC TẾ VS BIỂN ĐĂNG KÝ TRÊN VÉ ĐẶT CHỖ
+            if (!string.IsNullOrEmpty(detectedPlate) && detectedPlate.Trim().ToLower() != "string")
+            {
+                var cleanDetected = detectedPlate.Trim().Replace("-", "").Replace(".", "").ToUpper();
+                var cleanRegistered = session.LicenseVehicle.Trim().Replace("-", "").Replace(".", "").ToUpper();
+
+                if (cleanRegistered != cleanDetected)
+                {
+                    return new ScanCheckInResponse
+                    {
+                        IsSuccess = false,
+                        Message = $"Cảnh báo bảo mật: Vé QR đăng ký cho xe {session.LicenseVehicle}, không khớp với xe thực tế tại cổng là {detectedPlate}!"
+                    };
+                }
+            }
+
+            return new ScanCheckInResponse
+            {
+                IsSuccess = true,
+                Message = "Quét mã QR và đối khớp biển số thành công.",
+                SessionId = session.SessionId,
+                LicenseVehicle = session.LicenseVehicle,
+                SlotName = session.Slot?.SlotName ?? "N/A",
+                VehicleTypeName = session.Type?.TypeName ?? "N/A",
+                ExpectedCheckInTime = session.ExpectedCheckInTime,
+                BookingTime = session.BookingTime,
+                DriverName = session.User?.Username ?? "N/A",
+                DriverPhone = session.User?.PhoneNumber ?? "N/A",
+                DriverEmail = session.User?.Email ?? "N/A",
+                TicketCode = session.Ticket?.TicketCode ?? cleanTicketCode,
+                RequiresPayment = session.Invoice != null && session.Invoice.PaymentStatus == "PENDING",
+                PaymentStatus = session.Invoice?.PaymentStatus ?? "NoPayment"
+            };
+        }
     }
 }

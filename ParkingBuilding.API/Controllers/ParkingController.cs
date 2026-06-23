@@ -280,5 +280,41 @@ namespace ParkingBuilding.API.Controllers
             }
         }
 
+        [Authorize(Roles = "Staff")]
+        [HttpGet("scan-checkin/{ticketCode}")]
+        public async Task<IActionResult> ScanCheckIn(string ticketCode, [FromQuery] string? detectedPlate)
+        {
+            try
+            {
+                var response = await _checkInService.ScanQrCheckInAsync(ticketCode, detectedPlate);
+                if (!response.IsSuccess)
+                    return BadRequest(response);
+
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { isSuccess = false, message = ex.Message });
+            }
+        }
+
+        [Authorize(Roles = "Staff")]
+        [HttpGet("scan-checkout/{ticketCode}")]
+        public async Task<IActionResult> ScanCheckOut(string ticketCode, [FromQuery] string? detectedPlate)
+        {
+            try
+            {
+                var response = await _checkOutService.ScanQrCheckOutAsync(ticketCode, detectedPlate);
+                if (!response.IsSuccess)
+                    return BadRequest(response);
+
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { isSuccess = false, message = ex.Message });
+            }
+        }
+
     }
 }

@@ -656,5 +656,100 @@ namespace ParkingBuilding.Service.Service
                 throw;
             }
         }
+
+        public async Task<ScanCheckOutResponse> ScanQrCheckOutAsync(string ticketCodeOrLicense, string? detectedPlate)
+        {
+            if (string.IsNullOrWhiteSpace(ticketCodeOrLicense))
+            {
+                return new ScanCheckOutResponse { IsSuccess = false, Message = "Mã QR không hợp lệ." };
+            }
+
+            var cleanTicketCode = ticketCodeOrLicense.Trim();
+            var session = await _parkingRepository.GetActiveSessionByTicketCodeAsync(cleanTicketCode);
+            if (session == null)
+            {
+                session = await _parkingRepository.GetActiveSessionByLicensePlateAsync(cleanTicketCode);
+            }
+
+            if (session == null)
+            {
+                return new ScanCheckOutResponse { IsSuccess = false, Message = "Không tìm thấy lượt xe đang đỗ tương ứng với vé này." };
+            }
+
+            // ĐỐI CHIẾU BIỂN SỐ XE THỰC TẾ LÚC RA VS BIỂN SỐ GHI NHẬN LÚC VÀO
+            if (!string.IsNullOrEmpty(detectedPlate) && detectedPlate.Trim().ToLower() != "string")
+            {
+                var cleanDetected = detectedPlate.Trim().Replace("-", "").Replace(".", "").ToUpper();
+                var cleanRegistered = session.LicenseVehicle.Trim().Replace("-", "").Replace(".", "").ToUpper();
+
+                if (cleanRegistered != cleanDetected)
+                {
+                    return new ScanCheckOutResponse
+                    {
+                        IsSuccess = false,
+                        Message = $"Cảnh báo an ninh: Phát hiện tráo vé! Vé QR được cấp cho xe {session.LicenseVehicle}, không trùng với xe thực tế lúc ra {detectedPlate}!"
+                    };
+                }
+            }
+
+            DateTime checkInTime = session.CheckInTime ?? DateTime.UtcNow;
+            if (checkInTime.Kind == DateTimeKind.Unspecified)
+                checkInTime = DateTime.SpecifyKind(checkInTime, DateTimeKind.Utc);
+            DateTime checkOutTime = DateTime.UtcNow;
+
+            TimeSpan duration = checkOutTime - checkInTime;
+            double durationHours = Math.Ceiling(duration.TotalHours);
+            if (durationHours <= 0) durationHours = 1;
+
+            var vehicleType = await _context.VehiclesTypes.FirstOrDefaultAsync(vt => vt.TypeId == session.TypeId);
+            decimal totalAmount = ParkingPricingCalculator.CalculateFee(checkInTime, checkOutTime, vehicleType ?? session.Type);
+
+            bool isPaid = false;
+            string? paymentStatus = "PENDING";
+            if (session.Invoice != null)
+            {
+                paymentStatus = session.Invoice.PaymentStatus;
+                if (session.Invoice.PaymentStatus == "SUCCESS")
+                {
+                    var gracePeriod = TimeSpan.FromMinutes(20);
+                    var paymentTime = session.Invoice.PaymentTime ?? session.Invoice.UpdatedDate ?? checkInTime;
+                    if ((checkOutTime - paymentTime) <= gracePeriod)
+                    {
+                        isPaid = true;
+                    }
+                }
+                else if (session.Invoice.PaymentStatus == "Deposited")
+                {
+                    decimal depositAmount = session.Invoice.TotalAmount;
+                    if (totalAmount <= depositAmount)
+                    {
+                        isPaid = true;
+                    }
+                }
+            }
+
+            return new ScanCheckOutResponse
+            {
+                IsSuccess = true,
+                Message = "Đọc dữ liệu QR và đối khớp biển số thành công.",
+                SessionId = session.SessionId,
+                TicketCode = session.Ticket?.TicketCode ?? cleanTicketCode,
+                SlotName = session.Slot?.SlotName ?? "N/A",
+                CheckInLicensePlate = session.LicenseVehicle,
+                CheckInImageUrl = session.CheckInImageUrl,
+                CheckInTime = checkInTime,
+                CheckOutTime = checkOutTime,
+                DurationHours = durationHours,
+                TotalAmount = totalAmount,
+                IsPaid = isPaid,
+                PaymentStatus = paymentStatus,
+                PaymentMethod = session.Invoice?.PaymentMethod ?? "CASH",
+                DriverName = session.User?.Username ?? "Khách vãng lai",
+                DriverPhone = session.User?.PhoneNumber ?? "Không có",
+                DriverEmail = session.User?.Email ?? "Không có",
+                CustomerType = session.UserId.HasValue ? "Booking" : "WalkIn",
+                VehicleTypeName = session.Type?.TypeName ?? "N/A"
+            };
+        }
     }
 }

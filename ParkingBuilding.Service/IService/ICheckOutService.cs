@@ -6,5 +6,7 @@ namespace ParkingBuilding.Service.IService
     public interface ICheckOutService
     {
         Task<CheckoutResponse> CheckoutVehicleAsync(CheckoutRequest request, int currentStaffId);
+        Task<ScanCheckOutResponse> ScanQrCheckOutAsync(string ticketCodeOrLicense, string? detectedPlate);
+
     }
 }
