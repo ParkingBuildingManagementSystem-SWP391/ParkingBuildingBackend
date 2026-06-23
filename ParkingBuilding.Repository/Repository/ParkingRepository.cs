@@ -329,5 +329,14 @@ namespace ParkingBuilding.Repository.Repository
                 .ToListAsync();
         }
 
+        public async Task<List<ParkingSession>> GetActiveSessionsAsync()
+        {
+            return await _context.ParkingSessions
+                .Include(s => s.Slot)
+                .Include(s => s.Ticket)
+                .Include(s => s.Type)
+                .Where(s => (s.SessionStatus == ParkingStatuses.SessionReserved || s.SessionStatus == ParkingStatuses.SessionInProgress) && !s.IsDeleted)
+                .ToListAsync();
+        }
     }
 }

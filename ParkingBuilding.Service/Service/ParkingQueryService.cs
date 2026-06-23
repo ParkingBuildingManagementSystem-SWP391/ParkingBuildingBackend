@@ -77,5 +77,20 @@ namespace ParkingBuilding.Service.Service
 
             return dashboard;
         }
+
+        public async Task<List<ActiveSessionResponseDto>> GetActiveSessionsAsync()
+        {
+            var sessions = await _parkingRepository.GetActiveSessionsAsync();
+            return sessions.Select(s => new ActiveSessionResponseDto
+            {
+                SessionId = s.SessionId,
+                LicenseVehicle = s.LicenseVehicle,
+                TicketCode = s.Ticket?.TicketCode,
+                SessionStatus = s.SessionStatus.Trim(),
+                VehicleTypeName = s.Type?.TypeName ?? "Unknown",
+                SlotId = s.SlotId,
+                SlotName = s.Slot?.SlotName ?? "Unknown"
+            }).ToList();
+        }
     }
 }

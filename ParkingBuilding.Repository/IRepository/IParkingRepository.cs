@@ -40,6 +40,6 @@ namespace ParkingBuilding.Repository.IRepository
         // Thêm khai báo method này vào Interface IParkingRepository
         Task<List<ParkingSession>> GetSessionsByUserIdAsync(int userId);
 
-
+        Task<List<ParkingSession>> GetActiveSessionsAsync();
     }
 }
