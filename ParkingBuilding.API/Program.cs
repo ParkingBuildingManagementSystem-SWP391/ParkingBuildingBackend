@@ -48,9 +48,10 @@ namespace ParkingBuilding.API
                 {
                     policy
                         .WithOrigins(
-                            "https://localhost:7008",                    // Local dev
-                            "https://mindy.huydevops.id.vn",            // Production Backend (self)
-                            "https://parking-building-frontend.vercel.app" // Vercel FE (đổi lại đúng domain)
+                            "https://localhost:7008",                   
+                            "https://mindy.huydevops.id.vn",            
+                            "https://parking-building-frontend.vercel.app", 
+                            "https://parkingbuilding.vercel.app"          
                         )
                         .AllowAnyHeader()
                         .AllowAnyMethod()
