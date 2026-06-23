@@ -247,6 +247,19 @@ namespace ParkingBuilding.API.Controllers
                 var uploadResult = await _imageStorageService.UploadImageDetailedAsync(request.ImageFile, "parking_temp");
 
                 // 2. Gọi dịch vụ Python AI bằng URL gốc (RawUrl)
+                if (request.VehicleTypeId == 1) // Xe đạp
+                {
+                    string bikePlate = $"BIKE_{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}";
+                    return Ok(new
+                    {
+                        isSuccess = true,
+                        imageUrl = uploadResult.OptimizedUrl,
+                        rawImageUrl = uploadResult.RawUrl,
+                        predictedPlate = bikePlate,
+                        message = "Xe đạp: Tự động tạo mã định danh ảo thành công."
+                    });
+                }
+
                 bool isMotorbike = (request.VehicleTypeId == 2);
 
                 string detectedPlate = "";

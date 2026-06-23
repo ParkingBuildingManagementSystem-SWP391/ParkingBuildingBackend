@@ -81,11 +81,19 @@ namespace ParkingBuilding.Service.Service
                 throw new ArgumentException("Yêu cầu nhập biển số xe thực tế lúc ra bãi để kiểm tra an ninh đối khớp.");
             }
             
-            if (!LicensePlateHelper.IsValidLicensePlate(request.CheckoutLicensePlate, out string cleanedCheckoutPlate))
+            string cleanCheckoutPlate;
+            if (request.CheckoutLicensePlate.StartsWith("BIKE_"))
             {
-                throw new ArgumentException(LicensePlateHelper.GetErrorMessage());               
+                cleanCheckoutPlate = request.CheckoutLicensePlate.Trim().ToUpper();
             }
-            string cleanCheckoutPlate = cleanedCheckoutPlate;
+            else
+            {
+                if (!LicensePlateHelper.IsValidLicensePlate(request.CheckoutLicensePlate, out string cleanedCheckoutPlate))
+                {
+                    throw new ArgumentException(LicensePlateHelper.GetErrorMessage());               
+                }
+                cleanCheckoutPlate = cleanedCheckoutPlate;
+            }
 
             _logger.LogInformation("Bắt đầu xử lý check-out: Vé={TicketCode}, Biển số={Plate}, SessionId={SessionId}, Phương thức thanh toán={Method}",
                 cleanTicketCode ?? "N/A", cleanCheckoutPlate ?? "N/A", request.SessionId ?? 0, request.PaymentMethod);
@@ -690,8 +698,8 @@ namespace ParkingBuilding.Service.Service
                 return new ScanCheckOutResponse { IsSuccess = false, Message = "Không tìm thấy lượt xe đang đỗ tương ứng với vé này." };
             }
 
-            // ĐỐI CHIẾU BIỂN SỐ XE THỰC TẾ LÚC RA VS BIỂN SỐ GHI NHẬN LÚC VÀO
-            if (!string.IsNullOrEmpty(detectedPlate) && detectedPlate.Trim().ToLower() != "string")
+            // ĐỐI CHIẾU BIỂN SỐ XE THỰC TẾ LÚC RA VS BIỂN SỐ GHI NHẬN LÚC VÀO (Chỉ xe cơ giới, bỏ qua xe đạp)
+            if (session.TypeId != 1 && !string.IsNullOrEmpty(detectedPlate) && detectedPlate.Trim().ToLower() != "string")
             {
                 var cleanDetected = detectedPlate.Trim().Replace("-", "").Replace(".", "").ToUpper();
                 var cleanRegistered = session.LicenseVehicle.Trim().Replace("-", "").Replace(".", "").ToUpper();
