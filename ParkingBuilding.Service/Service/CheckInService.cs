@@ -259,24 +259,36 @@ namespace ParkingBuilding.Service.Service
 
         public async Task<ScanCheckInResponse> ScanQrCheckInAsync(string ticketCode, string? detectedPlate)
         {
-            if (string.IsNullOrWhiteSpace(ticketCode))
+            var isTicketCodeEmpty = string.IsNullOrWhiteSpace(ticketCode) || 
+                                    ticketCode.Trim().ToLower() == "null" || 
+                                    ticketCode.Trim().ToLower() == "undefined";
+
+            if (isTicketCodeEmpty && string.IsNullOrWhiteSpace(detectedPlate))
             {
-                return new ScanCheckInResponse { IsSuccess = false, Message = "Mã QR vé không hợp lệ." };
+                return new ScanCheckInResponse { IsSuccess = false, Message = "Mã QR vé hoặc biển số xe không hợp lệ." };
             }
 
-            var cleanTicketCode = ticketCode.Trim();
             ParkingSession? session = null;
+            string cleanTicketCode = isTicketCodeEmpty ? "" : ticketCode.Trim();
 
-            if (int.TryParse(cleanTicketCode, out int ticketId))
+            if (isTicketCodeEmpty && !string.IsNullOrWhiteSpace(detectedPlate))
             {
-                session = await _parkingRepository.GetReservedSessionByTicketIdAsync(ticketId);
+                // Truy vấn đặt chỗ theo biển số xe thực tế khi không có mã QR
+                session = await _parkingRepository.GetReservedSessionByLicenseAsync(detectedPlate.Trim());
             }
             else
             {
-                session = await _parkingRepository.GetReservedSessionByTicketCodeAsync(cleanTicketCode);
-                if (session == null)
+                if (int.TryParse(cleanTicketCode, out int ticketId))
                 {
-                    session = await _parkingRepository.GetReservedSessionByLicenseAsync(cleanTicketCode);
+                    session = await _parkingRepository.GetReservedSessionByTicketIdAsync(ticketId);
+                }
+                else
+                {
+                    session = await _parkingRepository.GetReservedSessionByTicketCodeAsync(cleanTicketCode);
+                    if (session == null)
+                    {
+                        session = await _parkingRepository.GetReservedSessionByLicenseAsync(cleanTicketCode);
+                    }
                 }
             }
 

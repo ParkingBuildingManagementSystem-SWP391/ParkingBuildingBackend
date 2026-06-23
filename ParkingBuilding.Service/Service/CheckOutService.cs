@@ -659,16 +659,30 @@ namespace ParkingBuilding.Service.Service
 
         public async Task<ScanCheckOutResponse> ScanQrCheckOutAsync(string ticketCodeOrLicense, string? detectedPlate)
         {
-            if (string.IsNullOrWhiteSpace(ticketCodeOrLicense))
+            var isTicketCodeEmpty = string.IsNullOrWhiteSpace(ticketCodeOrLicense) || 
+                                    ticketCodeOrLicense.Trim().ToLower() == "null" || 
+                                    ticketCodeOrLicense.Trim().ToLower() == "undefined";
+
+            if (isTicketCodeEmpty && string.IsNullOrWhiteSpace(detectedPlate))
             {
-                return new ScanCheckOutResponse { IsSuccess = false, Message = "Mã QR không hợp lệ." };
+                return new ScanCheckOutResponse { IsSuccess = false, Message = "Mã QR hoặc biển số xe không hợp lệ." };
             }
 
-            var cleanTicketCode = ticketCodeOrLicense.Trim();
-            var session = await _parkingRepository.GetActiveSessionByTicketCodeAsync(cleanTicketCode);
-            if (session == null)
+            ParkingSession? session = null;
+            string cleanTicketCode = isTicketCodeEmpty ? "" : ticketCodeOrLicense.Trim();
+
+            if (isTicketCodeEmpty && !string.IsNullOrWhiteSpace(detectedPlate))
             {
-                session = await _parkingRepository.GetActiveSessionByLicensePlateAsync(cleanTicketCode);
+                // Truy vấn phiên hoạt động theo biển số xe thực tế
+                session = await _parkingRepository.GetActiveSessionByLicensePlateAsync(detectedPlate.Trim());
+            }
+            else
+            {
+                session = await _parkingRepository.GetActiveSessionByTicketCodeAsync(cleanTicketCode);
+                if (session == null)
+                {
+                    session = await _parkingRepository.GetActiveSessionByLicensePlateAsync(cleanTicketCode);
+                }
             }
 
             if (session == null)

@@ -281,6 +281,21 @@ namespace ParkingBuilding.API.Controllers
         }
 
         [Authorize(Roles = "Staff")]
+        [HttpGet("active-sessions")]
+        public async Task<IActionResult> GetActiveSessions()
+        {
+            try
+            {
+                var sessions = await _parkingQueryService.GetActiveSessionsAsync();
+                return Ok(sessions);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { isSuccess = false, message = ex.Message });
+            }
+        }
+
+        [Authorize(Roles = "Staff")]
         [HttpGet("scan-checkin/{ticketCode}")]
         public async Task<IActionResult> ScanCheckIn(string ticketCode, [FromQuery] string? detectedPlate)
         {

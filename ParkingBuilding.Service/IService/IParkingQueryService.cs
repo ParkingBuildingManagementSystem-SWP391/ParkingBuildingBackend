@@ -8,5 +8,6 @@ namespace ParkingBuilding.Service.IService
     {
         Task<List<ParkingSlotResponseDto>> GetSlotsByFloorIdAsync(int floorId);
         Task<MyBookingsDashboardDto> GetMyBookingsAsync(int userId);
+        Task<List<ActiveSessionResponseDto>> GetActiveSessionsAsync();
     }
 }
