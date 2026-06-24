@@ -351,5 +351,38 @@ namespace ParkingBuilding.API.Controllers
             }
         }
 
+        [AllowAnonymous]
+        [HttpGet("locate")]
+        public async Task<IActionResult> LocateVehicle([FromQuery] string licensePlate)
+        {
+            try
+            {
+                var result = await _parkingQueryService.LocateVehicleAsync(licensePlate);
+
+                if (result == null)
+                {
+                    return NotFound(new
+                    {
+                        isSuccess = false,
+                        message = "Không tìm thấy xe đang đỗ trong bãi với biển số này."
+                    });
+                }
+                return Ok(new
+                {
+                    isSuccess = true,
+                    data = result
+                });
+            }
+            catch (ArgumentException argEx)
+            {
+                return BadRequest(new { isSuccess = false, message = argEx.Message });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { isSuccess = false, message = "Lỗi hệ thống: " + ex.Message });
+            }
+        }
+
+
     }
 }

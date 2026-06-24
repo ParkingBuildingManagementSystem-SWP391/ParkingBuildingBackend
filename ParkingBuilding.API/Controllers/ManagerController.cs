@@ -59,7 +59,7 @@ namespace ParkingBuilding.API.Controllers
 
             try
             {
-                var stats = await _managerService.GetTrafficStatisticsAsync(request);
+                var stats = await _managerService.GetTrafficStatsticsAsync(request);
                 _logger.LogInformation("Successfully retrieved traffic statistics with {Count} records.", stats.Count);
                 return Ok(stats);
             }

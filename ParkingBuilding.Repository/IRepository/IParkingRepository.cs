@@ -36,10 +36,10 @@ namespace ParkingBuilding.Repository.IRepository
         Task<ParkingSession?> GetActiveSessionByLicensePlateAsync(string licensePlate);
 
         Task<List<ParkingSlot>> GetSlotsByFloorIdAsync(int floorId);
-
-        // Thêm khai báo method này vào Interface IParkingRepository
         Task<List<ParkingSession>> GetSessionsByUserIdAsync(int userId);
 
         Task<List<ParkingSession>> GetActiveSessionsAsync();
+
+        Task<ParkingSession?> GetActiveSessionByLicensePlateWithFloorAsync(string licensePlate);
     }
 }
