@@ -78,7 +78,7 @@ namespace ParkingBuilding.Service.Service
             return response;
         }
 
-        public async Task<List<TrafficStatsResponse>> GetTrafficStatisticsAsync(TrafficStatsRequest request)
+        public async Task<List<TrafficStatsResponse>> GetTrafficStatsticsAsync(TrafficStatsRequest request)
         {
             var vnTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
 

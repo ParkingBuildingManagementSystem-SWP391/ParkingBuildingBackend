@@ -6,6 +6,7 @@ using ParkingBuilding.Service.IService;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace ParkingBuilding.Service.Service
@@ -92,5 +93,34 @@ namespace ParkingBuilding.Service.Service
                 SlotName = s.Slot?.SlotName ?? "Unknown"
             }).ToList();
         }
+
+        public async Task<LocateVehicleResponseDto?> LocateVehicleAsync(string licensePlate)
+        {
+            if (string.IsNullOrWhiteSpace(licensePlate))
+            {
+                throw new ArgumentException("Biển số xe không được để trống.");
+            }
+            // 1. Chuẩn hóa biển số xe nhập vào (Ví dụ: "30A - 123.45" -> "30A12345")
+            string cleanedPlate = Regex.Replace(licensePlate, @"[.\-\s]", "").ToUpper();
+            _logger.LogInformation("Tìm vị trí đỗ cho biển số đã chuẩn hóa: {LicensePlate}", cleanedPlate);
+            // 2. Tìm phiên đỗ xe InProgress
+            var session = await _parkingRepository.GetActiveSessionByLicensePlateWithFloorAsync(cleanedPlate);
+            if (session == null)
+            {
+                _logger.LogWarning("Không tìm thấy xe {LicensePlate} đang đỗ trong hệ thống.", cleanedPlate);
+                return null;
+            }
+            // 3. Trả về thông tin ánh xạ tương ứng
+            return new LocateVehicleResponseDto
+            {
+                LicenseVehicle = session.LicenseVehicle,
+                SlotName = session.Slot?.SlotName ?? "Chưa gán vị trí",
+                FloorName = session.Slot?.Floor?.FloorName ?? "Không xác định",
+                FloorId = session.Slot?.FloorId ?? 0,
+                CheckInTime = session.CheckInTime ?? DateTime.MinValue,
+                CheckInImageUrl = session.CheckInImageUrl
+            };
+        }
     }
 }
+

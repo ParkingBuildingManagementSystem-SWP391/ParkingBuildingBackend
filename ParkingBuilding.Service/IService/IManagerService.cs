@@ -7,7 +7,7 @@ namespace ParkingBuilding.Service.IService
     public interface IManagerService
     {
         Task<DashboardSummaryResponse> GetDashboardSummaryAsync();
-        Task<List<TrafficStatsResponse>> GetTrafficStatisticsAsync(TrafficStatsRequest request);
+        Task<List<TrafficStatsResponse>> GetTrafficStatsticsAsync(TrafficStatsRequest request);
         Task<ReportExportResponse> ExportReportAsync(ReportExportRequest request);
         Task<SlotDetailResponse?> GetSlotDetailAsync(int slotId);
         Task<bool> UpdateVehicleTypePricingAsync(int typeId, decimal dayRate, decimal nightRate, decimal fullDayRate, int? maxHoursPerTurn);
