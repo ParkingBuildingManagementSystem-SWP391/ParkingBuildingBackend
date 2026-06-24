@@ -61,6 +61,8 @@ namespace ParkingBuilding.Repository.Repository
             return await _context.ParkingSessions
                 .Include(s => s.Slot)
                 .Include(s => s.Ticket)
+                .Include(s => s.User)
+                .Include(s => s.Type)
                 .FirstOrDefaultAsync(s => s.LicenseVehicle == licenseVehicle && s.SessionStatus.Trim() == ParkingStatuses.SessionReserved && !s.IsDeleted);
         }
         public async Task<ParkingSession?> GetReservedSessionByTicketCodeAsync(string ticketCode)
@@ -68,6 +70,8 @@ namespace ParkingBuilding.Repository.Repository
             return await _context.ParkingSessions
                 .Include(s => s.Slot)
                 .Include(s => s.Ticket)
+                .Include(s => s.User)
+                .Include(s => s.Type)
                 .FirstOrDefaultAsync(s => s.Ticket != null
                                        && s.Ticket.TicketCode.Trim() == ticketCode.Trim()
                                        && s.SessionStatus.Trim() == ParkingStatuses.SessionReserved
@@ -79,6 +83,8 @@ namespace ParkingBuilding.Repository.Repository
             return await _context.ParkingSessions
                 .Include(s => s.Slot)
                 .Include(s => s.Ticket)
+                .Include(s => s.User)
+                .Include(s => s.Type)
                 .FirstOrDefaultAsync(s => s.TicketId == ticketId
                                        && s.SessionStatus.Trim() == ParkingStatuses.SessionReserved);
         }

@@ -176,6 +176,10 @@ namespace ParkingBuilding.Service.Service
         // 3. Tra cứu chi tiết phiên đỗ qua mã vé xe
         public async Task<ParkingSessionDetailResponeDto?> GetSessionDetailByTicketCodeAsync(string ticketCode)
         {
+            if (Helpers.QrCodeParserHelper.TryParseQr(ticketCode, out var parsedTicket, out var parsedPlate, out var parsedSessionId, out var parsedSlot))
+            {
+                ticketCode = parsedTicket!;
+            }
             var session = await _unitOfWork.Sessions.GetSessionDetailByTicketCodeAsync(ticketCode);
             if (session == null)
             {

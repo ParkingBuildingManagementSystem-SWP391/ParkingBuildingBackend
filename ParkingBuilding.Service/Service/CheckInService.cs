@@ -28,13 +28,23 @@ namespace ParkingBuilding.Service.Service
             _aiRecognitionService = aiRecognitionService;
         }
 
-        public async Task<bool> CheckInVehicleAsync(CheckInRequest request)
+        public async Task<ScanCheckInResponse> CheckInVehicleAsync(CheckInRequest request)
         {
             if (request == null)
             {
                 _logger.LogWarning("Check-in thất bại: Dữ liệu Request rỗng (null).");
-                return false;
+                return new ScanCheckInResponse { IsSuccess = false, Message = "Dữ liệu Request rỗng (null)." };
             }
+
+            if (QrCodeParserHelper.TryParseQr(request.TicketCode, out var parsedTicket, out var parsedPlate, out var parsedSessionId, out var parsedSlot))
+            {
+                request.TicketCode = parsedTicket;
+                if (string.IsNullOrEmpty(request.LicenseVehicle) || request.LicenseVehicle.Trim().ToLower() == "string")
+                {
+                    request.LicenseVehicle = parsedPlate;
+                }
+            }
+
             _logger.LogInformation("Bắt đầu xử lý check-in cho xe biển số: {LicensePlate}, Vé/Mã QR: {TicketCode}",
                 request.LicenseVehicle, request.TicketCode);
 
@@ -42,12 +52,12 @@ namespace ParkingBuilding.Service.Service
                         if (!string.IsNullOrEmpty(request.ImageUrl))
                             {
                                 // Lấy trực tiếp URL ảnh đã qua xác nhận ở Frontend
-                checkInImageUrl = request.ImageUrl;
+                 checkInImageUrl = request.ImageUrl;
                             }
                         else if (request.ImageFile != null && request.ImageFile.Length > 0)
                             {
                                 // Trường hợp chạy tự động, không có xác nhận thủ công từ FE
-                checkInImageUrl = await _imageStorageService.UploadImageAsync(request.ImageFile, "parking_checkin");
+                 checkInImageUrl = await _imageStorageService.UploadImageAsync(request.ImageFile, "parking_checkin");
                                 try
                 {
                     string detectedPlate = await _aiRecognitionService.PredictLicensePlateAsync(checkInImageUrl);
@@ -81,7 +91,7 @@ namespace ParkingBuilding.Service.Service
             if (cleanTicketCode == null && cleanLicense == null)
             {
                 _logger.LogWarning("Check-in thất bại: Cả Biển số xe và Mã vé đều rỗng.");
-                return false;
+                return new ScanCheckInResponse { IsSuccess = false, Message = "Cả Biển số xe và Mã vé đều rỗng." };
             }
 
             if (cleanLicense != null)
@@ -91,7 +101,11 @@ namespace ParkingBuilding.Service.Service
                 {
                     _logger.LogWarning("Check-in thất bại: Xe biển số '{LicensePlate}' đã có một phiên đỗ xe đang hoạt động trong bãi (SessionId: {SessionId}).",
                         cleanLicense, alreadyInParking.SessionId);
-                    return false;
+                    return new ScanCheckInResponse 
+                    { 
+                        IsSuccess = false, 
+                        Message = $"Xe biển số '{cleanLicense}' đã có một phiên đỗ xe đang hoạt động trong bãi." 
+                    };
                 }
             }
 
@@ -116,7 +130,11 @@ namespace ParkingBuilding.Service.Service
                         {
                             _logger.LogWarning("Check-in thất bại: Biển số thực tế '{Actual}' không khớp với biển số đã đăng ký đặt chỗ '{Reserved}' trên vé/Session {SessionId}.",
                                 cleanLicense, session.LicenseVehicle, session.SessionId);
-                            return false;
+                            return new ScanCheckInResponse 
+                            { 
+                                IsSuccess = false, 
+                                Message = $"Biển số thực tế '{cleanLicense}' không khớp với biển số đã đăng ký đặt chỗ '{session.LicenseVehicle}'." 
+                            };
                         }
                     }
                 }
@@ -130,7 +148,11 @@ namespace ParkingBuilding.Service.Service
             {
                 _logger.LogWarning("Check-in thất bại: Không tìm thấy phiên đặt chỗ (Reservation) tương ứng với Biển số '{License}' hoặc Mã vé '{Ticket}'.",
                     cleanLicense, cleanTicketCode);
-                return false;
+                return new ScanCheckInResponse 
+                { 
+                    IsSuccess = false, 
+                    Message = $"Không tìm thấy phiên đặt chỗ tương ứng với Biển số '{cleanLicense}' hoặc Mã vé '{cleanTicketCode}'." 
+                };
             }
 
             session.SessionStatus = ParkingStatuses.SessionInProgress;
@@ -155,7 +177,24 @@ namespace ParkingBuilding.Service.Service
             await _parkingRepository.UpdateSessionAndSlotAsync(session, session.Slot!);
             _logger.LogInformation("Check-in THÀNH CÔNG: Xe '{LicensePlate}' đã vào bãi. Ô đỗ phân phối: {SlotName}. SessionId: {SessionId}.",
                 cleanLicense ?? session.LicenseVehicle, session.Slot?.SlotName ?? "N/A", session.SessionId);
-            return true;
+            
+            return new ScanCheckInResponse
+            {
+                IsSuccess = true,
+                Message = "Check-in thành công! Mời xe tiến qua thanh chắn vào bãi.",
+                SessionId = session.SessionId,
+                LicenseVehicle = session.LicenseVehicle,
+                SlotName = session.Slot?.SlotName ?? "N/A",
+                VehicleTypeName = session.Type?.TypeName ?? "N/A",
+                ExpectedCheckInTime = session.ExpectedCheckInTime,
+                BookingTime = session.BookingTime,
+                DriverName = session.User?.Username ?? "N/A",
+                DriverPhone = session.User?.PhoneNumber ?? "N/A",
+                DriverEmail = session.User?.Email ?? "N/A",
+                TicketCode = session.Ticket?.TicketCode ?? cleanTicketCode,
+                RequiresPayment = session.Invoice != null && session.Invoice.PaymentStatus == "PENDING",
+                PaymentStatus = session.Invoice?.PaymentStatus ?? "NoPayment"
+            };
         }
 
         public async Task<WalkInResponse> WalkInCheckInAsync(WalkInRequest request)
@@ -282,6 +321,15 @@ namespace ParkingBuilding.Service.Service
 
         public async Task<ScanCheckInResponse> ScanQrCheckInAsync(string ticketCode, string? detectedPlate)
         {
+            if (QrCodeParserHelper.TryParseQr(ticketCode, out var parsedTicket, out var parsedPlate, out var parsedSessionId, out var parsedSlot))
+            {
+                ticketCode = parsedTicket!;
+                if (string.IsNullOrWhiteSpace(detectedPlate) || detectedPlate.Trim().ToLower() == "string")
+                {
+                    detectedPlate = parsedPlate;
+                }
+            }
+
             var isTicketCodeEmpty = string.IsNullOrWhiteSpace(ticketCode) || 
                                     ticketCode.Trim().ToLower() == "null" || 
                                     ticketCode.Trim().ToLower() == "undefined";

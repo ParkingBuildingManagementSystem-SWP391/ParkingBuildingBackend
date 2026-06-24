@@ -300,6 +300,11 @@ namespace ParkingBuilding.Service.Service
                 return new PaymentResultDto { Success = false, Message = "Dữ liệu vé thanh toán không hợp lệ!" };
             }
 
+            if (Helpers.QrCodeParserHelper.TryParseQr(request.TicketCode, out var parsedTicket, out var parsedPlate, out var parsedSessionId, out var parsedSlot))
+            {
+                request.TicketCode = parsedTicket!;
+            }
+
             _logger.LogInformation("Nhân viên {StaffId} bắt đầu xác nhận thanh toán tiền mặt cho vé {TicketCode}.", currentStaffId, request.TicketCode);
 
             using var transaction = await _context.Database.BeginTransactionAsync();
