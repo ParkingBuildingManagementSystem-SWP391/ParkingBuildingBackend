@@ -36,27 +36,27 @@ namespace ParkingBuilding.Repository.Repository
             return await base.GetByIdAsync(id);
         }
 
-        // 1. API 1: Truy vấn danh sách không điều kiện
+        // 1. API 1: Truy vấn danh sách không điều kiện (Đã sửa để lấy từ dưới lên)
         public async Task<List<ParkingSession>> GetAllSessionsWithDetailsAsync()
         {
             return await _context.ParkingSessions
                 .Include(s => s.Slot)     // Kèm dữ liệu ô đỗ xe để lấy SlotName
                 .Include(s => s.Ticket)   // Kèm dữ liệu vé để lấy TicketCode
                 .Where(s => !s.IsDeleted) // Chỉ lấy các phiên đỗ chưa bị xóa logic
+                .OrderByDescending(s => s.SessionId) // Xếp giảm dần theo SessionId (lấy từ dưới lên trên, phiên mới nhất lên đầu)
                 .ToListAsync();
         }
 
-        // 2. API 2: Truy vấn danh sách có nhiều bộ lọc tùy chọn
+        // 2. API 2: Truy vấn danh sách có nhiều bộ lọc tùy chọn (Đã sửa theo yêu cầu)
         public async Task<List<ParkingSession>> GetSessionsWithFiltersAsync(
             string? licenseVehicle,
             string? slotName,
-            string? username,
+            int? isRegistered, // Thay username bằng isRegistered (1: đã đăng ký, 0: vãng lai)
             int? typeId,
             string? sessionStatus,
             DateTime? fromDate,
             DateTime? toDate)
         {
-            // Bắt đầu khởi tạo Queryable để build câu lệnh SQL động
             var query = _context.ParkingSessions
                 .Include(s => s.Slot)
                 .Include(s => s.Ticket)
@@ -64,54 +64,64 @@ namespace ParkingBuilding.Repository.Repository
                 .Where(s => !s.IsDeleted)
                 .AsQueryable();
 
-            // Lọc theo biển số xe (nếu người dùng có nhập)
+            // 1. Lọc theo biển số xe
             if (!string.IsNullOrWhiteSpace(licenseVehicle))
             {
                 query = query.Where(s => s.LicenseVehicle.Contains(licenseVehicle));
             }
 
-            // Lọc theo tên vị trí đỗ (nếu người dùng có nhập)
+            // 2. Lọc theo tên ô đỗ
             if (!string.IsNullOrWhiteSpace(slotName))
             {
                 query = query.Where(s => s.Slot.SlotName.Contains(slotName));
             }
 
-            // Lọc theo Username người đặt (nếu người dùng có nhập)
-            if (!string.IsNullOrWhiteSpace(username))
+            // 3. LỌC LOẠI KHÁCH HÀNG (Thay thế cho Username cũ)
+            // Nhập 1: khách đã đăng ký (UserId KHÁC null)
+            // Nhập 0: khách vãng lai (UserId BẰNG null)
+            if (isRegistered.HasValue)
             {
-                query = query.Where(s => s.User.Username.Contains(username));
+                if (isRegistered.Value == 1)
+                {
+                    query = query.Where(s => s.UserId != null);
+                }
+                else if (isRegistered.Value == 0)
+                {
+                    query = query.Where(s => s.UserId == null);
+                }
             }
 
-            // Lọc theo loại phương tiện (nếu người dùng có chọn)
+            // 4. Lọc theo loại phương tiện
             if (typeId.HasValue)
             {
                 query = query.Where(s => s.TypeId == typeId.Value);
             }
 
-            // Lọc theo trạng thái phiên đỗ (nếu người dùng có chọn)
+            // 5. Lọc theo trạng thái phiên đỗ
             if (!string.IsNullOrWhiteSpace(sessionStatus))
             {
                 query = query.Where(s => s.SessionStatus == sessionStatus);
             }
 
-            // LỌC THEO KHOẢNG THỜI GIAN (Vào/Ra)
-            // Lựa chọn A: Theo đúng yêu cầu bằng lời của bạn
-            // (Nếu không nhập Từ -> Lọc Đến trở về sau; Nếu không nhập Đến -> Lọc Từ trở về trước)
-            if (fromDate.HasValue && toDate.HasValue)
+            // 6. LỌC THEO THỜI GIAN CHECK-IN (Chỉ dùng CheckInTime để so sánh)
+            // Lấy tất cả các phiên có CheckInTime >= fromDate
+            if(fromDate.HasValue && toDate.HasValue)
             {
-                // Cả hai thời gian đều được truyền -> CheckInTime và CheckOutTime phải nằm trọn trong khoảng này
-                query = query.Where(s => s.CheckInTime >= fromDate.Value && s.CheckOutTime <= toDate.Value);
+                query = query.Where(s => s.CheckInTime != null && s.CheckInTime >= fromDate.Value && s.CheckInTime <= toDate.Value);
             }
-            else if (!fromDate.HasValue && toDate.HasValue)
+            else if (fromDate.HasValue)
             {
-                // Không nhập 'Từ' (fromDate) -> Lấy mốc 'Đến' trở về sau (CheckInTime >= toDate)
-                query = query.Where(s => s.CheckInTime >= toDate.Value);
+                query = query.Where(s => s.CheckInTime != null && s.CheckInTime >= fromDate.Value);
             }
-            else if (fromDate.HasValue && !toDate.HasValue)
+            // Lấy tất cả các phiên có CheckInTime <= toDate
+            else if (toDate.HasValue)
             {
-                // Không nhập 'Đến' (toDate) -> Lấy mốc 'Từ' trở về trước (CheckInTime <= fromDate)
-                query = query.Where(s => s.CheckInTime <= fromDate.Value);
+                query = query.Where(s => s.CheckInTime != null && s.CheckInTime <= toDate.Value);
             }
+
+            // 7. SẮP XẾP TỪ DƯỚI LÊN TRÊN (Mới nhất lên đầu)
+            query = query.OrderByDescending(s => s.SessionId);
+
             return await query.ToListAsync();
         }
 

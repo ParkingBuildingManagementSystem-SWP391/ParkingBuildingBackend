@@ -16,7 +16,7 @@ namespace ParkingBuilding.Repository.IRepository
         Task<List<ParkingSession>> GetSessionsWithFiltersAsync(
             string? licenseVehicle,
             string? slotName,
-            string? username,
+            int? isRegistered,
             int? typeId,
             string? sessionStatus,
             DateTime? fromDate,

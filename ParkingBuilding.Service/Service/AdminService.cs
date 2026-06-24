@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
 namespace ParkingBuilding.Service.Service
 {
@@ -17,10 +18,12 @@ namespace ParkingBuilding.Service.Service
     public class AdminService : IAdminService
     {
         private readonly IUnitOfWork _unitOfWork;
+        private readonly ILogger<AdminService> _logger;
 
-        public AdminService(IUnitOfWork unitOfWork)
+        public AdminService(IUnitOfWork unitOfWork, ILogger<AdminService> logger)
         {
             _unitOfWork = unitOfWork;
+            _logger = logger;
         }
 
         /// <summary>
@@ -132,46 +135,63 @@ namespace ParkingBuilding.Service.Service
         // 1. Lấy toàn bộ danh sách phiên đỗ (không điều kiện)
         public async Task<List<ParkingSessionResponeDto>> GetAllParkingSessionsAsync()
         {
-            // Gọi Repo lấy dữ liệu thô
-            var sessions = await _unitOfWork.Sessions.GetAllSessionsWithDetailsAsync();
-            
-            // Map dữ liệu Entity -> DTO gọn gàng để gửi về Client
-            return sessions.Select(s => new ParkingSessionResponeDto
+            _logger.LogInformation("Executing GetAllParkingSessionsAsync in Service.");
+            try
             {
-                SlotName = s.Slot?.SlotName ?? "Không xác định",
-                TypeId = s.TypeId,
-                TicketCode = s.Ticket?.TicketCode,
-                SessionStatus = s.SessionStatus.Trim() // Cắt bỏ khoảng trắng thừa
-            }).ToList();
+                var sessions = await _unitOfWork.Sessions.GetAllSessionsWithDetailsAsync();
+
+                return sessions.Select(s => new ParkingSessionResponeDto
+                {
+                    SlotName = s.Slot?.SlotName ?? "Không xác định",
+                    TypeId = s.TypeId,
+                    TicketCode = s.Ticket?.TicketCode,
+                    SessionStatus = s.SessionStatus.Trim()
+                }).ToList();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in Service GetAllParkingSessionsAsync: {Message}", ex.Message);
+                throw;
+            }
         }
 
+        // 2. Lấy danh sách kèm theo các bộ lọc
         // 2. Lấy danh sách kèm theo các bộ lọc
         public async Task<List<ParkingSessionResponeDto>> GetParkingSessionsWithFiltersAsync(
             string? licenseVehicle,
             string? slotName,
-            string? username,
+            int? isRegistered,
             int? typeId,
             string? sessionStatus,
             DateTime? fromDate,
             DateTime? toDate)
         {
-            // Chuyển múi giờ về UTC nếu dữ liệu lưu trữ là UTC và tham số gửi lên là Local Time
-            DateTime? utcFrom = fromDate?.ToUniversalTime();
-            DateTime? utcTo = toDate?.ToUniversalTime();
-
-            // Gọi Repo lọc dữ liệu dưới database
-            var sessions = await _unitOfWork.Sessions.GetSessionsWithFiltersAsync(
-                licenseVehicle, slotName, username, typeId, sessionStatus, utcFrom, utcTo);
-
-            // Chuyển đổi kết quả sang DTO
-            return sessions.Select(s => new ParkingSessionResponeDto
+            _logger.LogInformation("Executing GetParkingSessionsWithFiltersAsync in Service. isRegistered filter value: {isRegistered}, fromDate={FromDate}, toDate={ToDate}", isRegistered, fromDate, toDate);
+            try
             {
-                SlotName = s.Slot?.SlotName ?? "Không xác định",
-                TypeId = s.TypeId,
-                TicketCode = s.Ticket?.TicketCode,
-                SessionStatus = s.SessionStatus.Trim()
-            }).ToList();
+                // Giữ nguyên múi giờ Local (không convert sang UTC) để khớp với dữ liệu Local trong DB
+                DateTime? queryFrom = fromDate;
+                DateTime? queryTo = toDate;
+
+                // Truyền queryFrom, queryTo xuống Repository tầng DB
+                var sessions = await _unitOfWork.Sessions.GetSessionsWithFiltersAsync(
+                    licenseVehicle, slotName, isRegistered, typeId, sessionStatus, queryFrom, queryTo);
+
+                return sessions.Select(s => new ParkingSessionResponeDto
+                {
+                    SlotName = s.Slot?.SlotName ?? "Không xác định",
+                    TypeId = s.TypeId,
+                    TicketCode = s.Ticket?.TicketCode,
+                    SessionStatus = s.SessionStatus.Trim()
+                }).ToList();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in Service GetParkingSessionsWithFiltersAsync: {Message}", ex.Message);
+                throw;
+            }
         }
+
 
         // 3. Tra cứu chi tiết phiên đỗ qua mã vé xe
         public async Task<ParkingSessionDetailResponeDto?> GetSessionDetailByTicketCodeAsync(string ticketCode)
