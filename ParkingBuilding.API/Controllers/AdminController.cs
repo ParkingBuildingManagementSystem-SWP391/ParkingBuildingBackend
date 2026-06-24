@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using ParkingBuilding.Service.DTOs;
 using ParkingBuilding.Service.IService;
+using Microsoft.Extensions.Logging;
 
 namespace ParkingBuilding.API.Controllers
 {
@@ -15,11 +16,12 @@ namespace ParkingBuilding.API.Controllers
     public class AdminController : ControllerBase
     {
         private readonly IAdminService _adminService;
+        private readonly ILogger<AdminController> _logger;
 
-        public AdminController(IAdminService adminService)
+        public AdminController(IAdminService adminService, ILogger<AdminController> logger)
         {
             _adminService = adminService;
-        }
+            _logger = logger;        }
 
         [HttpGet("users")]
         /// <summary>
@@ -109,13 +111,17 @@ namespace ParkingBuilding.API.Controllers
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> GetAllParkingSessions()
         {
+            // Ghi nhận nhật ký bắt đầu gọi API
+            _logger.LogInformation("Admin requested GetAllParkingSessions - Lấy danh sách phiên đỗ xe.");
             try
             {
                 var sessions = await _adminService.GetAllParkingSessionsAsync();
+                _logger.LogInformation("Successfully retrieved {Count} parking sessions.", sessions.Count);
                 return Ok(sessions);
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "Lỗi xảy ra trong GetAllParkingSessions: {Message}", ex.Message);
                 return StatusCode(500, new { error = "Lỗi hệ thống khi lấy danh sách phiên đỗ: " + ex.Message });
             }
         }
@@ -130,20 +136,24 @@ namespace ParkingBuilding.API.Controllers
         public async Task<IActionResult> GetParkingSessionsWithFilters(
             [FromQuery] string? licenseVehicle,
             [FromQuery] string? slotName,
-            [FromQuery] string? username,
+            [FromQuery] int? isRegistered,
             [FromQuery] int? typeId,
             [FromQuery] string? sessionStatus,
             [FromQuery] DateTime? fromDate,
             [FromQuery] DateTime? toDate)
         {
+            _logger.LogInformation("Admin requested GetParkingSessionsWithFilters: licenseVehicle={LicenseVehicle}, slotName={SlotName}, isRegistered={IsRegistered}, typeId={TypeId}, sessionStatus={SessionStatus}, fromDate={FromDate}, toDate={ToDate}",
+                licenseVehicle, slotName, isRegistered, typeId, sessionStatus, fromDate, toDate);
             try
             {
                 var sessions = await _adminService.GetParkingSessionsWithFiltersAsync(
-                    licenseVehicle, slotName, username, typeId, sessionStatus, fromDate, toDate);
+                    licenseVehicle, slotName, isRegistered, typeId, sessionStatus, fromDate, toDate);
+                _logger.LogInformation("Successfully retrieved {Count} filtered parking sessions.", sessions.Count);
                 return Ok(sessions);
             }
             catch (Exception ex)
             {
+                _logger.LogError(ex, "Lỗi xảy ra trong GetParkingSessionsWithFilters với bộ lọc.");
                 return StatusCode(500, new { error = "Lỗi hệ thống khi tìm kiếm phiên đỗ xe: " + ex.Message });
             }
         }

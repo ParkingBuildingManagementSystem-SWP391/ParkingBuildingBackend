@@ -22,7 +22,7 @@ namespace ParkingBuilding.Service.IService
         Task<List<ParkingSessionResponeDto>> GetParkingSessionsWithFiltersAsync(
             string? licenseVehicle,
             string? slotName,
-            string? username,
+            int? isRegistered,
             int? typeId,
             string? sessionStatus,
             DateTime? fromDate,
