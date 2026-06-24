@@ -81,16 +81,23 @@ namespace ParkingBuilding.API.Controllers
         {
             try
             {
-                var isSuccess = await _checkInService.CheckInVehicleAsync(request);
+                var response = await _checkInService.CheckInVehicleAsync(request);
 
-                if (isSuccess)
-                    return Ok(new { message = "Check-in thành công! Mời xe tiến qua thanh chắn vào bãi." });
+                if (response.IsSuccess)
+                {
+                    return Ok(new 
+                    { 
+                        isSuccess = true, 
+                        message = response.Message, 
+                        data = response 
+                    });
+                }
 
-                return BadRequest("Check-in thất bại. Không tìm thấy lịch trình đặt chỗ của xe này, hoặc đơn đặt chỗ đã quá hạn 15 phút nên hệ thống tự động hủy.");
+                return BadRequest(new { isSuccess = false, message = response.Message });
             }
             catch (Exception ex)
             {
-                return BadRequest(new { error = ex.Message });
+                return BadRequest(new { isSuccess = false, message = ex.Message });
             }
         }
 

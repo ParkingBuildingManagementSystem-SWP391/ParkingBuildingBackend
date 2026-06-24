@@ -47,6 +47,19 @@ namespace ParkingBuilding.Service.Service
                 throw new ArgumentNullException(nameof(request));
             }
 
+            if (QrCodeParserHelper.TryParseQr(request.TicketCode, out var parsedTicket, out var parsedPlate, out var parsedSessionId, out var parsedSlot))
+            {
+                request.TicketCode = parsedTicket;
+                if (string.IsNullOrEmpty(request.CheckoutLicensePlate) || request.CheckoutLicensePlate.Trim().ToLower() == "string")
+                {
+                    request.CheckoutLicensePlate = parsedPlate;
+                }
+                if (!request.SessionId.HasValue || request.SessionId.Value <= 0)
+                {
+                    request.SessionId = parsedSessionId;
+                }
+            }
+
 
             // Dòng 50: Khai báo biến checkOutImageUrl ở đây
             string? checkOutImageUrl = null;
@@ -667,6 +680,15 @@ namespace ParkingBuilding.Service.Service
 
         public async Task<ScanCheckOutResponse> ScanQrCheckOutAsync(string ticketCodeOrLicense, string? detectedPlate)
         {
+            if (QrCodeParserHelper.TryParseQr(ticketCodeOrLicense, out var parsedTicket, out var parsedPlate, out var parsedSessionId, out var parsedSlot))
+            {
+                ticketCodeOrLicense = parsedTicket!;
+                if (string.IsNullOrWhiteSpace(detectedPlate) || detectedPlate.Trim().ToLower() == "string")
+                {
+                    detectedPlate = parsedPlate;
+                }
+            }
+
             var isTicketCodeEmpty = string.IsNullOrWhiteSpace(ticketCodeOrLicense) || 
                                     ticketCodeOrLicense.Trim().ToLower() == "null" || 
                                     ticketCodeOrLicense.Trim().ToLower() == "undefined";
