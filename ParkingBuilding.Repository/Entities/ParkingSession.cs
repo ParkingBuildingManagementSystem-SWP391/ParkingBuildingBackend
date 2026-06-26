@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace ParkingBuilding.Repository.Entities;
@@ -33,17 +33,15 @@ public partial class ParkingSession
 
     public DateTime? ExpectedCheckInTime { get; set; }
 
-
     public virtual ICollection<IncidentReport> IncidentReports { get; set; } = new List<IncidentReport>();
 
     public virtual Invoice? Invoice { get; set; }
 
     public virtual ParkingSlot Slot { get; set; } = null!;
 
-    public virtual Ticket? Ticket { get; set; } = null!;
+    public virtual Ticket? Ticket { get; set; }
 
     public virtual VehiclesType Type { get; set; } = null!;
 
-    public virtual User User { get; set; } = null!;
-
+    public virtual User? User { get; set; }
 }
