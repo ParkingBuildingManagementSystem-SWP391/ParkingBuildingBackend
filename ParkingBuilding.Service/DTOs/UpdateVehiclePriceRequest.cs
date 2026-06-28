@@ -13,5 +13,8 @@ namespace ParkingBuilding.Service.DTOs
         public decimal NightRate { get; set; }
         public decimal FullDayRate { get; set; }
         public int? MaxHoursPerTurn { get; set; }
+
+        public decimal MonthlyPrice { get; set; }
+
     }
 }

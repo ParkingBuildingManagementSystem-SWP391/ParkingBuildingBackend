@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using ParkingBuilding.Service.DTOs;
 using ParkingBuilding.Service.IService;
@@ -8,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace ParkingBuilding.API.Controllers
 {
-    [Authorize(Roles = "Admin,Manager")]
+    [Authorize(Roles = "Manager")]
     [ApiController]
     [Route("api/[controller]")]
     public class ManagerController : ControllerBase
@@ -130,10 +131,9 @@ namespace ParkingBuilding.API.Controllers
         [HttpPut("update-pricing")]
         public async Task<IActionResult> UpdatePricing([FromBody] UpdateVehiclePriceRequest request)
         {
-            _logger.LogInformation("Manager requested to update pricing for VehicleTypeId={TypeId}: DayRate={DayRate}, NightRate={NightRate}, FullDayRate={FullDayRate}, MaxHoursPerTurn={MaxHoursPerTurn}",
-                request.VehicleTypeId, request.DayRate, request.NightRate, request.FullDayRate, request.MaxHoursPerTurn);
+            _logger.LogInformation("Manager requested to update pricing for VehicleTypeId={TypeId}", request.VehicleTypeId);
 
-            if (request.DayRate < 0 || request.NightRate < 0 || request.FullDayRate < 0)
+            if (request.DayRate < 0 || request.NightRate < 0 || request.FullDayRate < 0 || request.MonthlyPrice < 0)
             {
                 return BadRequest("Giá cấu hình không được nhỏ hơn 0.");
             }
@@ -141,19 +141,18 @@ namespace ParkingBuilding.API.Controllers
             try
             {
                 var isSuccess = await _managerService.UpdateVehicleTypePricingAsync(
-                    request.VehicleTypeId, 
-                    request.DayRate, 
-                    request.NightRate, 
-                    request.FullDayRate, 
-                    request.MaxHoursPerTurn);
+                    request.VehicleTypeId,
+                    request.DayRate,
+                    request.NightRate,
+                    request.FullDayRate,
+                    request.MaxHoursPerTurn,
+                    request.MonthlyPrice); // Truyền thêm trường mới vào service
 
                 if (!isSuccess)
                 {
-                    _logger.LogWarning("Failed to update pricing: VehicleTypeId={TypeId} not found", request.VehicleTypeId);
                     return NotFound("Không tìm thấy loại xe yêu cầu.");
                 }
 
-                _logger.LogInformation("Successfully updated pricing for VehicleTypeId={TypeId}", request.VehicleTypeId);
                 return Ok(new { isSuccess = true, message = "Cập nhật biểu phí đỗ xe thành công!" });
             }
             catch (Exception ex)
@@ -162,5 +161,49 @@ namespace ParkingBuilding.API.Controllers
                 return StatusCode(500, "Lỗi máy chủ khi cập nhật.");
             }
         }
+
+        /// <summary>
+        /// Hủy thẻ tháng chủ động và giải phóng ô đỗ xe cố định (Không hoàn tiền).
+        /// </summary>
+        [HttpPut("monthly-card/{monthlyCardId}/cancel")]
+        public async Task<IActionResult> CancelMonthlyCard(int monthlyCardId)
+        {
+            _logger.LogInformation("Manager requested to cancel MonthlyCardId={CardId}", monthlyCardId);
+            try
+            {
+                var isSuccess = await _managerService.CancelMonthlyCardAsync(monthlyCardId);
+                if (!isSuccess)
+                {
+                    return NotFound("Không tìm thấy thẻ tháng có hiệu lực để hủy hoặc thẻ đã hết hạn/bị hủy trước đó.");
+                }
+
+                return Ok(new { isSuccess = true, message = "Đã hủy thẻ tháng thành công và giải phóng ô đỗ xe!" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi xảy ra khi hủy thẻ tháng.");
+                return StatusCode(500, "Lỗi hệ thống: " + ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Lấy toàn bộ danh sách thẻ tháng trong hệ thống để quản lý.
+        /// </summary>
+        [HttpGet("monthly-cards")]
+        public async Task<IActionResult> GetAllMonthlyCards()
+        {
+            try
+            {
+                // Gọi thông qua _managerService chứ không gọi _context
+                var cards = await _managerService.GetAllMonthlyCardsAsync();
+                return Ok(cards);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, "Lỗi khi lấy danh sách thẻ tháng: " + ex.Message);
+            }
+        }
+
+
     }
 }

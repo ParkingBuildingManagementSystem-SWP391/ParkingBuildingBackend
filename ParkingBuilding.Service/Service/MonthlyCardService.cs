@@ -262,5 +262,28 @@ namespace ParkingBuilding.Service.Service
             public DateTime StartTime { get; set; }
             public DateTime EndTime { get; set; }
         }
+
+
+        public async Task<object?> GetMyActiveCardAsync(int userId)
+        {
+            var card = await _context.MonthlyCards
+                .Include(c => c.Slot)
+                .Where(c => c.UserId == userId && c.Status == "Active" && !c.IsDeleted)
+                .OrderByDescending(c => c.EndTime)
+                .Select(c => new {
+                    c.MonthlyCardId,
+                    c.LicenseVehicle,
+                    c.StartTime,
+                    c.EndTime,
+                    c.Status,
+                    c.TariffId,
+                    SlotName = c.Slot.SlotName,
+                    c.SlotId
+                })
+                .FirstOrDefaultAsync();
+
+            return card;
+        }
+
     }
 }
