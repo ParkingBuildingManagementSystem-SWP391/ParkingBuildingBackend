@@ -45,5 +45,36 @@ namespace ParkingBuilding.API.Controllers
                 return StatusCode(500, new { isSuccess = false, message = "Lỗi hệ thống: " + ex.Message });
             }
         }
+
+        /// <summary>
+        /// Lấy thông tin thẻ tháng đang hoạt động của tài xế đang đăng nhập.
+        /// </summary>
+        [HttpGet("my-card")]
+        public async Task<IActionResult> GetMyActiveCard()
+        {
+            var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim))
+            {
+                return Unauthorized("Không xác định được danh tính tài xế từ Token.");
+            }
+
+            int currentUserId = int.Parse(userIdClaim);
+
+            try
+            {
+                var card = await _monthlyCardService.GetMyActiveCardAsync(currentUserId);
+                if (card == null)
+                {
+                    return NotFound(new { isSuccess = false, message = "Bạn chưa đăng ký thẻ tháng hoặc thẻ đã hết hạn." });
+                }
+
+                return Ok(new { isSuccess = true, card });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, "Lỗi hệ thống: " + ex.Message);
+            }
+        }
+
     }
 }

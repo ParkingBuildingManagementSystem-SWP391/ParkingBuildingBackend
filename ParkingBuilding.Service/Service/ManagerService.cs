@@ -401,7 +401,13 @@ namespace ParkingBuilding.Service.Service
             }
         }
 
-        public async Task<bool> UpdateVehicleTypePricingAsync(int typeId, decimal dayRate, decimal nightRate, decimal fullDayRate, int? maxHoursPerTurn)
+        public async Task<bool> UpdateVehicleTypePricingAsync(
+             int typeId,
+             decimal dayRate,
+             decimal nightRate,
+             decimal fullDayRate,
+             int? maxHoursPerTurn,
+             decimal monthlyPrice) 
         {
             var vehicleType = await _context.VehiclesTypes.FirstOrDefaultAsync(vt => vt.TypeId == typeId);
             if (vehicleType == null) return false;
@@ -411,8 +417,63 @@ namespace ParkingBuilding.Service.Service
             vehicleType.FullDayRate = fullDayRate;
             vehicleType.MaxHoursPerTurn = maxHoursPerTurn;
 
+            var monthlyTariff = await _context.MonthlyTariffs.FirstOrDefaultAsync(t => t.TypeId == typeId && !t.IsDeleted);
+            if (monthlyTariff != null)
+            {
+                monthlyTariff.MonthlyPrice = monthlyPrice;
+            }
+
             await _context.SaveChangesAsync();
             return true;
+        }
+
+        public async Task<bool> CancelMonthlyCardAsync(int monthlyCardId)
+        {
+            // 1. Tìm thẻ tháng còn đang Active
+            var card = await _context.MonthlyCards
+                .Include(c => c.Slot)
+                .FirstOrDefaultAsync(c => c.MonthlyCardId == monthlyCardId && c.Status == "Active" && !c.IsDeleted);
+
+            if (card == null) return false;
+
+            // 2. Cập nhật trạng thái thẻ tháng sang Canceled
+            card.Status = "Canceled";
+
+            // 3. Giải phóng ô đỗ (Slot) liên kết
+            if (card.Slot != null)
+            {
+                // Kiểm tra xem hiện tại xe của chủ thẻ tháng có đang đỗ trong bãi hay không
+                // Nếu xe đang đỗ (SlotStatus == 'Occupied'), giữ nguyên trạng thái Occupied để xe ra bình thường.
+                // Nếu xe không đỗ trong bãi (SlotStatus == 'Reserved'), giải phóng ngay về 'Available'.
+                if (card.Slot.SlotStatus == "Reserved")
+                {
+                    card.Slot.SlotStatus = "Available";
+                }
+            }
+
+            await _context.SaveChangesAsync();
+            return true;
+        }
+
+        public async Task<List<object>> GetAllMonthlyCardsAsync()
+        {
+            return await _context.MonthlyCards
+                .Include(c => c.User)
+                .Include(c => c.Slot)
+                .Where(c => !c.IsDeleted)
+                .OrderByDescending(c => c.StartTime)
+                .Select(c => new {
+                    c.MonthlyCardId,
+                    c.LicenseVehicle,
+                    c.StartTime,
+                    c.EndTime,
+                    c.Status,
+                    c.TariffId,
+                    User = new { c.User.UserId, c.User.Username, c.User.PhoneNumber },
+                    Slot = new { c.Slot.SlotId, c.Slot.SlotName }
+                })
+                .Cast<object>() // Ép kiểu để trả về danh sách đối tượng ẩn danh
+                .ToListAsync();
         }
 
 

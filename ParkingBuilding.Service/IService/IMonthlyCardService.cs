@@ -14,5 +14,8 @@ namespace ParkingBuilding.Service.IService
 
         // 2. Xác nhận thanh toán từ VNPay IPN và lưu/kích hoạt thẻ tháng trong DB
         Task<PaymentResultDto> ConfirmMonthlyCardPaymentAsync(string txnRef, decimal amount, string responseCode, string transactionStatus);
+
+        Task<object?> GetMyActiveCardAsync(int userId);
+
     }
 }
