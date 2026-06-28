@@ -41,6 +41,7 @@ namespace ParkingBuilding.API
             builder.Services.AddScoped<IParkingQueryService, ParkingQueryService>();
 
             builder.Services.AddHostedService<BookingCancellationProcessor>();
+            builder.Services.AddHostedService<MonthlyCardExpirationProcessor>();
 
             builder.Services.AddCors(options =>
             {

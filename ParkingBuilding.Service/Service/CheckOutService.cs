@@ -189,6 +189,78 @@ namespace ParkingBuilding.Service.Service
                                   ?? throw new Exception("Loại xe của phiên đỗ không tồn tại.");
                 decimal totalAmount = ParkingPricingCalculator.CalculateFee(checkInTime, checkOutTime, vehicleType);
 
+                // ====================================================================================
+                // KỊCH BẢN 0: XE ĐĂNG KÝ THẺ THÁNG CÒN HIỆU LỰC
+                // ====================================================================================
+                var monthlyCard = await _context.MonthlyCards
+                    .FirstOrDefaultAsync(mc => mc.LicenseVehicle == session.LicenseVehicle 
+                                         && mc.Status == ParkingStatuses.MonthlyCardActive 
+                                         && !mc.IsDeleted 
+                                         && mc.EndTime >= DateTime.UtcNow);
+
+                if (monthlyCard != null)
+                {
+                    session.CheckOutImageUrl = checkOutImageUrl;
+                    session.CheckOutTime = checkOutTime;
+                    session.SessionStatus = ParkingStatuses.SessionCompleted;
+                    _context.ParkingSessions.Update(session);
+
+                    var invoice = session.Invoice;
+                    if (invoice == null)
+                    {
+                        invoice = new Invoice
+                        {
+                            SessionId = session.SessionId,
+                            TotalAmount = 0,
+                            PaymentMethod = "MONTHLY_CARD",
+                            PaymentStatus = "SUCCESS",
+                            PaymentTime = DateTime.UtcNow,
+                            CreatedDate = DateTime.UtcNow,
+                            StaffId = currentStaffId
+                        };
+                        await _context.Invoices.AddAsync(invoice);
+                    }
+                    else
+                    {
+                        invoice.TotalAmount = 0;
+                        invoice.PaymentMethod = "MONTHLY_CARD";
+                        invoice.PaymentStatus = "SUCCESS";
+                        invoice.PaymentTime = DateTime.UtcNow;
+                        invoice.StaffId = currentStaffId;
+                        _context.Invoices.Update(invoice);
+                    }
+
+                    var slot = session.Slot ?? await _parkingRepository.GetSlotByIdAsync(session.SlotId);
+                    if (slot != null)
+                    {
+                        slot.SlotStatus = ParkingStatuses.SlotReserved; // Khóa lại cho thẻ tháng
+                        _context.ParkingSlots.Update(slot);
+                    }
+
+                    await _context.SaveChangesAsync();
+                    await dbTransaction.CommitAsync();
+
+                    return new CheckoutResponse
+                    {
+                        IsSuccess = true,
+                        Message = $"Xe thuộc diện thẻ tháng hoạt động. Cho phép xe {session.LicenseVehicle} ra khỏi bãi (Phí đỗ: 0 VNĐ).",
+                        TicketCode = session.Ticket?.TicketCode ?? "N/A",
+                        SlotName = slot?.SlotName ?? "N/A",
+                        CheckInLicensePlate = checkInPlate,
+                        CheckOutLicensePlate = cleanCheckoutPlate ?? "",
+                        IsLicensePlateMatched = true,
+                        CheckInImageUrl = session.CheckInImageUrl,
+                        CheckOutImageUrl = checkOutImageUrl,
+                        CheckInTime = checkInTime,
+                        CheckOutTime = session.CheckOutTime.Value,
+                        DurationHours = durationHours,
+                        TotalAmount = 0,
+                        StaffName = staffName,
+                        InvoiceId = invoice.InvoiceId,
+                        IsPaid = true
+                    };
+                }
+
                 session.CheckOutImageUrl = checkOutImageUrl;
                 session.CheckOutTime = checkOutTime;
 
@@ -296,7 +368,8 @@ namespace ParkingBuilding.Service.Service
                     var slot = session.Slot ?? await _parkingRepository.GetSlotByIdAsync(session.SlotId);
                     if (slot != null)
                     {
-                        slot.SlotStatus = ParkingStatuses.SlotAvailable;
+                        var hasActiveMonthly = await _context.MonthlyCards.AnyAsync(mc => mc.SlotId == slot.SlotId && mc.Status == ParkingStatuses.MonthlyCardActive && !mc.IsDeleted);
+                        slot.SlotStatus = hasActiveMonthly ? ParkingStatuses.SlotReserved : ParkingStatuses.SlotAvailable;
                     }
 
                     _context.ParkingSessions.Update(session);
@@ -358,7 +431,8 @@ namespace ParkingBuilding.Service.Service
                         var pSlot = session.Slot ?? await _parkingRepository.GetSlotByIdAsync(session.SlotId);
                         if (pSlot != null)
                         {
-                            pSlot.SlotStatus = ParkingStatuses.SlotAvailable;
+                            var hasActiveMonthly = await _context.MonthlyCards.AnyAsync(mc => mc.SlotId == pSlot.SlotId && mc.Status == ParkingStatuses.MonthlyCardActive && !mc.IsDeleted);
+                            pSlot.SlotStatus = hasActiveMonthly ? ParkingStatuses.SlotReserved : ParkingStatuses.SlotAvailable;
                             _context.ParkingSlots.Update(pSlot);
                         }
 
@@ -745,29 +819,48 @@ namespace ParkingBuilding.Service.Service
             double durationHours = Math.Ceiling(duration.TotalHours);
             if (durationHours <= 0) durationHours = 1;
 
-            var vehicleType = await _context.VehiclesTypes.FirstOrDefaultAsync(vt => vt.TypeId == session.TypeId);
-            decimal totalAmount = ParkingPricingCalculator.CalculateFee(checkInTime, checkOutTime, vehicleType ?? session.Type);
+            // Kiểm tra xem xe này có thẻ tháng Active và còn hạn sử dụng hay không
+            var monthlyCard = await _context.MonthlyCards
+                .FirstOrDefaultAsync(mc => mc.LicenseVehicle == session.LicenseVehicle 
+                                     && mc.Status == ParkingStatuses.MonthlyCardActive 
+                                     && !mc.IsDeleted 
+                                     && mc.EndTime >= DateTime.UtcNow);
 
+            bool isMonthlyCardValid = monthlyCard != null;
             bool isPaid = false;
             string? paymentStatus = "PENDING";
-            if (session.Invoice != null)
+            decimal totalAmount = 0;
+
+            if (isMonthlyCardValid)
             {
-                paymentStatus = session.Invoice.PaymentStatus;
-                if (session.Invoice.PaymentStatus == "SUCCESS")
+                totalAmount = 0;
+                isPaid = true;
+                paymentStatus = "SUCCESS";
+            }
+            else
+            {
+                var vehicleType = await _context.VehiclesTypes.FirstOrDefaultAsync(vt => vt.TypeId == session.TypeId);
+                totalAmount = ParkingPricingCalculator.CalculateFee(checkInTime, checkOutTime, vehicleType ?? session.Type);
+
+                if (session.Invoice != null)
                 {
-                    var gracePeriod = TimeSpan.FromMinutes(20);
-                    var paymentTime = session.Invoice.PaymentTime ?? session.Invoice.UpdatedDate ?? checkInTime;
-                    if ((checkOutTime - paymentTime) <= gracePeriod)
+                    paymentStatus = session.Invoice.PaymentStatus;
+                    if (session.Invoice.PaymentStatus == "SUCCESS")
                     {
-                        isPaid = true;
+                        var gracePeriod = TimeSpan.FromMinutes(20);
+                        var paymentTime = session.Invoice.PaymentTime ?? session.Invoice.UpdatedDate ?? checkInTime;
+                        if ((checkOutTime - paymentTime) <= gracePeriod)
+                        {
+                            isPaid = true;
+                        }
                     }
-                }
-                else if (session.Invoice.PaymentStatus == "Deposited")
-                {
-                    decimal depositAmount = session.Invoice.TotalAmount;
-                    if (totalAmount <= depositAmount)
+                    else if (session.Invoice.PaymentStatus == "Deposited")
                     {
-                        isPaid = true;
+                        decimal depositAmount = session.Invoice.TotalAmount;
+                        if (totalAmount <= depositAmount)
+                        {
+                            isPaid = true;
+                        }
                     }
                 }
             }
@@ -787,11 +880,11 @@ namespace ParkingBuilding.Service.Service
                 TotalAmount = totalAmount,
                 IsPaid = isPaid,
                 PaymentStatus = paymentStatus,
-                PaymentMethod = session.Invoice?.PaymentMethod ?? "CASH",
-                DriverName = session.User?.Username ?? "Khách vãng lai",
+                PaymentMethod = isMonthlyCardValid ? "MONTHLY_CARD" : (session.Invoice?.PaymentMethod ?? "CASH"),
+                DriverName = session.User?.Username ?? (isMonthlyCardValid ? "Khách thẻ tháng" : "Khách vãng lai"),
                 DriverPhone = session.User?.PhoneNumber ?? "Không có",
                 DriverEmail = session.User?.Email ?? "Không có",
-                CustomerType = session.UserId.HasValue ? "Booking" : "WalkIn",
+                CustomerType = isMonthlyCardValid ? "Monthly" : (session.UserId.HasValue ? "Booking" : "WalkIn"),
                 VehicleTypeName = session.Type?.TypeName ?? "N/A"
             };
         }

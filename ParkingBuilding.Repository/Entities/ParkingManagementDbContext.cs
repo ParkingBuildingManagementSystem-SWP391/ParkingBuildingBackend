@@ -102,6 +102,10 @@ public partial class ParkingManagementDbContext : DbContext
         {
             entity.HasKey(e => e.MonthlyCardId).HasName("PK__MonthlyC__D4771EA66B1BD21D");
 
+            entity.HasIndex(e => e.SlotId, "UQ_Active_Monthly_Slot")
+                .IsUnique()
+                .HasFilter("([Status]='Active' AND [IsDeleted]=(0))");
+
             entity.Property(e => e.EndTime).HasColumnType("datetime");
             entity.Property(e => e.LicenseVehicle)
                 .HasMaxLength(50)
@@ -112,6 +116,11 @@ public partial class ParkingManagementDbContext : DbContext
             entity.Property(e => e.Status)
                 .HasMaxLength(50)
                 .IsUnicode(false);
+
+            entity.HasOne(d => d.Slot).WithOne(p => p.MonthlyCard)
+                .HasForeignKey<MonthlyCard>(d => d.SlotId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_MonthlyCards_ParkingSlots");
 
             entity.HasOne(d => d.Tariff).WithMany(p => p.MonthlyCards)
                 .HasForeignKey(d => d.TariffId)

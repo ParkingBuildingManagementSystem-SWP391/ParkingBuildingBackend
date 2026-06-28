@@ -25,6 +25,10 @@ public partial class MonthlyCard
 
     public bool IsDeleted { get; set; }
 
+    public int SlotId { get; set; }
+
+    public virtual ParkingSlot Slot { get; set; } = null!;
+
     public virtual MonthlyTariff Tariff { get; set; } = null!;
 
     public virtual Ticket Ticket { get; set; } = null!;

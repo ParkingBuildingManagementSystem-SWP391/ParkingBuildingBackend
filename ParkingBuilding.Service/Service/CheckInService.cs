@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using ParkingBuilding.Repository.Entities;
 using ParkingBuilding.Repository.IRepository;
@@ -15,17 +16,20 @@ namespace ParkingBuilding.Service.Service
         private readonly ILogger<CheckInService> _logger;
         private readonly IImageStorageService _imageStorageService;
         private readonly IAiRecognitionService _aiRecognitionService;
+        private readonly ParkingManagementDbContext _context;
 
         public CheckInService(
             IParkingRepository parkingRepository,
             ILogger<CheckInService> logger,
             IImageStorageService imageStorageService,
-            IAiRecognitionService aiRecognitionService)
+            IAiRecognitionService aiRecognitionService,
+            ParkingManagementDbContext context)
         {
             _parkingRepository = parkingRepository;
             _logger = logger;
             _imageStorageService = imageStorageService;
             _aiRecognitionService = aiRecognitionService;
+            _context = context;
         }
 
         public async Task<ScanCheckInResponse> CheckInVehicleAsync(CheckInRequest request)
@@ -281,30 +285,78 @@ namespace ParkingBuilding.Service.Service
                 };
             }
 
-            var ticket = new Ticket
-            {
-                TicketCode = $"WK_{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}",
-                TicketStatus = ParkingStatuses.TicketActive
-            };
+            // 1. Kiểm tra xe có thẻ tháng ACTIVE và còn hạn hay không
+            var monthlyCard = await _context.MonthlyCards
+                .Include(m => m.Ticket)
+                .Include(m => m.Slot)
+                .FirstOrDefaultAsync(m => m.LicenseVehicle == cleanLicense 
+                                     && m.Status == ParkingStatuses.MonthlyCardActive 
+                                     && !m.IsDeleted 
+                                     && m.EndTime >= DateTime.UtcNow);
 
+            ParkingSession? newSession = null;
+            Ticket? ticket = null;
+            ParkingSlot? slot = null;
 
-            //
+            if (monthlyCard != null)
+            {
+                ticket = monthlyCard.Ticket;
+                slot = monthlyCard.Slot;
 
-            //
-            var newSession = await _parkingRepository.CreateWalkInSessionWithLockAsync(cleanLicense, request.VehicleTypeId, checkInImageUrl, ticket);
-            if (newSession == null)
-            {
-                return new WalkInResponse { Status = "Full", TicketCode = "Thành thật xin lỗi, bãi xe hiện tại đã hết chỗ trống cho loại xe này!" };
-            }
-            
-            var slot = newSession.Slot ?? await _parkingRepository.GetSlotByIdAsync(newSession.SlotId);
-            if (slot == null)
-            {
-                return new WalkInResponse
+                if (slot == null)
                 {
-                    Status = "Error",
-                    TicketCode = $"Hệ thống không tìm thấy slot id tương ứng"
+                    return new WalkInResponse { Status = "Error", TicketCode = "Hệ thống chặn: Không tìm thấy ô đỗ xe được liên kết với thẻ tháng của bạn." };
+                }
+
+                if (slot.SlotStatus == ParkingStatuses.SlotOccupied)
+                {
+                    return new WalkInResponse { Status = "Error", TicketCode = $"HỆ THỐNG CHẶN: Ô đỗ {slot.SlotName} đã có xe đỗ! Không thể check-in." };
+                }
+
+                // Cập nhật trạng thái slot đỗ
+                slot.SlotStatus = ParkingStatuses.SlotOccupied;
+                _context.ParkingSlots.Update(slot);
+
+                // Tạo phiên đỗ mới có UserId của chủ thẻ tháng
+                newSession = new ParkingSession
+                {
+                    UserId = monthlyCard.UserId,
+                    SlotId = slot.SlotId,
+                    LicenseVehicle = cleanLicense,
+                    TypeId = request.VehicleTypeId,
+                    CheckInTime = DateTime.UtcNow,
+                    CheckInImageUrl = checkInImageUrl,
+                    SessionStatus = ParkingStatuses.SessionInProgress,
+                    TicketId = ticket.TicketId,
+                    IsDeleted = false
                 };
+
+                await _context.ParkingSessions.AddAsync(newSession);
+                await _context.SaveChangesAsync();
+            }
+            else
+            {
+                ticket = new Ticket
+                {
+                    TicketCode = $"WK_{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}",
+                    TicketStatus = ParkingStatuses.TicketActive
+                };
+
+                newSession = await _parkingRepository.CreateWalkInSessionWithLockAsync(cleanLicense, request.VehicleTypeId, checkInImageUrl, ticket);
+                if (newSession == null)
+                {
+                    return new WalkInResponse { Status = "Full", TicketCode = "Thành thật xin lỗi, bãi xe hiện tại đã hết chỗ trống cho loại xe này!" };
+                }
+
+                slot = newSession.Slot ?? await _parkingRepository.GetSlotByIdAsync(newSession.SlotId);
+                if (slot == null)
+                {
+                    return new WalkInResponse
+                    {
+                        Status = "Error",
+                        TicketCode = $"Hệ thống không tìm thấy slot id tương ứng"
+                    };
+                }
             }
 
             return new WalkInResponse
