@@ -177,6 +177,20 @@ namespace ParkingBuilding.API.Controllers
             }
         }
 
+        [HttpGet("slots")]
+        public async Task<IActionResult> GetSlots([FromQuery] int? typeId, [FromQuery] string? status)
+        {
+            try
+            {
+                var slots = await _parkingQueryService.GetSlotsAsync(typeId, status);
+                return Ok(slots);
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(new { isSuccess = false, message = ex.Message });
+            }
+        }
+
         // Thêm endpoint này vào class ParkingController
         [Authorize(Roles = "Registered_Driver")]
         [HttpGet("my-bookings")]

@@ -10,5 +10,6 @@ namespace ParkingBuilding.Service.IService
         Task<MyBookingsDashboardDto> GetMyBookingsAsync(int userId);
         Task<List<ActiveSessionResponseDto>> GetActiveSessionsAsync();
         Task<LocateVehicleResponseDto?> LocateVehicleAsync(string licensePlate);
+        Task<List<ParkingSlotResponseDto>> GetSlotsAsync(int? typeId, string? status);
     }
 }

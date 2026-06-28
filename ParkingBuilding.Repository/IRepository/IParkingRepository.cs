@@ -41,5 +41,6 @@ namespace ParkingBuilding.Repository.IRepository
         Task<List<ParkingSession>> GetActiveSessionsAsync();
 
         Task<ParkingSession?> GetActiveSessionByLicensePlateWithFloorAsync(string licensePlate);
+        Task<List<ParkingSlot>> GetSlotsAsync(int? typeId, string? status);
     }
 }

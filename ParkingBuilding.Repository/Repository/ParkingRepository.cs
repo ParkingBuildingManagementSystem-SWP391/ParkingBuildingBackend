@@ -356,5 +356,23 @@ namespace ParkingBuilding.Repository.Repository
                                        && s.SessionStatus == ParkingStatuses.SessionInProgress
                                        && !s.IsDeleted);
         }
+
+        public async Task<List<ParkingSlot>> GetSlotsAsync(int? typeId, string? status)
+        {
+            var query = _context.ParkingSlots.Where(s => !s.IsDeleted);
+
+            if (typeId.HasValue)
+            {
+                query = query.Where(s => s.TypeId == typeId.Value);
+            }
+
+            if (!string.IsNullOrEmpty(status))
+            {
+                var trimmedStatus = status.Trim();
+                query = query.Where(s => s.SlotStatus.Trim() == trimmedStatus);
+            }
+
+            return await query.ToListAsync();
+        }
     }
 }
