@@ -396,7 +396,5 @@ namespace ParkingBuilding.API.Controllers
                 return StatusCode(500, new { isSuccess = false, message = "Lỗi hệ thống: " + ex.Message });
             }
         }
-
-
     }
 }

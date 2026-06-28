@@ -51,6 +51,12 @@ public partial class ParkingManagementDbContext : DbContext
                 .HasMaxLength(50)
                 .IsUnicode(false);
 
+            // Cấu hình các cột mới
+            entity.Property(e => e.CreatedAt).HasColumnType("datetime");
+            entity.Property(e => e.ResolvedAt).HasColumnType("datetime");
+            entity.Property(e => e.FineAmount).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.ImageProofUrl).HasMaxLength(500);
+
             entity.HasOne(d => d.Reported).WithMany(p => p.IncidentReportReporteds)
                 .HasForeignKey(d => d.ReportedId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
@@ -60,8 +66,10 @@ public partial class ParkingManagementDbContext : DbContext
                 .HasForeignKey(d => d.ResolvedId)
                 .HasConstraintName("FK__IncidentR__Resol__68487DD7");
 
+            // Sửa chỗ này: Thêm .IsRequired(false)
             entity.HasOne(d => d.Session).WithMany(p => p.IncidentReports)
                 .HasForeignKey(d => d.SessionId)
+                .IsRequired(false) // CHỈNH SỬA: Cho phép SessionId Nullable trong Entity Framework
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK__IncidentR__Sessi__693CA210");
         });

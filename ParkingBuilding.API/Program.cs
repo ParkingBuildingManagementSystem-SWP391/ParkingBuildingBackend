@@ -88,6 +88,12 @@ namespace ParkingBuilding.API
             // Đăng ký Service của phân hệ Manager
             builder.Services.AddScoped<IManagerService, ManagerService>();
 
+            // Đăng ký Repository IncidentReport
+            builder.Services.AddScoped<IIncidentReportRepository, IncidentReportRepository>();
+
+            // Đăng ký Service IncidentReport
+            builder.Services.AddScoped<IIncidentReportService, IncidentReportService>();
+
             // Đăng ký UnitOfWork
             builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
