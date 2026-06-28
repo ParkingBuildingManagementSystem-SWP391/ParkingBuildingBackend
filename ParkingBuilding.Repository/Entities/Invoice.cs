@@ -7,7 +7,7 @@ public partial class Invoice
 {
     public int InvoiceId { get; set; }
 
-    public int SessionId { get; set; }
+    public int? SessionId { get; set; }
 
     public decimal TotalAmount { get; set; }
 
@@ -25,7 +25,7 @@ public partial class Invoice
 
     public DateTime? UpdatedDate { get; set; }
 
-    public virtual ParkingSession Session { get; set; } = null!;
+    public virtual ParkingSession? Session { get; set; }
 
     public virtual User? Staff { get; set; }
 }

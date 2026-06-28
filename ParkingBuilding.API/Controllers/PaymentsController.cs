@@ -136,6 +136,21 @@ namespace ParkingBuilding.API.Controllers
                 string responseCode = request.vnp_ResponseCode ?? "";
                 string transactionStatus = request.vnp_TransactionStatus ?? "";
 
+                if (txnRef.StartsWith("MCR_"))
+                {
+                    var mcService = HttpContext.RequestServices.GetService(typeof(IMonthlyCardService)) as IMonthlyCardService;
+                    if (mcService == null)
+                    {
+                        return Ok(new { RspCode = "99", Message = "MonthlyCardService not initialized" });
+                    }
+                    var mcResult = await mcService.ConfirmMonthlyCardPaymentAsync(txnRef, vnpayAmount, responseCode, transactionStatus);
+                    if (!mcResult.Success)
+                    {
+                        return Ok(new { RspCode = mcResult.ErrorCode, Message = mcResult.Message });
+                    }
+                    return Ok(new { RspCode = "00", Message = "Confirm Success" });
+                }
+
                 // 4. Gọi Service cập nhật Database
                 var result = await _paymentService.ConfirmVnPayPaymentAsync(txnRef, vnpayAmount, responseCode, transactionStatus);
 
