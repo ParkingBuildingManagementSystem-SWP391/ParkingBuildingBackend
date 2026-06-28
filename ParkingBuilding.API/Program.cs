@@ -74,6 +74,7 @@ namespace ParkingBuilding.API
 
             // Đăng ký dịch vụ thanh toán (Service Layer)
             builder.Services.AddScoped<IPaymentService, PaymentService>();
+            builder.Services.AddScoped<IMonthlyCardService, MonthlyCardService>();
 
             // Đăng ký các Repository riêng lẻ (Repository Layer)
             builder.Services.AddScoped<IInvoiceRepository, InvoiceRepository>();

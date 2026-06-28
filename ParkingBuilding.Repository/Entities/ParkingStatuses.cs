@@ -23,5 +23,10 @@ namespace ParkingBuilding.Repository.Entities
         public const string TicketActive = "Active";       // Vé hoạt động
         public const string TicketExpired = "Expired";     // Vé hết hiệu lực do bùng hẹn
         public const string TicketCompleted = "Completed"; // Vé đã thanh toán/check-out xong
+
+        // Trạng thái thẻ tháng (MonthlyCard.Status)
+        public const string MonthlyCardActive = "Active";       // Thẻ hoạt động bình thường
+        public const string MonthlyCardExpired = "Expired";     // Thẻ đã hết hạn
+        public const string MonthlyCardSuspended = "Suspended"; // Thẻ bị tạm khóa
     }
 }
