@@ -65,6 +65,21 @@ namespace ParkingBuilding.Service.Service
             var tariff = await _context.MonthlyTariffs.FirstOrDefaultAsync(t => t.TariffId == dto.TariffId && !t.IsDeleted)
                          ?? throw new KeyNotFoundException("Gói cước thẻ tháng không tồn tại hoặc đã bị xóa.");
 
+            // 2.1. Kiểm tra ô đỗ xe (SlotId)
+            var slot = await _context.ParkingSlots.FirstOrDefaultAsync(s => s.SlotId == dto.SlotId && !s.IsDeleted)
+                       ?? throw new KeyNotFoundException("Chỗ đỗ xe không tồn tại hoặc đã bị xóa.");
+
+            if (slot.TypeId != tariff.TypeId)
+            {
+                throw new ArgumentException("Chỗ đỗ xe đã chọn không phù hợp với loại xe của gói cước.");
+            }
+
+            var hasActiveMonthly = await _context.MonthlyCards.AnyAsync(mc => mc.SlotId == dto.SlotId && mc.Status == ParkingStatuses.MonthlyCardActive && !mc.IsDeleted);
+            if (hasActiveMonthly)
+            {
+                throw new ArgumentException("Chỗ đỗ xe này đã được đăng ký bởi một thẻ tháng khác đang hoạt động.");
+            }
+
             // 3. Tính toán số tiền phải trả và thời hạn
             decimal amountToPay = tariff.MonthlyPrice * dto.DurationMonths;
 
@@ -83,6 +98,7 @@ namespace ParkingBuilding.Service.Service
             {
                 UserId = userId,
                 TariffId = dto.TariffId,
+                SlotId = dto.SlotId,
                 LicenseVehicle = cleanLicense,
                 DurationMonths = dto.DurationMonths,
                 TicketCode = ticketCode,
@@ -180,6 +196,13 @@ namespace ParkingBuilding.Service.Service
                 await _context.Tickets.AddAsync(ticket);
                 await _context.SaveChangesAsync(); // Lưu để lấy TicketId
 
+                // 4.1. Kiểm tra lại trùng lặp SlotId trước khi lưu để phòng tránh race condition
+                var hasActiveMonthly = await _context.MonthlyCards.AnyAsync(mc => mc.SlotId == meta.SlotId && mc.Status == ParkingStatuses.MonthlyCardActive && !mc.IsDeleted);
+                if (hasActiveMonthly)
+                {
+                    return new PaymentResultDto { Success = false, ErrorCode = "05", Message = "Chỗ đỗ này đã được đăng ký kích hoạt bởi tài xế khác trong lúc bạn thanh toán." };
+                }
+
                 // 5. Khởi tạo và Lưu thẻ tháng (MonthlyCard)
                 var monthlyCard = new MonthlyCard
                 {
@@ -191,9 +214,18 @@ namespace ParkingBuilding.Service.Service
                     StartTime = currentDbTime,
                     EndTime = currentDbTime.AddMonths(meta.DurationMonths),
                     Status = ParkingStatuses.MonthlyCardActive,
-                    IsDeleted = false
+                    IsDeleted = false,
+                    SlotId = meta.SlotId
                 };
                 await _context.MonthlyCards.AddAsync(monthlyCard);
+
+                // Khóa ô đỗ xe bằng cách chuyển sang Reserved nếu nó đang Available
+                var slot = await _context.ParkingSlots.FirstOrDefaultAsync(s => s.SlotId == meta.SlotId && !s.IsDeleted);
+                if (slot != null && slot.SlotStatus == ParkingStatuses.SlotAvailable)
+                {
+                    slot.SlotStatus = ParkingStatuses.SlotReserved;
+                    _context.ParkingSlots.Update(slot);
+                }
 
                 // 6. Cập nhật hóa đơn sang thành công
                 invoice.PaymentStatus = "SUCCESS";
@@ -223,6 +255,7 @@ namespace ParkingBuilding.Service.Service
         {
             public int UserId { get; set; }
             public int TariffId { get; set; }
+            public int SlotId { get; set; }
             public string LicenseVehicle { get; set; } = null!;
             public int DurationMonths { get; set; }
             public string TicketCode { get; set; } = null!;

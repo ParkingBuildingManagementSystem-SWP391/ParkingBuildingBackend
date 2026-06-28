@@ -38,6 +38,7 @@ namespace ParkingBuilding.API.BackgroundServices
                     using (var scope = _serviceProvider.CreateScope())
                     {
                         var parkingRepo = scope.ServiceProvider.GetRequiredService<IParkingRepository>();
+                        var context = scope.ServiceProvider.GetRequiredService<ParkingManagementDbContext>();
 
                         var expiredSessions = await parkingRepo.GetExpiredReservationsAsync();
 
@@ -53,7 +54,8 @@ namespace ParkingBuilding.API.BackgroundServices
                                     var slot = session.Slot;
                                     if (slot != null)
                                     {
-                                        slot.SlotStatus = ParkingStatuses.SlotAvailable;
+                                        var hasActiveMonthly = await context.MonthlyCards.AnyAsync(mc => mc.SlotId == slot.SlotId && mc.Status == ParkingStatuses.MonthlyCardActive && !mc.IsDeleted);
+                                        slot.SlotStatus = hasActiveMonthly ? ParkingStatuses.SlotReserved : ParkingStatuses.SlotAvailable;
                                     }
                                     if (session.Ticket != null)
                                     {

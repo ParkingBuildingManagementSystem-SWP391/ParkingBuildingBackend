@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
@@ -19,5 +19,8 @@ namespace ParkingBuilding.Service.DTOs
         [Required(ErrorMessage = "Vui lòng nhập số tháng muốn thuê.")]
         [Range(1, 12, ErrorMessage = "Thời hạn thuê phải từ 1 đến 12 tháng.")]
         public int DurationMonths { get; set; }
+
+        [Required(ErrorMessage = "Vui lòng chọn chỗ đỗ xe (SlotId).")]
+        public int SlotId { get; set; }
     }
 }
