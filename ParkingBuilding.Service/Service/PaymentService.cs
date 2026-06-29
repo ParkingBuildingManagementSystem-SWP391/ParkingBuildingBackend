@@ -449,10 +449,17 @@ namespace ParkingBuilding.Service.Service
 
             _logger.LogInformation("Người dùng {UserId} đã truy vấn thành công trạng thái hóa đơn {InvoiceId}. Trạng thái hiện tại: {Status}.",
                 currentUserId, invoiceId, invoice.PaymentStatus);
-            if (invoice.PaymentStatus == "SUCCESS" && invoice.Session != null && invoice.Session.CheckOutTime != null)
-                            {
-                                return "SUCCESS_EXIT";
-                            }
+            if (invoice.PaymentStatus == "SUCCESS")
+            {
+                if (invoice.TransactionCode != null && invoice.TransactionCode.StartsWith("MCR"))
+                {
+                    return "SUCCESS_MONTHLY";
+                }
+                if (invoice.Session != null && invoice.Session.CheckOutTime != null)
+                {
+                    return "SUCCESS_EXIT";
+                }
+            }
             
             return invoice.PaymentStatus;
         }

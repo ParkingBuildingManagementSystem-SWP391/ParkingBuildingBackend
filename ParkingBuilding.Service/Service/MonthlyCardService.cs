@@ -268,6 +268,7 @@ namespace ParkingBuilding.Service.Service
         {
             var card = await _context.MonthlyCards
                 .Include(c => c.Slot)
+                .Include(c => c.Ticket)
                 .Where(c => c.UserId == userId && c.Status == "Active" && !c.IsDeleted)
                 .OrderByDescending(c => c.EndTime)
                 .Select(c => new {
@@ -278,7 +279,8 @@ namespace ParkingBuilding.Service.Service
                     c.Status,
                     c.TariffId,
                     SlotName = c.Slot.SlotName,
-                    c.SlotId
+                    c.SlotId,
+                    TicketCode = c.Ticket != null ? c.Ticket.TicketCode : null
                 })
                 .FirstOrDefaultAsync();
 
