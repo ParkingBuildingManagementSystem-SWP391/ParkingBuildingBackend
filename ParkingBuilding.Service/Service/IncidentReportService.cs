@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using ParkingBuilding.Repository.Entities;
 using ParkingBuilding.Repository.IRepository;
 using ParkingBuilding.Service.DTOs;
@@ -29,6 +29,21 @@ namespace ParkingBuilding.Service.Service
 
         public async Task<IncidentReportResponseDto> CreateIncidentAsync(CreateIncidentReportDto dto, int reportedUserId)
         {
+            if (dto.SessionId.HasValue)
+            {
+                var session = await _context.ParkingSessions.FindAsync(dto.SessionId.Value);
+                if (session == null)
+                {
+                    throw new ArgumentException("Phiên đỗ xe không tồn tại.");
+                }
+
+                var user = await _context.Users.Include(u => u.Role).FirstOrDefaultAsync(u => u.UserId == reportedUserId);
+                if (user != null && user.Role?.RoleName == "Registered_Driver" && session.UserId != reportedUserId)
+                {
+                    throw new UnauthorizedAccessException("Bạn không có quyền báo cáo sự cố cho phiên đỗ xe của người khác.");
+                }
+            }
+
             var incident = new IncidentReport
             {
                 SessionId = dto.SessionId,
@@ -100,18 +115,30 @@ namespace ParkingBuilding.Service.Service
                         slot.SlotStatus = hasActiveMonthly ? ParkingStatuses.SlotReserved : ParkingStatuses.SlotAvailable;
                     }
 
-                    // 3. TẠO HÓA ĐƠN THU TIỀN PHẠT MẤT THẺ ĐỂ ĐỐI SOÁT DOANH THU
-                    var invoice = new Invoice
+                    // 3. TẠO HOẶC CẬP NHẬT HÓA ĐƠN THU TIỀN PHẠT MẤT THẺ ĐỂ ĐỐI SOÁT DOANH THU (TRÁNH LỖI TRÙNG SESSIONID)
+                    var existingInvoice = await _context.Invoices.FirstOrDefaultAsync(inv => inv.SessionId == session.SessionId);
+                    if (existingInvoice == null)
                     {
-                        SessionId = session.SessionId,
-                        TotalAmount = dto.FineAmount ?? 0,
-                        PaymentTime = DateTime.Now,
-                        StaffId = resolvedUserId,
-                        PaymentMethod = "CASH",
-                        PaymentStatus = "SUCCESS",
-                        CreatedDate = DateTime.Now
-                    };
-                    await _unitOfWork.Invoices.AddAsync(invoice);
+                        var invoice = new Invoice
+                        {
+                            SessionId = session.SessionId,
+                            TotalAmount = dto.FineAmount ?? 0,
+                            PaymentTime = DateTime.Now,
+                            StaffId = resolvedUserId,
+                            PaymentMethod = "CASH",
+                            PaymentStatus = "SUCCESS",
+                            CreatedDate = DateTime.Now
+                        };
+                        await _unitOfWork.Invoices.AddAsync(invoice);
+                    }
+                    else
+                    {
+                        existingInvoice.TotalAmount = dto.FineAmount ?? 0;
+                        existingInvoice.PaymentTime = DateTime.Now;
+                        existingInvoice.StaffId = resolvedUserId;
+                        existingInvoice.PaymentMethod = "CASH";
+                        existingInvoice.PaymentStatus = "SUCCESS";
+                    }
                 }
             }
 
