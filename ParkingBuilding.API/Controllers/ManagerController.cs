@@ -133,7 +133,8 @@ namespace ParkingBuilding.API.Controllers
         {
             _logger.LogInformation("Manager requested to update pricing for VehicleTypeId={TypeId}", request.VehicleTypeId);
 
-            if (request.DayRate < 0 || request.NightRate < 0 || request.FullDayRate < 0 || request.MonthlyPrice < 0)
+            if (request.DayRate < 0 || request.NightRate < 0 || request.FullDayRate < 0 || 
+                request.MonthlyPrice < 0 || request.FirstHourRate < 0 || request.SubsequentHourRate < 0)
             {
                 return BadRequest("Giá cấu hình không được nhỏ hơn 0.");
             }
@@ -145,7 +146,9 @@ namespace ParkingBuilding.API.Controllers
                     request.DayRate,
                     request.NightRate,
                     request.FullDayRate,
-                    request.MonthlyPrice); // Truyền thêm trường mới vào service
+                    request.MonthlyPrice,
+                    request.FirstHourRate,
+                    request.SubsequentHourRate); 
 
                 if (!isSuccess)
                 {

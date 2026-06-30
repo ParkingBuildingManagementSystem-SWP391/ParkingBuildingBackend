@@ -16,5 +16,7 @@ namespace ParkingBuilding.Service.DTOs
 
         public decimal MonthlyPrice { get; set; }
 
+        public decimal FirstHourRate { get; set; }
+        public decimal SubsequentHourRate { get; set; }
     }
 }

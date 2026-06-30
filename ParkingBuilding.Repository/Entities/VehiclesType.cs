@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace ParkingBuilding.Repository.Entities;
@@ -16,6 +16,10 @@ public partial class VehiclesType
     public decimal NightRate { get; set; }
 
     public decimal FullDayRate { get; set; }
+
+    public decimal FirstHourRate { get; set; }
+
+    public decimal SubsequentHourRate { get; set; }
 
     public virtual ICollection<MonthlyTariff> MonthlyTariffs { get; set; } = new List<MonthlyTariff>();
 

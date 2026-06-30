@@ -10,7 +10,7 @@ namespace ParkingBuilding.Service.IService
         Task<List<TrafficStatsResponse>> GetTrafficStatsticsAsync(TrafficStatsRequest request);
         Task<ReportExportResponse> ExportReportAsync(ReportExportRequest request);
         Task<SlotDetailResponse?> GetSlotDetailAsync(int slotId);
-        Task<bool> UpdateVehicleTypePricingAsync(int typeId, decimal dayRate, decimal nightRate, decimal fullDayRate, decimal monthlyPrice);
+        Task<bool> UpdateVehicleTypePricingAsync(int typeId, decimal dayRate, decimal nightRate, decimal fullDayRate, decimal monthlyPrice, decimal firstHourRate, decimal subsequentHourRate);
         Task<bool> CancelMonthlyCardAsync(int monthlyCardId);
         Task<List<object>> GetAllMonthlyCardsAsync();
 

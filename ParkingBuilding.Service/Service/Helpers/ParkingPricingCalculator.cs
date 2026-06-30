@@ -53,11 +53,54 @@ namespace ParkingBuilding.Service.Service.Helpers
                     hasNight = true;
             }
 
-            decimal subFee = 0;
-            if (hasDay) subFee += config.DayRate;
-            if (hasNight) subFee += config.NightRate;
+            // ----------------------------------------------------
+            // PHÂN LUỒNG LOGIC TÍNH GIÁ
+            // ----------------------------------------------------
+            if (config.TypeId == 1 || config.TypeId == 2)
+            {
+                // >>> LOGIC CŨ (Xe đạp, Xe máy): Cộng trọn gói cả ca
+                decimal subFee = 0;
+                if (hasDay) subFee += config.DayRate;
+                if (hasNight) subFee += config.NightRate;
 
-            return Math.Min(subFee, config.FullDayRate);
+                return Math.Min(subFee, config.FullDayRate);
+            }
+            else
+            {
+                // >>> LOGIC MỚI (Xe hơi): Tính lũy tiến theo giờ thực tế + Chặn trần
+                decimal calculatedHourlyFee = 0;
+                double hoursToBill = Math.Ceiling(durationHours); // Làm tròn lên số giờ gửi
+
+                if (hoursToBill > 0)
+                {
+                    // Cộng tiền giờ đầu tiên
+                    calculatedHourlyFee += config.FirstHourRate;
+
+                    // Cộng tiền các giờ tiếp theo nếu có
+                    if (hoursToBill > 1)
+                    {
+                        calculatedHourlyFee += (decimal)(hoursToBill - 1) * config.SubsequentHourRate;
+                    }
+                }
+
+                // Trần tối đa của xe hơi trong ca đỗ
+                decimal maxAllowedCap = 0;
+                if (hasDay && hasNight)
+                {
+                    maxAllowedCap = Math.Min(config.DayRate + config.NightRate, config.FullDayRate);
+                }
+                else if (hasDay)
+                {
+                    maxAllowedCap = config.DayRate;
+                }
+                else
+                {
+                    maxAllowedCap = config.NightRate;
+                }
+
+                // Trả về số tiền nhỏ hơn giữa tiền tính theo giờ thực tế và trần giới hạn
+                return Math.Min(calculatedHourlyFee, maxAllowedCap);
+            }
         }
 
 
