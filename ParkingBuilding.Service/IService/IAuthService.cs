@@ -14,5 +14,8 @@ namespace ParkingBuilding.Service.IService
         Task<AuthResponse> VerifyOtpAsync(VerifyOtpRequest request);
         Task<AuthResponse> LoginAsync(LoginRequest request, string ipAddress);
         Task<AuthResponse> ContinueWithGoogleAsync(GoogleLoginRequest request);
+        Task ForgotPasswordAsync(ForgotPasswordRequest request);
+        Task ResetPasswordAsync(ResetPasswordRequest request);
+        Task UpdateProfileAsync(int userId, UpdateProfileRequest request);
     }
 }
