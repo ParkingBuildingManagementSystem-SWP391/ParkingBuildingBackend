@@ -145,7 +145,6 @@ namespace ParkingBuilding.API.Controllers
                     request.DayRate,
                     request.NightRate,
                     request.FullDayRate,
-                    request.MaxHoursPerTurn,
                     request.MonthlyPrice); // Truyền thêm trường mới vào service
 
                 if (!isSuccess)
