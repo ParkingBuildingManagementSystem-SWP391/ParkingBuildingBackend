@@ -169,8 +169,7 @@ namespace ParkingBuilding.Service.Service
                             var slot = await _slotRepo.GetByIdAsync(session.SlotId);
                             if (slot != null)
                             {
-                                var hasActiveMonthly = await _context.MonthlyCards.AnyAsync(mc => mc.SlotId == slot.SlotId && mc.Status == ParkingStatuses.MonthlyCardActive && !mc.IsDeleted);
-                                slot.SlotStatus = hasActiveMonthly ? ParkingStatuses.SlotReserved : ParkingStatuses.SlotAvailable;
+                                slot.SlotStatus = ParkingStatuses.SlotAvailable;
                                 _slotRepo.Update(slot);
                             }
 
@@ -382,8 +381,7 @@ namespace ParkingBuilding.Service.Service
                 var slot = session.Slot;
                 if (slot != null)
                 {
-                    var hasActiveMonthly = await _context.MonthlyCards.AnyAsync(mc => mc.SlotId == slot.SlotId && mc.Status == ParkingStatuses.MonthlyCardActive && !mc.IsDeleted);
-                    slot.SlotStatus = hasActiveMonthly ? ParkingStatuses.SlotReserved : ParkingStatuses.SlotAvailable;
+                    slot.SlotStatus = ParkingStatuses.SlotAvailable;
                     _context.ParkingSlots.Update(slot);
                 }
 

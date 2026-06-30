@@ -111,8 +111,7 @@ namespace ParkingBuilding.Service.Service
                     if (slot != null)
                     {
                         // Kiểm tra nếu ô đỗ này có thẻ tháng đăng ký hoạt động
-                        var hasActiveMonthly = await _context.MonthlyCards.AnyAsync(mc => mc.SlotId == slot.SlotId && mc.Status == ParkingStatuses.MonthlyCardActive && !mc.IsDeleted);
-                        slot.SlotStatus = hasActiveMonthly ? ParkingStatuses.SlotReserved : ParkingStatuses.SlotAvailable;
+                        slot.SlotStatus = ParkingStatuses.SlotAvailable;
                     }
 
                     // 3. TẠO HOẶC CẬP NHẬT HÓA ĐƠN THU TIỀN PHẠT MẤT THẺ ĐỂ ĐỐI SOÁT DOANH THU (TRÁNH LỖI TRÙNG SESSIONID)

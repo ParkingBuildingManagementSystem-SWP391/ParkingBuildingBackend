@@ -37,13 +37,12 @@ namespace ParkingBuilding.API.BackgroundServices
                     {
                         var context = scope.ServiceProvider.GetRequiredService<ParkingManagementDbContext>();
 
-                        // Tính toán thời gian hiện tại theo múi giờ Việt Nam (SE Asia Standard Time) để so khớp với DB
+                        // Tính toán thời gian hiện tại theo múi giờ Việt Nam để so khớp với DB
                         var vnTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
                         var localNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vnTimeZone);
 
-                        // Tìm các thẻ tháng đang Active nhưng EndTime nhỏ hơn thời gian hiện tại
+                        // Tìm các thẻ tháng đang Active nhưng đã hết hạn sử dụng
                         var expiredCards = await context.MonthlyCards
-                            .Include(mc => mc.Slot)
                             .Where(mc => mc.Status == ParkingStatuses.MonthlyCardActive
                                          && !mc.IsDeleted
                                          && mc.EndTime < localNow)
@@ -51,26 +50,11 @@ namespace ParkingBuilding.API.BackgroundServices
 
                         if (expiredCards.Any())
                         {
-                            _logger.LogInformation($"Phát hiện {expiredCards.Count} thẻ tháng hết hạn sử dụng. Bắt đầu xử lý khóa/mở khóa slot...");
+                            _logger.LogInformation($"Phát hiện {expiredCards.Count} thẻ tháng hết hạn sử dụng. Cập nhật trạng thái...");
 
                             foreach (var card in expiredCards)
                             {
                                 card.Status = ParkingStatuses.MonthlyCardExpired;
-
-                                if (card.Slot != null)
-                                {
-                                    // Chỉ mở khóa slot (Available) nếu trạng thái hiện tại là Reserved (đang trống chờ chủ thẻ tháng).
-                                    // Nếu xe đang đỗ thực tế (Occupied), ta giữ nguyên và slot sẽ tự động giải phóng sang Available sau khi xe Check-out.
-                                    if (card.Slot.SlotStatus == ParkingStatuses.SlotReserved)
-                                    {
-                                        card.Slot.SlotStatus = ParkingStatuses.SlotAvailable;
-                                        _logger.LogInformation($"Đã tự động mở khóa slot {card.Slot.SlotName} (ID: {card.SlotId}) do thẻ tháng ID {card.MonthlyCardId} đã hết hạn.");
-                                    }
-                                    else
-                                    {
-                                        _logger.LogInformation($"Thẻ tháng ID {card.MonthlyCardId} hết hạn, nhưng slot {card.Slot.SlotName} hiện đang {card.Slot.SlotStatus}. Giữ nguyên trạng thái để xe check-out.");
-                                    }
-                                }
                             }
 
                             await context.SaveChangesAsync(stoppingToken);

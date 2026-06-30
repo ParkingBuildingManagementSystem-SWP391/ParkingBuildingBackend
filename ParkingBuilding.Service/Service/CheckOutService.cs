@@ -190,13 +190,15 @@ namespace ParkingBuilding.Service.Service
                 decimal totalAmount = ParkingPricingCalculator.CalculateFee(checkInTime, checkOutTime, vehicleType);
 
                 // ====================================================================================
-                // KỊCH BẢN 0: XE ĐĂNG KÝ THẺ THÁNG CÒN HIỆU LỰC
+                // KỊCH BẢN 0: XE ĐĂNG KÝ THÈ THÁNG CÒN HIỆU LỰC (Nhận dạng qua TicketId của phiên đỗ)
                 // ====================================================================================
-                var monthlyCard = await _context.MonthlyCards
-                    .FirstOrDefaultAsync(mc => mc.LicenseVehicle == session.LicenseVehicle 
-                                         && mc.Status == ParkingStatuses.MonthlyCardActive 
-                                         && !mc.IsDeleted 
-                                         && mc.EndTime >= DateTime.UtcNow);
+                var monthlyCard = session.TicketId != null
+                    ? await _context.MonthlyCards
+                        .FirstOrDefaultAsync(mc => mc.TicketId == session.TicketId
+                                             && mc.Status == ParkingStatuses.MonthlyCardActive
+                                             && !mc.IsDeleted
+                                             && mc.EndTime >= DateTime.UtcNow)
+                    : null;
 
                 if (monthlyCard != null)
                 {
@@ -233,7 +235,8 @@ namespace ParkingBuilding.Service.Service
                     var slot = session.Slot ?? await _parkingRepository.GetSlotByIdAsync(session.SlotId);
                     if (slot != null)
                     {
-                        slot.SlotStatus = ParkingStatuses.SlotReserved; // Khóa lại cho thẻ tháng
+                        // GIẢI PHÓNG Ô ĐỖ ĐỘNG: Chuyển về trạng thái Available để xe khác sử dụng
+                        slot.SlotStatus = ParkingStatuses.SlotAvailable;
                         _context.ParkingSlots.Update(slot);
                     }
 
@@ -368,8 +371,7 @@ namespace ParkingBuilding.Service.Service
                     var slot = session.Slot ?? await _parkingRepository.GetSlotByIdAsync(session.SlotId);
                     if (slot != null)
                     {
-                        var hasActiveMonthly = await _context.MonthlyCards.AnyAsync(mc => mc.SlotId == slot.SlotId && mc.Status == ParkingStatuses.MonthlyCardActive && !mc.IsDeleted);
-                        slot.SlotStatus = hasActiveMonthly ? ParkingStatuses.SlotReserved : ParkingStatuses.SlotAvailable;
+                        slot.SlotStatus = ParkingStatuses.SlotAvailable;
                     }
 
                     _context.ParkingSessions.Update(session);
@@ -431,8 +433,7 @@ namespace ParkingBuilding.Service.Service
                         var pSlot = session.Slot ?? await _parkingRepository.GetSlotByIdAsync(session.SlotId);
                         if (pSlot != null)
                         {
-                            var hasActiveMonthly = await _context.MonthlyCards.AnyAsync(mc => mc.SlotId == pSlot.SlotId && mc.Status == ParkingStatuses.MonthlyCardActive && !mc.IsDeleted);
-                            pSlot.SlotStatus = hasActiveMonthly ? ParkingStatuses.SlotReserved : ParkingStatuses.SlotAvailable;
+                            pSlot.SlotStatus = ParkingStatuses.SlotAvailable;
                             _context.ParkingSlots.Update(pSlot);
                         }
 
@@ -819,12 +820,14 @@ namespace ParkingBuilding.Service.Service
             double durationHours = Math.Ceiling(duration.TotalHours);
             if (durationHours <= 0) durationHours = 1;
 
-            // Kiểm tra xem xe này có thẻ tháng Active và còn hạn sử dụng hay không
-            var monthlyCard = await _context.MonthlyCards
-                .FirstOrDefaultAsync(mc => mc.LicenseVehicle == session.LicenseVehicle 
-                                     && mc.Status == ParkingStatuses.MonthlyCardActive 
-                                     && !mc.IsDeleted 
-                                     && mc.EndTime >= DateTime.UtcNow);
+            // Kiểm tra xem phiên đỗ này có liên kết với vé tháng Active và còn hạn sử dụng hay không
+            var monthlyCard = session.TicketId != null
+                ? await _context.MonthlyCards
+                    .FirstOrDefaultAsync(mc => mc.TicketId == session.TicketId
+                                         && mc.Status == ParkingStatuses.MonthlyCardActive
+                                         && !mc.IsDeleted
+                                         && mc.EndTime >= DateTime.UtcNow)
+                : null;
 
             bool isMonthlyCardValid = monthlyCard != null;
             bool isPaid = false;

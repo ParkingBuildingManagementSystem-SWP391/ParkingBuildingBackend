@@ -54,8 +54,7 @@ namespace ParkingBuilding.API.BackgroundServices
                                     var slot = session.Slot;
                                     if (slot != null)
                                     {
-                                        var hasActiveMonthly = await context.MonthlyCards.AnyAsync(mc => mc.SlotId == slot.SlotId && mc.Status == ParkingStatuses.MonthlyCardActive && !mc.IsDeleted);
-                                        slot.SlotStatus = hasActiveMonthly ? ParkingStatuses.SlotReserved : ParkingStatuses.SlotAvailable;
+                                        slot.SlotStatus = ParkingStatuses.SlotAvailable;
                                     }
                                     if (session.Ticket != null)
                                     {
