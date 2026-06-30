@@ -406,7 +406,6 @@ namespace ParkingBuilding.Service.Service
              decimal dayRate,
              decimal nightRate,
              decimal fullDayRate,
-             int? maxHoursPerTurn,
              decimal monthlyPrice) 
         {
             var vehicleType = await _context.VehiclesTypes.FirstOrDefaultAsync(vt => vt.TypeId == typeId);
@@ -415,7 +414,6 @@ namespace ParkingBuilding.Service.Service
             vehicleType.DayRate = dayRate;
             vehicleType.NightRate = nightRate;
             vehicleType.FullDayRate = fullDayRate;
-            vehicleType.MaxHoursPerTurn = maxHoursPerTurn;
 
             var monthlyTariff = await _context.MonthlyTariffs.FirstOrDefaultAsync(t => t.TypeId == typeId && !t.IsDeleted);
             if (monthlyTariff != null)

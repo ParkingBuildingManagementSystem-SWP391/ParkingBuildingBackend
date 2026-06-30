@@ -36,53 +36,30 @@ namespace ParkingBuilding.Service.Service.Helpers
             double durationHours = (end - start).TotalHours;
             if (durationHours <= 0) return 0;
 
-            // Trường hợp XE HƠI (Tính theo lượt tối đa 4 tiếng)
-            if (config.MaxHoursPerTurn.HasValue && config.MaxHoursPerTurn.Value > 0)
+            // 1. Tính số phút thực tế đỗ ở mỗi ca
+            double minutesInDay = GetMinutesInDayShift(start, end);
+            double minutesInNight = GetMinutesInNightShift(start, end);
+
+            // 2. Chỉ tính phí ca đó nếu xe đỗ từ 30 phút trở lên
+            bool hasDay = minutesInDay >= 30;
+            bool hasNight = minutesInNight >= 30;
+
+            // 3. Fallback: Nếu đỗ quá ngắn (dưới 30 phút), tính ca có thời gian đỗ nhiều nhất
+            if (!hasDay && !hasNight)
             {
-                int limit = config.MaxHoursPerTurn.Value;
-                int numberOfTurns = (int)Math.Ceiling(durationHours / limit);
-
-                // Chia khoảng thời gian thành các lượt nhỏ để xác định xem mỗi lượt thuộc ca nào
-                decimal turnFee = 0;
-                for (int i = 0; i < numberOfTurns; i++)
-                {
-                    DateTime turnStart = start.AddHours(i * limit);
-                    DateTime turnEnd = (i == numberOfTurns - 1) ? end : start.AddHours((i + 1) * limit);
-
-                    bool hasDayShift = OverlapsDayShift(turnStart, turnEnd);
-                    bool hasNightShift = OverlapsNightShift(turnStart, turnEnd);
-
-                    if (hasDayShift && hasNightShift)
-                    {
-                        // Lượt giao thoa ca
-                        turnFee += Math.Min(config.DayRate + config.NightRate, config.FullDayRate);
-                    }
-                    else if (hasNightShift)
-                    {
-                        turnFee += config.NightRate;
-                    }
-                    else
-                    {
-                        turnFee += config.DayRate;
-                    }
-                }
-                // Mức phí cho phần ngày lẻ này không được vượt quá giá trần 24h
-                return Math.Min(turnFee, config.FullDayRate);
+                if (minutesInDay >= minutesInNight)
+                    hasDay = true;
+                else
+                    hasNight = true;
             }
 
-            // Trường hợp XE MÁY / XE ĐẠP (Tính lũy tiến theo khung ca ngày/đêm)
-            else
-            {
-                bool hasDay = OverlapsDayShift(start, end);
-                bool hasNight = OverlapsNightShift(start, end);
+            decimal subFee = 0;
+            if (hasDay) subFee += config.DayRate;
+            if (hasNight) subFee += config.NightRate;
 
-                decimal subFee = 0;
-                if (hasDay) subFee += config.DayRate;
-                if (hasNight) subFee += config.NightRate;
-
-                return Math.Min(subFee, config.FullDayRate);
-            }
+            return Math.Min(subFee, config.FullDayRate);
         }
+
 
         /// <summary>
         /// EF Core đọc DateTime từ SQL Server về với Kind = Unspecified.
@@ -96,64 +73,51 @@ namespace ParkingBuilding.Service.Service.Helpers
             return dt;
         }
 
-        // Kiểm tra xem khoảng thời gian có giao thoa với Ca Ngày (6h - 18h) không
-        private static bool OverlapsDayShift(DateTime start, DateTime end)
+        // Tính số phút đỗ xe trong Ca Ngày (6h - 18h)
+        private static double GetMinutesInDayShift(DateTime start, DateTime end)
         {
-            // Normalize Kind trước khi convert (fix bug EF Core đọc từ SQL Server)
             start = NormalizeToUtc(start);
-            end   = NormalizeToUtc(end);
+            end = NormalizeToUtc(end);
 
-            // Chuyển sang múi giờ địa phương Việt Nam để lấy Hour chính xác
             var tz = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
             DateTime localStart = TimeZoneInfo.ConvertTimeFromUtc(start, tz);
             DateTime localEnd = TimeZoneInfo.ConvertTimeFromUtc(end, tz);
 
-            // Quét từng giờ trong khoảng thời gian để kiểm tra
-            for (DateTime t = localStart; t < localEnd; t = t.AddMinutes(15))
+            double minutesInDay = 0;
+            for (DateTime t = localStart; t < localEnd; t = t.AddMinutes(1))
             {
                 int hour = t.Hour;
                 if (hour >= DayShiftStart && hour < NightShiftStart)
                 {
-                    return true;
+                    minutesInDay++;
                 }
             }
-            // Kiểm tra điểm cuối cùng
-            int endHour = localEnd.Hour;
-            if (endHour > DayShiftStart && endHour <= NightShiftStart && localEnd.Minute > 0)
-            {
-                return true;
-            }
-
-            return false;
+            return minutesInDay;
         }
 
-        // Kiểm tra xem khoảng thời gian có giao thoa với Ca Đêm (18h - 6h hôm sau) không
-        private static bool OverlapsNightShift(DateTime start, DateTime end)
+        // Tính số phút đỗ xe trong Ca Đêm (18h - 6h hôm sau)
+        private static double GetMinutesInNightShift(DateTime start, DateTime end)
         {
-            // Normalize Kind trước khi convert (fix bug EF Core đọc từ SQL Server)
             start = NormalizeToUtc(start);
-            end   = NormalizeToUtc(end);
+            end = NormalizeToUtc(end);
 
             var tz = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
             DateTime localStart = TimeZoneInfo.ConvertTimeFromUtc(start, tz);
             DateTime localEnd = TimeZoneInfo.ConvertTimeFromUtc(end, tz);
 
-            for (DateTime t = localStart; t < localEnd; t = t.AddMinutes(15))
+            double minutesInNight = 0;
+            for (DateTime t = localStart; t < localEnd; t = t.AddMinutes(1))
             {
                 int hour = t.Hour;
                 if (hour >= NightShiftStart || hour < DayShiftStart)
                 {
-                    return true;
+                    minutesInNight++;
                 }
             }
-            int endHour = localEnd.Hour;
-            if ((endHour > NightShiftStart || endHour <= DayShiftStart) && localEnd.Minute > 0)
-            {
-                return true;
-            }
-
-            return false;
+            return minutesInNight;
         }
+
+
     }
 
 }

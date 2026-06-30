@@ -17,8 +17,6 @@ public partial class VehiclesType
 
     public decimal FullDayRate { get; set; }
 
-    public int? MaxHoursPerTurn { get; set; }
-
     public virtual ICollection<MonthlyTariff> MonthlyTariffs { get; set; } = new List<MonthlyTariff>();
 
     public virtual ICollection<ParkingSession> ParkingSessions { get; set; } = new List<ParkingSession>();
