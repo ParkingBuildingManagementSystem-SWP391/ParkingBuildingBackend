@@ -240,5 +240,115 @@ namespace ParkingBuilding.Service.Service
                 PhoneNumber = user.PhoneNumber ?? "Chưa có số điện thoại"
             };
         }
+
+        /// <summary>
+        /// Yêu cầu đặt lại mật khẩu:
+        /// - Phát sinh OTP 6 số.
+        /// - Lưu vào MemoryCache trong 5 phút.
+        /// - Gửi mã OTP qua Email.
+        /// </summary>
+        public async Task ForgotPasswordAsync(ForgotPasswordRequest request)
+        {
+            var user = await _unitOfWork.Users.GetByEmailAsync(request.Email);
+            if (user == null)
+            {
+                throw new BadHttpRequestException("Không tìm thấy tài khoản với email này trong hệ thống.");
+            }
+
+            // Sinh OTP ngẫu nhiên
+            var otp = new Random().Next(100000, 999999).ToString();
+
+            var cacheKey = $"ResetOtp_{request.Email}";
+            var cacheOptions = new MemoryCacheEntryOptions()
+                .SetAbsoluteExpiration(TimeSpan.FromMinutes(5));
+
+            _cache.Set(cacheKey, otp, cacheOptions);
+
+            var mailSubject = "Mã xác thực yêu cầu khôi phục mật khẩu";
+            var mailBody = $@"
+                <h3>Yêu cầu khôi phục mật khẩu tài khoản!</h3>
+                <p>Mã OTP để bạn đặt lại mật khẩu mới là:</p>
+                <h2 style='color: #d9534f; letter-spacing: 2px;'>{otp}</h2>
+                <p>Mã này có hiệu lực trong vòng 5 phút. Nếu không phải bạn yêu cầu, vui lòng bỏ qua email này.</p>
+            ";
+
+            await _emailService.SendEmailAsync(request.Email, mailSubject, mailBody);
+        }
+
+        /// <summary>
+        /// Xác thực OTP và đặt mật khẩu mới.
+        /// </summary>
+        public async Task ResetPasswordAsync(ResetPasswordRequest request)
+        {
+            var user = await _unitOfWork.Users.GetByEmailAsync(request.Email);
+            if (user == null)
+            {
+                throw new BadHttpRequestException("Yêu cầu không hợp lệ.");
+            }
+
+            var cacheKey = $"ResetOtp_{request.Email}";
+            if (!_cache.TryGetValue(cacheKey, out string? cachedOtp) || cachedOtp != request.OtpCode)
+            {
+                throw new BadHttpRequestException("Mã OTP không chính xác hoặc đã hết hạn.");
+            }
+
+            // Mã hóa mật khẩu mới và lưu vào CSDL
+            user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+            await _unitOfWork.SaveChangesAsync();
+
+            // Xóa OTP khỏi cache
+            _cache.Remove(cacheKey);
+        }
+
+        /// <summary>
+        /// Người dùng tự cập nhật thông tin cá nhân (Họ tên, Email, Số điện thoại và Mật khẩu).
+        /// </summary>
+        public async Task UpdateProfileAsync(int userId, UpdateProfileRequest request)
+        {
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
+            if (user == null)
+            {
+                throw new KeyNotFoundException("Không tìm thấy tài khoản người dùng.");
+            }
+
+            // Cập nhật Họ tên (lưu vào cột Username trong DB)
+            user.Username = request.Username;
+
+            // Cập nhật Số điện thoại
+            if (!string.IsNullOrEmpty(request.PhoneNumber))
+            {
+                user.PhoneNumber = request.PhoneNumber;
+            }
+
+            // Cập nhật Email
+            if (!string.IsNullOrEmpty(request.Email))
+            {
+                var existingUser = await _unitOfWork.Users.GetByEmailAsync(request.Email);
+                if (existingUser != null && existingUser.UserId != userId)
+                {
+                    throw new BadHttpRequestException("Địa chỉ Email này đã được sử dụng bởi tài khoản khác trong hệ thống.");
+                }
+                user.Email = request.Email;
+            }
+
+            // Nếu người dùng muốn đổi mật khẩu
+            if (!string.IsNullOrEmpty(request.OldPassword) && !string.IsNullOrEmpty(request.NewPassword))
+            {
+                // Kiểm tra mật khẩu cũ
+                if (string.IsNullOrEmpty(user.PasswordHash) || !BCrypt.Net.BCrypt.Verify(request.OldPassword, user.PasswordHash))
+                {
+                    throw new BadHttpRequestException("Mật khẩu cũ không chính xác.");
+                }
+
+                if (request.NewPassword.Length < 6)
+                {
+                    throw new BadHttpRequestException("Mật khẩu mới phải từ 6 ký tự trở lên.");
+                }
+
+                user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(request.NewPassword);
+            }
+
+            await _unitOfWork.SaveChangesAsync();
+        }
     }
 }

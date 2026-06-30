@@ -42,13 +42,14 @@ namespace ParkingBuilding.API.Controllers
             }
         }
 
-        [HttpPost("update-user")]
+        [HttpPut("update-user")]
         /// <summary>
         /// API cập nhật thông tin cá nhân và thay đổi phân quyền (Role) của người dùng.
         /// - Yêu cầu vai trò Admin.
         /// </summary>
         [Authorize(Roles = "Admin")]
         public async Task<IActionResult> UpdateUser([FromBody] UpdateUserRequestDto request)
+
         {
             try
             {

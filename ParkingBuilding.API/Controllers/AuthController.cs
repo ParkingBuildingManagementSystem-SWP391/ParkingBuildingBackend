@@ -110,5 +110,83 @@ namespace ParkingBuilding.API.Controllers
                 return StatusCode(500, new { error = "Lỗi hệ thống xác thực Google: " + ex.Message });
             }
         }
+
+        [HttpPost("forgot-password")]
+        /// <summary>
+        /// API yêu cầu quên mật khẩu: Sinh OTP và gửi qua Email
+        /// </summary>
+        public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request)
+        {
+            try
+            {
+                await _authService.ForgotPasswordAsync(request);
+                return Ok(new { message = "Mã OTP đã được gửi đến email của bạn. Vui lòng kiểm tra hộp thư!" });
+            }
+            catch (BadHttpRequestException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = "Lỗi hệ thống khi gửi yêu cầu quên mật khẩu: " + ex.Message });
+            }
+        }
+
+        [HttpPost("reset-password")]
+        /// <summary>
+        /// API đặt lại mật khẩu sử dụng mã OTP xác thực
+        /// </summary>
+        public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request)
+        {
+            try
+            {
+                await _authService.ResetPasswordAsync(request);
+                return Ok(new { message = "Mật khẩu của bạn đã được đặt lại thành công! Vui lòng đăng nhập lại." });
+            }
+            catch (BadHttpRequestException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = "Lỗi hệ thống khi đặt lại mật khẩu: " + ex.Message });
+            }
+        }
+
+        [Authorize]
+        [HttpPut("update-profile")]
+        /// <summary>
+        /// API người dùng đăng nhập tự cập nhật thông tin cá nhân và đổi mật khẩu
+        /// </summary>
+        public async Task<IActionResult> UpdateProfile([FromBody] UpdateProfileRequest request)
+        {
+            try
+            {
+                // Lấy UserId từ JWT Claims
+                var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(userIdClaim))
+                {
+                    return Unauthorized("Không thể xác định danh tính tài khoản.");
+                }
+
+                int userId = int.Parse(userIdClaim);
+                await _authService.UpdateProfileAsync(userId, request);
+
+                return Ok(new { message = "Cập nhật hồ sơ cá nhân thành công!" });
+            }
+            catch (BadHttpRequestException ex)
+            {
+                return BadRequest(new { error = ex.Message });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = "Lỗi hệ thống khi cập nhật hồ sơ: " + ex.Message });
+            }
+        }
+
     }
 }
