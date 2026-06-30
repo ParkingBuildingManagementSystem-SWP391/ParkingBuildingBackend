@@ -13,8 +13,6 @@ public partial class MonthlyCard
 
     public int TariffId { get; set; }
 
-    public string LicenseVehicle { get; set; } = null!;
-
     public int DurationMonths { get; set; }
 
     public DateTime StartTime { get; set; }
@@ -24,10 +22,6 @@ public partial class MonthlyCard
     public string Status { get; set; } = null!;
 
     public bool IsDeleted { get; set; }
-
-    public int SlotId { get; set; }
-
-    public virtual ParkingSlot Slot { get; set; } = null!;
 
     public virtual MonthlyTariff Tariff { get; set; } = null!;
 

@@ -19,8 +19,6 @@ public partial class ParkingSlot
 
     public virtual Floor Floor { get; set; } = null!;
 
-    public virtual MonthlyCard? MonthlyCard { get; set; }
-
     public virtual ICollection<ParkingSession> ParkingSessions { get; set; } = new List<ParkingSession>();
 
     public virtual VehiclesType Type { get; set; } = null!;
