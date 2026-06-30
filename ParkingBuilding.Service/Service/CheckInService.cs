@@ -121,6 +121,7 @@ namespace ParkingBuilding.Service.Service
                 var monthlyCard = await _context.MonthlyCards
                     .Include(mc => mc.Ticket)
                     .Include(mc => mc.Tariff)
+                    .Include(mc => mc.User)
                     .FirstOrDefaultAsync(mc => mc.Ticket.TicketCode.Trim() == cleanTicketCode.Trim()
                                          && mc.Status == ParkingStatuses.MonthlyCardActive
                                          && !mc.IsDeleted
@@ -208,7 +209,10 @@ namespace ParkingBuilding.Service.Service
                         VehicleTypeName = monthlyCard.Tariff.TypeId == 1 ? "Xe đạp" : (monthlyCard.Tariff.TypeId == 2 ? "Xe máy" : "Xe hơi"),
                         TicketCode = monthlyCard.Ticket.TicketCode,
                         RequiresPayment = false,
-                        PaymentStatus = "SUCCESS"
+                        PaymentStatus = "SUCCESS",
+                        DriverName = monthlyCard.User?.Username,
+                        DriverPhone = monthlyCard.User?.PhoneNumber,
+                        DriverEmail = monthlyCard.User?.Email
                     };
                 }
 
