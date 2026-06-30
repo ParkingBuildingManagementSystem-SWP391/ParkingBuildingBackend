@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 
@@ -257,6 +257,8 @@ public partial class ParkingManagementDbContext : DbContext
             entity.Property(e => e.DayRate).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.FullDayRate).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.NightRate).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.FirstHourRate).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.SubsequentHourRate).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.TypeName).HasMaxLength(255);
         });
 
