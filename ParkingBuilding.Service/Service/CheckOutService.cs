@@ -65,25 +65,28 @@ namespace ParkingBuilding.Service.Service
             string? checkOutImageUrl = null;
 
             if (!string.IsNullOrEmpty(request.ImageUrl))
-                            {
+            {
                 checkOutImageUrl = request.ImageUrl;
-                            }
-                        else if (request.ImageFile != null && request.ImageFile.Length > 0)
-                           {
-                checkOutImageUrl = await _imageStorageService.UploadImageAsync(request.ImageFile, "parking_checkout");
-                                if (string.IsNullOrEmpty(request.TicketCode) && (string.IsNullOrEmpty(request.CheckoutLicensePlate) || request.CheckoutLicensePlate == "string"))
-                                    {
-                                        try
+            }
+            else if (request.ImageFile != null && request.ImageFile.Length > 0)
+            {
+                if (string.IsNullOrEmpty(request.TicketCode) && (string.IsNullOrEmpty(request.CheckoutLicensePlate) || request.CheckoutLicensePlate == "string"))
+                {
+                    try
                     {
-                        string detectedPlate = await _aiRecognitionService.PredictLicensePlateAsync(checkOutImageUrl);
+                        // 1. Nhận diện từ file trực tiếp
+                        string detectedPlate = await _aiRecognitionService.PredictLicensePlateFromFileAsync(request.ImageFile);
                         request.CheckoutLicensePlate = detectedPlate;
-                                            }
-                                       catch (Exception ex)
+                    }
+                    catch (Exception ex)
                     {
                         _logger.LogWarning("Không thể nhận diện biển số xe ra từ AI: {Msg}", ex.Message);
-                                            }
-                                    }
-                               }
+                    }
+                }
+
+                // 2. Upload Cloudinary sau khi AI nhận dạng
+                checkOutImageUrl = await _imageStorageService.UploadImageAsync(request.ImageFile, "parking_checkout");
+            }
 
 
                 string? cleanTicketCode = (string.IsNullOrEmpty(request.TicketCode) || request.TicketCode.Trim().ToLower() == "string")

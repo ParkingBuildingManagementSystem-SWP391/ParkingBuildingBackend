@@ -52,26 +52,29 @@ namespace ParkingBuilding.Service.Service
             _logger.LogInformation("Bắt đầu xử lý check-in cho xe biển số: {LicensePlate}, Vé/Mã QR: {TicketCode}",
                 request.LicenseVehicle, request.TicketCode);
 
-            string ? checkInImageUrl = null;
-                        if (!string.IsNullOrEmpty(request.ImageUrl))
-                            {
-                                // Lấy trực tiếp URL ảnh đã qua xác nhận ở Frontend
-                 checkInImageUrl = request.ImageUrl;
-                            }
-                        else if (request.ImageFile != null && request.ImageFile.Length > 0)
-                            {
-                                // Trường hợp chạy tự động, không có xác nhận thủ công từ FE
-                 checkInImageUrl = await _imageStorageService.UploadImageAsync(request.ImageFile, "parking_checkin");
-                                try
+            string? checkInImageUrl = null;
+            if (!string.IsNullOrEmpty(request.ImageUrl))
+            {
+                // Lấy trực tiếp URL ảnh đã qua xác nhận ở Frontend
+                checkInImageUrl = request.ImageUrl;
+            }
+            else if (request.ImageFile != null && request.ImageFile.Length > 0)
+            {
+                // Trường hợp chạy tự động, không có xác nhận thủ công từ FE
+                try
                 {
-                    string detectedPlate = await _aiRecognitionService.PredictLicensePlateAsync(checkInImageUrl);
+                    // 1. Gửi trực tiếp file ảnh sang AI
+                    string detectedPlate = await _aiRecognitionService.PredictLicensePlateFromFileAsync(request.ImageFile);
                     request.LicenseVehicle = detectedPlate;
-                                    }
-                                catch (Exception ex)
+                }
+                catch (Exception ex)
                 {
                     _logger.LogWarning("AI Nhận diện cổng vào lỗi: {Msg}. Tiếp tục dùng biển số nhập tay nếu có.", ex.Message);
-                                    }
-                            }
+                }
+
+                // 2. Sau đó mới upload Cloudinary
+                checkInImageUrl = await _imageStorageService.UploadImageAsync(request.ImageFile, "parking_checkin");
+            }
                 _logger.LogInformation("Bắt đầu xử lý check-in cho xe biển số: {LicensePlate}, Vé: {TicketCode}",
                 request.LicenseVehicle, request.TicketCode);
             string? cleanTicketCode = string.IsNullOrWhiteSpace(request.TicketCode) ? null : request.TicketCode.Trim();
@@ -311,10 +314,6 @@ namespace ParkingBuilding.Service.Service
             {
                 checkInImageUrl = request.ImageUrl;
             }
-            else if (request.ImageFile != null && request.ImageFile.Length > 0)
-            {
-                checkInImageUrl = await _imageStorageService.UploadImageAsync(request.ImageFile, "parking_checkin");
-            }
 
             if (request.VehicleTypeId == 1) // Xe đạp
             {
@@ -325,11 +324,12 @@ namespace ParkingBuilding.Service.Service
             }
             else if (string.IsNullOrEmpty(request.LicenseVehicle) || request.LicenseVehicle == "string")
             {
-                if (request.ImageFile != null && request.ImageFile.Length > 0 && !string.IsNullOrEmpty(checkInImageUrl))
+                if (request.ImageFile != null && request.ImageFile.Length > 0)
                 {
                     try
                     {
-                        string detectedPlate = await _aiRecognitionService.PredictLicensePlateAsync(checkInImageUrl);
+                        // 1. Nhận diện từ file trực tiếp
+                        string detectedPlate = await _aiRecognitionService.PredictLicensePlateFromFileAsync(request.ImageFile);
                         request.LicenseVehicle = detectedPlate;
                     }
                     catch (Exception ex)
@@ -337,6 +337,12 @@ namespace ParkingBuilding.Service.Service
                         _logger.LogWarning("AI Nhận diện Walk-in lỗi: {Msg}", ex.Message);
                     }
                 }
+            }
+
+            // 2. Upload Cloudinary sau khi AI nhận dạng
+            if (string.IsNullOrEmpty(checkInImageUrl) && request.ImageFile != null && request.ImageFile.Length > 0)
+            {
+                checkInImageUrl = await _imageStorageService.UploadImageAsync(request.ImageFile, "parking_checkin");
             }
 
             if (string.IsNullOrWhiteSpace(request.LicenseVehicle) || request.LicenseVehicle.Trim().ToLower() == "string")
