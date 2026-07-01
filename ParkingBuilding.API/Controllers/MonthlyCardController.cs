@@ -1,4 +1,4 @@
-﻿using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using ParkingBuilding.Service.DTOs;
@@ -76,5 +76,22 @@ namespace ParkingBuilding.API.Controllers
             }
         }
 
+        /// <summary>
+        /// Lấy danh sách biểu phí vé tháng đang hoạt động.
+        /// </summary>
+        [AllowAnonymous]
+        [HttpGet("tariffs")]
+        public async Task<IActionResult> GetTariffs()
+        {
+            try
+            {
+                var tariffs = await _monthlyCardService.GetActiveTariffsAsync();
+                return Ok(new { isSuccess = true, data = tariffs });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { isSuccess = false, message = "Lỗi hệ thống: " + ex.Message });
+            }
+        }
     }
 }

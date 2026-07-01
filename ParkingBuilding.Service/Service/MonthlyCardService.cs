@@ -228,5 +228,19 @@ namespace ParkingBuilding.Service.Service
             return card;
         }
 
+        public async Task<List<object>> GetActiveTariffsAsync()
+        {
+            return await _context.MonthlyTariffs
+                .Include(t => t.Type)
+                .Where(t => !t.IsDeleted)
+                .Select(t => new {
+                    t.TariffId,
+                    t.TypeId,
+                    t.MonthlyPrice,
+                    VehicleType = t.Type != null ? t.Type.TypeName : "Unknown"
+                })
+                .Cast<object>()
+                .ToListAsync();
+        }
     }
 }
