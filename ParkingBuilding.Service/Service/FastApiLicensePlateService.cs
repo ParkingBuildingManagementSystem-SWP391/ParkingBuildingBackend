@@ -41,13 +41,20 @@ namespace ParkingBuilding.Service.Service
             }
 
             // Parse JSON từ rawText đã lưu sẵn
-            // Python trả về: { "status": "success", "license_plate": "30F455775" }
+            // Python trả về: { "status": "success", "license_plate": "30F455775", "message": "" }
             try
             {
                 var result = JsonSerializer.Deserialize<AiPredictResponse>(rawText);
-                if (result != null && !string.IsNullOrWhiteSpace(result.LicensePlate))
+                if (result != null)
                 {
-                    return result.LicensePlate.Trim();
+                    if (!result.IsSuccess)
+                    {
+                        throw new Exception(string.IsNullOrWhiteSpace(result.Message) ? "Python AI nhận dạng không thành công." : result.Message);
+                    }
+                    if (!string.IsNullOrWhiteSpace(result.LicensePlate))
+                    {
+                        return result.LicensePlate.Trim();
+                    }
                 }
             }
             catch (JsonException)
@@ -94,9 +101,16 @@ namespace ParkingBuilding.Service.Service
             try
             {
                 var result = JsonSerializer.Deserialize<AiPredictResponse>(rawText);
-                if (result != null && !string.IsNullOrWhiteSpace(result.LicensePlate))
+                if (result != null)
                 {
-                    return result.LicensePlate.Trim();
+                    if (!result.IsSuccess)
+                    {
+                        throw new Exception(string.IsNullOrWhiteSpace(result.Message) ? "Python AI nhận dạng không thành công." : result.Message);
+                    }
+                    if (!string.IsNullOrWhiteSpace(result.LicensePlate))
+                    {
+                        return result.LicensePlate.Trim();
+                    }
                 }
             }
             catch (JsonException)
