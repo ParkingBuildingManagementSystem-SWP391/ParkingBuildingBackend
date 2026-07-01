@@ -1,5 +1,7 @@
+using Microsoft.AspNetCore.Http;
 using System;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -58,6 +60,55 @@ namespace ParkingBuilding.Service.Service
             }
 
             throw new Exception("Python AI không nhận diện được biển số từ ảnh này.");
+        }
+
+        public async Task<string> PredictLicensePlateFromFileAsync(IFormFile file)
+        {
+            if (file == null || file.Length == 0)
+            {
+                throw new ArgumentException("File ảnh không hợp lệ hoặc bị trống.");
+            }
+
+            using var form = new MultipartFormDataContent();
+            using var stream = file.OpenReadStream();
+            using var fileContent = new StreamContent(stream);
+
+            fileContent.Headers.ContentType = new MediaTypeHeaderValue(file.ContentType ?? "image/jpeg");
+            form.Add(fileContent, "file", file.FileName);
+
+            string baseUrl = _pythonAiUrl;
+            if (baseUrl.EndsWith("/predict"))
+            {
+                baseUrl = baseUrl.Substring(0, baseUrl.Length - "/predict".Length);
+            }
+            string requestUrl = $"{baseUrl.TrimEnd('/')}/predict-file";
+
+            using var response = await _httpClient.PostAsync(requestUrl, form);
+            var rawText = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new Exception($"Python AI trả lỗi HTTP {(int)response.StatusCode}: {rawText}");
+            }
+
+            try
+            {
+                var result = JsonSerializer.Deserialize<AiPredictResponse>(rawText);
+                if (result != null && !string.IsNullOrWhiteSpace(result.LicensePlate))
+                {
+                    return result.LicensePlate.Trim();
+                }
+            }
+            catch (JsonException)
+            {
+                // Trường hợp Python trả về plain string thay vì JSON object
+                if (!string.IsNullOrWhiteSpace(rawText))
+                {
+                    return rawText.Trim().Replace("\"", "");
+                }
+            }
+
+            throw new Exception("Python AI không nhận diện được biển số từ file ảnh này.");
         }
     }
 }
