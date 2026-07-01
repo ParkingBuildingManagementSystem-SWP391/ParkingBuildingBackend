@@ -1,4 +1,4 @@
-﻿using ParkingBuilding.Service.DTOs;
+using ParkingBuilding.Service.DTOs;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -17,5 +17,6 @@ namespace ParkingBuilding.Service.IService
 
         Task<object?> GetMyActiveCardAsync(int userId);
 
+        Task<List<object>> GetActiveTariffsAsync();
     }
 }
