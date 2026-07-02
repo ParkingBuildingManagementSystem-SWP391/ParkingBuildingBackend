@@ -35,23 +35,30 @@ namespace ParkingBuilding.Service.Service
                 throw new ArgumentException("File ảnh không hợp lệ hoặc bị trống.");
             }
 
-            using var form = new MultipartFormDataContent();
-            using var stream = file.OpenReadStream();
-            using var fileContent = new StreamContent(stream);
-
-            fileContent.Headers.ContentType = new MediaTypeHeaderValue(file.ContentType ?? "image/jpeg");
-            form.Add(fileContent, "file", file.FileName);
+            // ✅ FIX: Đọc toàn bộ nội dung file thành byte[] TRƯỚC khi tạo MultipartFormDataContent
+            // Lý do: Nếu dùng StreamContent(file.OpenReadStream()), stream có thể bị Dispose bởi
+            // caller (Controller) trước khi HttpClient gửi xong → Python AI nhận file rỗng.
+            byte[] fileBytes;
+            using (var copyStream = new MemoryStream())
+            {
+                await file.CopyToAsync(copyStream);
+                fileBytes = copyStream.ToArray();
+            }
 
             // Nếu cấu hình trỏ thẳng tới /predict-file thì dùng luôn, ngược lại chuyển đổi tự động
             string requestUrl = _pythonAiUrl;
             if (!requestUrl.EndsWith("/predict-file"))
             {
                 if (requestUrl.EndsWith("/predict"))
-                {
                     requestUrl = requestUrl.Substring(0, requestUrl.Length - "/predict".Length);
-                }
                 requestUrl = $"{requestUrl.TrimEnd('/')}/predict-file";
             }
+
+            // Dùng ByteArrayContent thay cho StreamContent để tránh vấn đề stream bị đóng sớm
+            using var form = new MultipartFormDataContent();
+            var fileContent = new ByteArrayContent(fileBytes);
+            fileContent.Headers.ContentType = new MediaTypeHeaderValue(file.ContentType ?? "image/jpeg");
+            form.Add(fileContent, "file", file.FileName ?? "image.jpg");
 
             using var response = await _httpClient.PostAsync(requestUrl, form);
             var rawText = await response.Content.ReadAsStringAsync();
