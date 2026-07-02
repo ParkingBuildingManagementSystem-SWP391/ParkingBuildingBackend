@@ -19,55 +19,14 @@ namespace ParkingBuilding.Service.Service
         public FastApiLicensePlateService(HttpClient httpClient, IConfiguration configuration)
         {
             _httpClient = httpClient;
-            // Đọc cấu hình động từ appsettings.json
-            _pythonAiUrl = configuration["AiSettings:PythonAiUrl"]
-                           ?? "https://vinhth-parking-license-ai.hf.space/predict";
+            // Đọc cấu hình động từ appsettings.json, nếu trống thì fallback về url mặc định (predict-file)
+            var configuredUrl = configuration["AiSettings:PythonAiUrl"];
+            _pythonAiUrl = !string.IsNullOrWhiteSpace(configuredUrl)
+                ? configuredUrl
+                : "https://vinhth-parking-license-ai.hf.space/predict-file";
         }
 
-        public async Task<string> PredictLicensePlateAsync(string imageUrl)
-        {
-            var response = await _httpClient.PostAsJsonAsync(
-                _pythonAiUrl,
-                new AiPredictRequest { ImageUrl = imageUrl }
-            );
 
-            // ĐỌC RAW STRING TRƯỚC — HTTP response stream chỉ đọc được 1 lần duy nhất
-            // Nếu đọc JSON trước rồi mới đọc string sẽ bị lỗi stream đã bị consumed
-            var rawText = await response.Content.ReadAsStringAsync();
-
-            if (!response.IsSuccessStatusCode)
-            {
-                throw new Exception($"Python AI trả lỗi HTTP {(int)response.StatusCode}: {rawText}");
-            }
-
-            // Parse JSON từ rawText đã lưu sẵn
-            // Python trả về: { "status": "success", "license_plate": "30F455775", "message": "" }
-            try
-            {
-                var result = JsonSerializer.Deserialize<AiPredictResponse>(rawText);
-                if (result != null)
-                {
-                    if (!result.IsSuccess)
-                    {
-                        throw new Exception(string.IsNullOrWhiteSpace(result.Message) ? "Python AI nhận dạng không thành công." : result.Message);
-                    }
-                    if (!string.IsNullOrWhiteSpace(result.LicensePlate))
-                    {
-                        return result.LicensePlate.Trim();
-                    }
-                }
-            }
-            catch (JsonException)
-            {
-                // Trường hợp Python trả về plain string thay vì JSON object
-                if (!string.IsNullOrWhiteSpace(rawText))
-                {
-                    return rawText.Trim().Replace("\"", "");
-                }
-            }
-
-            throw new Exception("Python AI không nhận diện được biển số từ ảnh này.");
-        }
 
         public async Task<string> PredictLicensePlateFromFileAsync(IFormFile file)
         {
@@ -83,12 +42,16 @@ namespace ParkingBuilding.Service.Service
             fileContent.Headers.ContentType = new MediaTypeHeaderValue(file.ContentType ?? "image/jpeg");
             form.Add(fileContent, "file", file.FileName);
 
-            string baseUrl = _pythonAiUrl;
-            if (baseUrl.EndsWith("/predict"))
+            // Nếu cấu hình trỏ thẳng tới /predict-file thì dùng luôn, ngược lại chuyển đổi tự động
+            string requestUrl = _pythonAiUrl;
+            if (!requestUrl.EndsWith("/predict-file"))
             {
-                baseUrl = baseUrl.Substring(0, baseUrl.Length - "/predict".Length);
+                if (requestUrl.EndsWith("/predict"))
+                {
+                    requestUrl = requestUrl.Substring(0, requestUrl.Length - "/predict".Length);
+                }
+                requestUrl = $"{requestUrl.TrimEnd('/')}/predict-file";
             }
-            string requestUrl = $"{baseUrl.TrimEnd('/')}/predict-file";
 
             using var response = await _httpClient.PostAsync(requestUrl, form);
             var rawText = await response.Content.ReadAsStringAsync();

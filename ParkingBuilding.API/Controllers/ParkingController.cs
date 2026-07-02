@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using ParkingBuilding.Service.DTOs;
 using ParkingBuilding.Service.IService;
@@ -264,12 +265,10 @@ namespace ParkingBuilding.API.Controllers
                 if (request.ImageFile == null || request.ImageFile.Length == 0)
                     return BadRequest(new { isSuccess = false, message = "Vui lòng cung cấp file ảnh phương tiện." });
 
-                // 1. Upload lên thư mục tạm của Cloudinary
-                var uploadResult = await _imageStorageService.UploadImageDetailedAsync(request.ImageFile, "parking_temp");
-
-                // 2. Gọi dịch vụ Python AI bằng URL gốc (RawUrl)
-                if (request.VehicleTypeId == 1) // Xe đạp
+                // 1. Nếu là Xe đạp: Không cần chạy AI, tự tạo mã định danh ảo
+                if (request.VehicleTypeId == 1) 
                 {
+                    var uploadResult = await _imageStorageService.UploadImageDetailedAsync(request.ImageFile, "parking_temp");
                     string bikePlate = $"BIKE_{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}";
                     return Ok(new
                     {
@@ -281,30 +280,75 @@ namespace ParkingBuilding.API.Controllers
                     });
                 }
 
-                bool isMotorbike = (request.VehicleTypeId == 2);
+                // 2. Đọc file ảnh thành byte array một lần duy nhất để tránh xung đột stream khi chạy song song
+                byte[] fileBytes;
+                using (var memoryStream = new MemoryStream())
+                {
+                    await request.ImageFile.CopyToAsync(memoryStream);
+                    fileBytes = memoryStream.ToArray();
+                }
+
+                // 3. Tạo các luồng nhớ độc lập cho mỗi tác vụ
+                var aiStream = new MemoryStream(fileBytes);
+                var uploadStream = new MemoryStream(fileBytes);
+
+                var aiFile = new FormFile(aiStream, 0, fileBytes.Length, request.ImageFile.Name, request.ImageFile.FileName)
+                {
+                    Headers = request.ImageFile.Headers,
+                    ContentType = request.ImageFile.ContentType
+                };
+
+                var uploadFile = new FormFile(uploadStream, 0, fileBytes.Length, request.ImageFile.Name, request.ImageFile.FileName)
+                {
+                    Headers = request.ImageFile.Headers,
+                    ContentType = request.ImageFile.ContentType
+                };
+
+                // 4. Chạy song song nhận diện AI và upload lên Cloudinary
+                var aiTask = _aiRecognitionService.PredictLicensePlateFromFileAsync(aiFile);
+                var uploadTask = _imageStorageService.UploadImageDetailedAsync(uploadFile, "parking_temp");
+
+                try
+                {
+                    await Task.WhenAll(aiTask, uploadTask);
+                }
+                catch (Exception)
+                {
+                    // Bắt exception chung để tránh ném lỗi trực tiếp ra ngoài, sẽ xử lý cụ thể từng task
+                }
+                finally
+                {
+                    // Đảm bảo giải phóng các luồng nhớ sau khi hoàn tất
+                    aiStream.Dispose();
+                    uploadStream.Dispose();
+                }
 
                 string detectedPlate = "";
                 try
                 {
-                    detectedPlate = await _aiRecognitionService.PredictLicensePlateAsync(uploadResult.RawUrl);
+                    detectedPlate = await aiTask;
                 }
                 catch (Exception aiEx)
                 {
+                    // Nếu AI lỗi, vẫn trả về URL ảnh đã upload thành công từ Cloudinary để nhân viên nhập tay
+                    var completedUpload = await uploadTask;
                     return Ok(new
                     {
                         isSuccess = true,
-                        imageUrl = uploadResult.OptimizedUrl,
-                        rawImageUrl = uploadResult.RawUrl,
+                        imageUrl = completedUpload.OptimizedUrl,
+                        rawImageUrl = completedUpload.RawUrl,
                         predictedPlate = "",
                         message = $"Không thể nhận dạng tự động: {aiEx.Message}. Vui lòng nhập tay."
                     });
                 }
 
+                var finalUploadResult = await uploadTask;
+
                 return Ok(new
                 {
                     isSuccess = true,
-                    imageUrl = uploadResult.OptimizedUrl,
-                    rawImageUrl = uploadResult.RawUrl,
+                    imageUrl = finalUploadResult.OptimizedUrl,
+                    rawImageUrl = finalUploadResult.RawUrl,
                     predictedPlate = detectedPlate
                 });
             }

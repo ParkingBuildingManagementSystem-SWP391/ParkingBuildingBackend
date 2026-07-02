@@ -10,11 +10,6 @@ namespace ParkingBuilding.Service.IService
     public interface IAiRecognitionService
     {
         /// <summary>
-        /// Gửi URL hình ảnh sang dịch vụ AI để nhận dạng biển số xe.
-        /// </summary>
-        Task<string> PredictLicensePlateAsync(string imageUrl);
-
-        /// <summary>
         /// Gửi trực tiếp file hình ảnh sang dịch vụ AI (multipart/form-data) để nhận dạng biển số xe.
         /// </summary>
         Task<string> PredictLicensePlateFromFileAsync(IFormFile file);
