@@ -49,22 +49,12 @@ namespace ParkingBuilding.Service.Service
                              ?? throw new KeyNotFoundException("Gói cước thành viên không tồn tại hoặc đã bị xóa.");
 
                 // 3. Kiểm tra tính hợp lệ của DTO so với Tier
-                if (dto.DurationMonths != tier.DurationMonths)
+                if (tier.DurationMonths != 1 && tier.DurationMonths != 6 && tier.DurationMonths != 12)
                 {
-                    throw new ArgumentException("Thời hạn thuê không khớp với gói thành viên đã chọn.");
+                    throw new ArgumentException("Thời hạn thuê của gói thành viên không hợp lệ (chỉ được phép là 1, 6 hoặc 12 tháng).");
                 }
 
-                if (dto.TypeId != tier.TypeId)
-                {
-                    throw new ArgumentException("Loại xe không khớp với gói thành viên đã chọn.");
-                }
-
-                if (dto.DurationMonths != 1 && dto.DurationMonths != 6 && dto.DurationMonths != 12)
-                {
-                    throw new ArgumentException("Thời hạn thuê chỉ được phép là 1, 6 hoặc 12 tháng.");
-                }
-
-                // 4. Kiểm tra biển số xe và giới hạn tối đa
+                // 4. Kiểm tra biển số xe và giới hạn tối đa của gói cước
                 if (dto.LicenseVehicles == null || dto.LicenseVehicles.Count == 0)
                 {
                     throw new ArgumentException("Vui lòng cung cấp ít nhất một biển số xe.");
@@ -85,7 +75,7 @@ namespace ParkingBuilding.Service.Service
                     }
 
                     string cleanPlate = plate.Trim().ToUpper();
-                    if (dto.TypeId != 1) // Không phải xe đạp (TypeId = 1) thì validate biển số xe
+                    if (tier.TypeId != 1) // Không phải xe đạp (TypeId = 1) thì validate biển số xe
                     {
                         if (!LicensePlateHelper.IsValidLicensePlate(cleanPlate, out string validatedPlate))
                         {
@@ -114,7 +104,7 @@ namespace ParkingBuilding.Service.Service
                 decimal amountToPay = tier.Price;
                 var vnTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
                 var startTime = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vnTimeZone);
-                var endTime = startTime.AddMonths(dto.DurationMonths);
+                var endTime = startTime.AddMonths(tier.DurationMonths);
 
                 // 7. Tạo mã vé cho Membership Card
                 string ticketCode = $"MBC_{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}";
@@ -145,7 +135,7 @@ namespace ParkingBuilding.Service.Service
                     UserId = userId,
                     TierId = tier.TierId,
                     SlotId = slot.SlotId,
-                    DurationMonths = dto.DurationMonths,
+                    DurationMonths = tier.DurationMonths,
                     TicketCode = ticketCode,
                     LicenseVehicles = cleanPlates,
                     StartTime = startTime,
@@ -157,7 +147,7 @@ namespace ParkingBuilding.Service.Service
                 string paymentUrl = _vnPayService.CreatePaymentUrl(
                     txnRef: txnRef,
                     amount: amountToPay,
-                    orderInfo: $"DK the thanh vien goi {tier.TierName} cho {dto.DurationMonths} thang",
+                    orderInfo: $"DK the thanh vien goi {tier.TierName} cho {tier.DurationMonths} thang",
                     returnUrl: _vnPayConfig.ReturnUrl + "?invoiceId=" + invoice.InvoiceId,
                     ipAddress: ipAddress
                 );
