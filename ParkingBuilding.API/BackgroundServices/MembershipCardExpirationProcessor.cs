@@ -95,15 +95,25 @@ namespace ParkingBuilding.API.BackgroundServices
                                 invoice.PaymentStatus = "FAILED";
                                 invoice.UpdatedDate = localNow;
 
-                                // Parse SlotId từ TransactionCode (MBC_{SlotId}_{Ticks})
-                                var parts = invoice.TransactionCode!.Split('_');
-                                if (parts.Length >= 2 && int.TryParse(parts[1], out int slotId))
+                                var tempPrefix = $"TEMP_{invoice.TransactionCode}_";
+                                var tickets = await context.Tickets
+                                    .Include(t => t.MembershipCard)
+                                    .Where(t => t.TicketCode.StartsWith(tempPrefix))
+                                    .ToListAsync(stoppingToken);
+
+                                foreach (var ticket in tickets)
                                 {
-                                    var slot = await context.ParkingSlots.FirstOrDefaultAsync(s => s.SlotId == slotId, stoppingToken);
-                                    if (slot != null && slot.SlotStatus == ParkingStatuses.SlotReserved)
+                                    ticket.TicketStatus = ParkingStatuses.TicketExpired; // "Expired"
+                                    if (ticket.MembershipCard != null)
                                     {
-                                        slot.SlotStatus = ParkingStatuses.SlotAvailable;
-                                        _logger.LogInformation($"Đã tự động giải phóng ô đỗ {slot.SlotName} (ID: {slot.SlotId}) từ giao dịch VNPay hết hạn {invoice.TransactionCode}.");
+                                        ticket.MembershipCard.Status = ParkingStatuses.MonthlyCardExpired; // "Expired"
+
+                                        var slot = await context.ParkingSlots.FirstOrDefaultAsync(s => s.SlotId == ticket.MembershipCard.SlotId, stoppingToken);
+                                        if (slot != null && slot.SlotStatus == ParkingStatuses.SlotReserved)
+                                        {
+                                            slot.SlotStatus = ParkingStatuses.SlotAvailable;
+                                            _logger.LogInformation($"Đã tự động giải phóng ô đỗ {slot.SlotName} (ID: {slot.SlotId}) từ giao dịch VNPay hết hạn {invoice.TransactionCode}.");
+                                        }
                                     }
                                 }
                             }

@@ -158,54 +158,170 @@ namespace ParkingBuilding.Service.Service
                 string slotIdsString = string.Join("-", targetSlotIds);
                 string txnRef = $"MBC_{slotIdsString}_{DateTime.UtcNow.Ticks}";
 
-                // B. GIỮ LUỒNG VNPAY (Lưu cache 15 phút và trả về PaymentUrl)
-                var invoice = new Invoice
+                if (dto.PaymentMethod != null && dto.PaymentMethod.ToUpper() == "WALLET")
                 {
-                    SessionId = null,
-                    TotalAmount = amountToPay,
-                    PaymentMethod = "VNPAY",
-                    PaymentStatus = "PENDING",
-                    TransactionCode = txnRef,
-                    CreatedDate = startTime,
-                };
-                await _context.Invoices.AddAsync(invoice);
-                await _context.SaveChangesAsync();
+                    // A. XỬ LÝ THANH TOÁN BẰNG VÍ ĐIỆN TỬ
+                    bool paymentSuccess = await _walletService.ProcessWalletPaymentAsync(
+                        userId,
+                        amountToPay,
+                        $"Thanh toán gói {tier.TierName} (Slots: {string.Join(", ", slots.Select(s => s.SlotName))})"
+                    );
 
-                // Lưu metadata tạm thời vào RAM cache (15 phút)
-                var metadata = new MembershipRegistrationMetadata
+                    if (!paymentSuccess)
+                    {
+                        throw new InvalidOperationException("Số dư ví không đủ để thanh toán gói thành viên.");
+                    }
+
+                    for (int i = 0; i < slots.Count; i++)
+                    {
+                        var targetSlot = slots[i];
+                        var ticketCode = ticketCodes[i];
+
+                        // Tạo Ticket hoạt động luôn
+                        var ticket = new Ticket
+                        {
+                            TicketCode = ticketCode,
+                            TicketStatus = ParkingStatuses.TicketActive
+                        };
+                        await _context.Tickets.AddAsync(ticket);
+                        await _context.SaveChangesAsync();
+
+                        // Tạo MembershipCard
+                        var card = new MembershipCard
+                        {
+                            UserId = userId,
+                            TierId = tier.TierId,
+                            TicketId = ticket.TicketId,
+                            SlotId = targetSlot.SlotId,
+                            StartTime = startTime,
+                            EndTime = endTime,
+                            Status = ParkingStatuses.MonthlyCardActive,
+                            IsDeleted = false
+                        };
+                        await _context.MembershipCards.AddAsync(card);
+                        await _context.SaveChangesAsync();
+
+                        // Đăng ký danh sách xe cho card này
+                        foreach (var plate in cleanPlates)
+                        {
+                            var vehicle = new MembershipVehicle
+                            {
+                                MembershipCardId = card.MembershipCardId,
+                                LicenseVehicle = plate,
+                                IsActive = true
+                            };
+                            await _context.MembershipVehicles.AddAsync(vehicle);
+                        }
+                    }
+
+                    // Tạo Invoice trạng thái SUCCESS
+                    var invoice = new Invoice
+                    {
+                        SessionId = null,
+                        TotalAmount = amountToPay,
+                        PaymentMethod = "WALLET",
+                        PaymentStatus = "SUCCESS",
+                        TransactionCode = txnRef,
+                        CreatedDate = startTime,
+                        PaymentTime = startTime,
+                        UpdatedDate = startTime
+                    };
+                    await _context.Invoices.AddAsync(invoice);
+
+                    await _context.SaveChangesAsync();
+                    await transaction.CommitAsync();
+
+                    return new MembershipCardRegistrationResponseDto
+                    {
+                        Username = user.Username,
+                        TicketCode = string.Join(", ", ticketCodes),
+                        AmountToPay = amountToPay,
+                        SlotId = targetSlotIds.FirstOrDefault(),
+                        LicenseVehicles = cleanPlates,
+                        EndTime = endTime,
+                        PaymentUrl = null
+                    };
+                }
+                else
                 {
-                    UserId = userId,
-                    TierId = tier.TierId,
-                    SlotIds = targetSlotIds,
-                    DurationMonths = tier.DurationMonths,
-                    TicketCodes = ticketCodes,
-                    LicenseVehicles = cleanPlates,
-                    StartTime = startTime,
-                    EndTime = endTime
-                };
-                _cache.Set(txnRef, metadata, TimeSpan.FromMinutes(15));
+                    // B. LƯU TRỰC TIẾP VÀO DB VỚI TRẠNG THÁI PENDING (TRÁNH DÙNG RAM CACHE)
+                    var invoice = new Invoice
+                    {
+                        SessionId = null,
+                        TotalAmount = amountToPay,
+                        PaymentMethod = "VNPAY",
+                        PaymentStatus = "PENDING",
+                        TransactionCode = txnRef,
+                        CreatedDate = startTime,
+                    };
+                    await _context.Invoices.AddAsync(invoice);
+                    await _context.SaveChangesAsync();
 
-                // Tạo URL thanh toán VNPay
-                string paymentUrl = _vnPayService.CreatePaymentUrl(
-                    txnRef: txnRef,
-                    amount: amountToPay,
-                    orderInfo: $"DK the thanh vien goi {tier.TierName} cho {tier.DurationMonths} thang",
-                    returnUrl: _vnPayConfig.ReturnUrl + "?invoiceId=" + invoice.InvoiceId,
-                    ipAddress: ipAddress
-                );
+                    for (int i = 0; i < slots.Count; i++)
+                    {
+                        var targetSlot = slots[i];
+                        var cleanTicketCode = ticketCodes[i];
+                        var tempTicketCode = $"TEMP_{txnRef}_{cleanTicketCode}";
 
-                await transaction.CommitAsync();
+                        // Tạo Ticket trạng thái PendingPayment
+                        var ticket = new Ticket
+                        {
+                            TicketCode = tempTicketCode,
+                            TicketStatus = "PendingPayment"
+                        };
+                        await _context.Tickets.AddAsync(ticket);
+                        await _context.SaveChangesAsync();
 
-                return new MembershipCardRegistrationResponseDto
-                {
-                    Username = user.Username,
-                    TicketCode = string.Join(", ", ticketCodes),
-                    AmountToPay = amountToPay,
-                    SlotId = targetSlotIds.FirstOrDefault(),
-                    LicenseVehicles = cleanPlates,
-                    EndTime = endTime,
-                    PaymentUrl = paymentUrl
-                };
+                        // Tạo MembershipCard trạng thái PendingPayment
+                        var card = new MembershipCard
+                        {
+                            UserId = userId,
+                            TierId = tier.TierId,
+                            TicketId = ticket.TicketId,
+                            SlotId = targetSlot.SlotId,
+                            StartTime = startTime,
+                            EndTime = endTime,
+                            Status = "PendingPayment",
+                            IsDeleted = false
+                        };
+                        await _context.MembershipCards.AddAsync(card);
+                        await _context.SaveChangesAsync();
+
+                        // Lưu danh sách xe ở trạng thái IsActive = false
+                        foreach (var plate in cleanPlates)
+                        {
+                            var vehicle = new MembershipVehicle
+                            {
+                                MembershipCardId = card.MembershipCardId,
+                                LicenseVehicle = plate,
+                                IsActive = false
+                            };
+                            await _context.MembershipVehicles.AddAsync(vehicle);
+                        }
+                    }
+
+                    // Tạo URL thanh toán VNPay
+                    string paymentUrl = _vnPayService.CreatePaymentUrl(
+                        txnRef: txnRef,
+                        amount: amountToPay,
+                        orderInfo: $"DK the thanh vien goi {tier.TierName} cho {tier.DurationMonths} thang",
+                        returnUrl: _vnPayConfig.ReturnUrl + "?invoiceId=" + invoice.InvoiceId,
+                        ipAddress: ipAddress
+                    );
+
+                    await transaction.CommitAsync();
+
+                    return new MembershipCardRegistrationResponseDto
+                    {
+                        Username = user.Username,
+                        TicketCode = string.Join(", ", ticketCodes),
+                        AmountToPay = amountToPay,
+                        SlotId = targetSlotIds.FirstOrDefault(),
+                        LicenseVehicles = cleanPlates,
+                        EndTime = endTime,
+                        PaymentUrl = paymentUrl
+                    };
+                }
             }
             catch (Exception)
             {
@@ -216,7 +332,6 @@ namespace ParkingBuilding.Service.Service
 
         public async Task<PaymentResultDto> ConfirmMembershipCardPaymentAsync(string txnRef, decimal amount, string responseCode, string transactionStatus)
         {
-            // Sử dụng transaction bao bọc tất cả thao tác lưu DB
             using var transaction = await _context.Database.BeginTransactionAsync();
             try
             {
@@ -237,20 +352,13 @@ namespace ParkingBuilding.Service.Service
                     return new PaymentResultDto { Success = false, ErrorCode = "02", Message = "Hóa đơn đã được xử lý" };
                 }
 
-                // Phân tích cú pháp để tìm danh sách các SlotId dự phòng từ txnRef (MBC_{slotIdsString}_{Ticks})
-                var targetSlotIds = new List<int>();
-                var parts = txnRef.Split('_');
-                if (parts.Length >= 2)
-                {
-                    var slotParts = parts[1].Split('-');
-                    foreach (var sp in slotParts)
-                    {
-                        if (int.TryParse(sp, out int parsedId))
-                        {
-                            targetSlotIds.Add(parsedId);
-                        }
-                    }
-                }
+                // Lấy tiền tố TEMP_{txnRef}_
+                var tempPrefix = $"TEMP_{txnRef}_";
+                var tickets = await _context.Tickets
+                    .Include(t => t.MembershipCard)
+                        .ThenInclude(mc => mc!.MembershipVehicles)
+                    .Where(t => t.TicketCode.StartsWith(tempPrefix))
+                    .ToListAsync();
 
                 // 2. Xử lý khi thanh toán thất bại
                 if (responseCode != "00" || transactionStatus != "00")
@@ -258,47 +366,32 @@ namespace ParkingBuilding.Service.Service
                     invoice.PaymentStatus = "FAILED";
                     invoice.UpdatedDate = DateTime.UtcNow;
 
-                    // Mở khóa các slot đỗ xe
-                    if (targetSlotIds.Count > 0)
+                    foreach (var ticket in tickets)
                     {
-                        var slotsToRelease = await _context.ParkingSlots.Where(s => targetSlotIds.Contains(s.SlotId)).ToListAsync();
-                        foreach (var s in slotsToRelease)
+                        ticket.TicketStatus = ParkingStatuses.TicketExpired; // "Expired"
+                        if (ticket.MembershipCard != null)
                         {
-                            if (s.SlotStatus == ParkingStatuses.SlotReserved)
+                            ticket.MembershipCard.Status = ParkingStatuses.MonthlyCardExpired; // "Expired"
+                            
+                            var slot = await _context.ParkingSlots.FirstOrDefaultAsync(s => s.SlotId == ticket.MembershipCard.SlotId);
+                            if (slot != null && slot.SlotStatus == ParkingStatuses.SlotReserved)
                             {
-                                s.SlotStatus = ParkingStatuses.SlotAvailable;
-                                _context.ParkingSlots.Update(s);
+                                slot.SlotStatus = ParkingStatuses.SlotAvailable;
+                                _context.ParkingSlots.Update(slot);
                             }
                         }
                     }
-
-                    _cache.Remove(txnRef);
 
                     await _context.SaveChangesAsync();
                     await transaction.CommitAsync();
                     return new PaymentResultDto { Success = false, ErrorCode = "00", Message = "Thanh toán thất bại từ cổng VNPay" };
                 }
 
-                // 3. Lấy dữ liệu tạm từ Cache
-                if (!_cache.TryGetValue(txnRef, out MembershipRegistrationMetadata? meta) || meta == null)
+                // 3. Xử lý thanh toán thành công
+                if (tickets.Count == 0)
                 {
-                    // Trường hợp hết hạn cache 15p: Revert các slot đỗ về Available và cập nhật Invoice FAILED
                     invoice.PaymentStatus = "FAILED";
                     invoice.UpdatedDate = DateTime.UtcNow;
-
-                    if (targetSlotIds.Count > 0)
-                    {
-                        var slotsToRelease = await _context.ParkingSlots.Where(s => targetSlotIds.Contains(s.SlotId)).ToListAsync();
-                        foreach (var s in slotsToRelease)
-                        {
-                            if (s.SlotStatus == ParkingStatuses.SlotReserved)
-                            {
-                                s.SlotStatus = ParkingStatuses.SlotAvailable;
-                                _context.ParkingSlots.Update(s);
-                            }
-                        }
-                    }
-
                     await _context.SaveChangesAsync();
                     await transaction.CommitAsync();
                     return new PaymentResultDto { Success = false, ErrorCode = "03", Message = "Yêu cầu đăng ký đã hết hạn (quá 15 phút)" };
@@ -307,61 +400,38 @@ namespace ParkingBuilding.Service.Service
                 var vnTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
                 var currentDbTime = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vnTimeZone);
 
-                // 4. Tạo các Tickets và MembershipCards tương ứng với từng slot
-                for (int i = 0; i < meta.SlotIds.Count; i++)
+                foreach (var ticket in tickets)
                 {
-                    var slotId = meta.SlotIds[i];
-                    var ticketCode = meta.TicketCodes[i];
+                    // Trả lại TicketCode nguyên bản và đổi trạng thái hoạt động
+                    var cleanCode = ticket.TicketCode.Replace(tempPrefix, "");
+                    ticket.TicketCode = cleanCode;
+                    ticket.TicketStatus = ParkingStatuses.TicketActive; // "Active"
 
-                    // 4.1 Tạo Ticket
-                    var ticket = new Ticket
+                    if (ticket.MembershipCard != null)
                     {
-                        TicketCode = ticketCode,
-                        TicketStatus = ParkingStatuses.TicketActive
-                    };
-                    await _context.Tickets.AddAsync(ticket);
-                    await _context.SaveChangesAsync(); // Lưu để lấy TicketId
+                        var tier = await _context.MembershipTiers.FirstOrDefaultAsync(t => t.TierId == ticket.MembershipCard.TierId);
+                        int durationMonths = tier?.DurationMonths ?? 1;
 
-                    // 4.2 Tạo MembershipCard
-                    var card = new MembershipCard
-                    {
-                        UserId = meta.UserId,
-                        TierId = meta.TierId,
-                        TicketId = ticket.TicketId,
-                        SlotId = slotId,
-                        StartTime = currentDbTime,
-                        EndTime = currentDbTime.AddMonths(meta.DurationMonths),
-                        Status = ParkingStatuses.MonthlyCardActive, // "Active"
-                        IsDeleted = false
-                    };
-                    await _context.MembershipCards.AddAsync(card);
-                    await _context.SaveChangesAsync(); // Lưu để lấy MembershipCardId
+                        ticket.MembershipCard.Status = ParkingStatuses.MonthlyCardActive; // "Active"
+                        ticket.MembershipCard.StartTime = currentDbTime;
+                        ticket.MembershipCard.EndTime = currentDbTime.AddMonths(durationMonths);
 
-                    // 4.3 Lưu các biển số xe đăng ký cho thẻ này
-                    foreach (var plate in meta.LicenseVehicles)
-                    {
-                        var vehicle = new MembershipVehicle
+                        foreach (var vehicle in ticket.MembershipCard.MembershipVehicles)
                         {
-                            MembershipCardId = card.MembershipCardId,
-                            LicenseVehicle = plate,
-                            IsActive = true
-                        };
-                        await _context.MembershipVehicles.AddAsync(vehicle);
+                            vehicle.IsActive = true;
+                        }
                     }
                 }
 
-                // 5. Cập nhật Invoice sang SUCCESS
+                // 4. Cập nhật hóa đơn
                 invoice.PaymentStatus = "SUCCESS";
                 invoice.PaymentTime = currentDbTime;
                 invoice.UpdatedDate = currentDbTime;
 
-                // 6. Giải phóng cache
-                _cache.Remove(txnRef);
-
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
 
-                _logger.LogInformation("Đăng ký thành công {Count} thẻ thành viên cho tài xế ID {UserId}.", meta.SlotIds.Count, meta.UserId);
+                _logger.LogInformation("Xác nhận thanh toán thành công qua VNPay cho giao dịch {TxnRef}. Đã kích hoạt các thẻ thành viên.", txnRef);
 
                 return new PaymentResultDto { Success = true };
             }
