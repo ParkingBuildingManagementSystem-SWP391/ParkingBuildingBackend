@@ -166,6 +166,30 @@ namespace ParkingBuilding.API.Controllers
 
 
 
+        /// <summary>
+        /// Cấu hình giá cho gói cước thành viên (Chỉ áp dụng cho Manager).
+        /// </summary>
+        [HttpPut("update-membership-pricing")]
+        public async Task<IActionResult> UpdateMembershipPricing([FromBody] UpdateMembershipTierPriceRequest request)
+        {
+            _logger.LogInformation("Manager requested to update membership pricing for VehicleTypeId={TypeId}, DurationMonths={Duration}", 
+                request.TypeId, request.DurationMonths);
 
+            try
+            {
+                var result = await _managerService.UpdateMembershipTierPricingAsync(request);
+                if (result == null)
+                {
+                    return NotFound("Không tìm thấy gói cước thành viên phù hợp với loại xe và số tháng yêu cầu.");
+                }
+
+                return Ok(new { isSuccess = true, data = result });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi quản lý cập nhật giá gói cước thành viên.");
+                return StatusCode(500, "Lỗi máy chủ khi cập nhật: " + ex.Message);
+            }
+        }
     }
 }
