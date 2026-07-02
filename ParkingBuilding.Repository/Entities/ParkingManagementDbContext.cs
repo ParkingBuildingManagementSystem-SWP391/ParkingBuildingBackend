@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 
@@ -17,9 +17,11 @@ public partial class ParkingManagementDbContext : DbContext
 
     public virtual DbSet<Invoice> Invoices { get; set; }
 
-    public virtual DbSet<MonthlyCard> MonthlyCards { get; set; }
+    public virtual DbSet<MembershipCard> MembershipCards { get; set; }
 
-    public virtual DbSet<MonthlyTariff> MonthlyTariffs { get; set; }
+    public virtual DbSet<MembershipTier> MembershipTiers { get; set; }
+
+    public virtual DbSet<MembershipVehicle> MembershipVehicles { get; set; }
 
     public virtual DbSet<ParkingSession> ParkingSessions { get; set; }
 
@@ -106,9 +108,15 @@ public partial class ParkingManagementDbContext : DbContext
                 .HasConstraintName("FK__Invoices__StaffI__6477ECF3");
         });
 
-        modelBuilder.Entity<MonthlyCard>(entity =>
+        modelBuilder.Entity<MembershipCard>(entity =>
         {
-            entity.HasKey(e => e.MonthlyCardId).HasName("PK__MonthlyC__D4771EA68DE952B9");
+            entity.HasKey(e => e.MembershipCardId).HasName("PK__Membersh__D72ABE79E4AEA4FB");
+
+            entity.HasIndex(e => e.SlotId, "UQ_Active_Membership_Slot")
+                .IsUnique()
+                .HasFilter("([SlotId] IS NOT NULL AND [Status]='Active' AND [IsDeleted]=(0))");
+
+            entity.HasIndex(e => e.TicketId, "UQ__Membersh__712CC606C2922FA4").IsUnique();
 
             entity.Property(e => e.EndTime).HasColumnType("datetime");
             entity.Property(e => e.StartTime)
@@ -118,32 +126,52 @@ public partial class ParkingManagementDbContext : DbContext
                 .HasMaxLength(50)
                 .IsUnicode(false);
 
-            entity.HasOne(d => d.Tariff).WithMany(p => p.MonthlyCards)
-                .HasForeignKey(d => d.TariffId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK_MonthlyCards_MonthlyTariffs");
+            entity.HasOne(d => d.Slot).WithOne(p => p.MembershipCard)
+                .HasForeignKey<MembershipCard>(d => d.SlotId)
+                .HasConstraintName("FK_MembershipCards_ParkingSlots");
 
-            entity.HasOne(d => d.Ticket).WithMany(p => p.MonthlyCards)
-                .HasForeignKey(d => d.TicketId)
+            entity.HasOne(d => d.Ticket).WithOne(p => p.MembershipCard)
+                .HasForeignKey<MembershipCard>(d => d.TicketId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK_MonthlyCards_Tickets");
+                .HasConstraintName("FK_MembershipCards_Tickets");
 
-            entity.HasOne(d => d.User).WithMany(p => p.MonthlyCards)
+            entity.HasOne(d => d.Tier).WithMany(p => p.MembershipCards)
+                .HasForeignKey(d => d.TierId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_MembershipCards_MembershipTiers");
+
+            entity.HasOne(d => d.User).WithMany(p => p.MembershipCards)
                 .HasForeignKey(d => d.UserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK_MonthlyCards_Users");
+                .HasConstraintName("FK_MembershipCards_Users");
         });
 
-        modelBuilder.Entity<MonthlyTariff>(entity =>
+        modelBuilder.Entity<MembershipTier>(entity =>
         {
-            entity.HasKey(e => e.TariffId).HasName("PK__MonthlyT__EBAF9DB35B465677");
+            entity.HasKey(e => e.TierId).HasName("PK__Membersh__362F561D78A7D1F6");
 
-            entity.Property(e => e.MonthlyPrice).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.Price).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.TierName).HasMaxLength(100);
 
-            entity.HasOne(d => d.Type).WithMany(p => p.MonthlyTariffs)
+            entity.HasOne(d => d.Type).WithMany(p => p.MembershipTiers)
                 .HasForeignKey(d => d.TypeId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK_MonthlyTariffs_VehiclesType");
+                .HasConstraintName("FK_MembershipTiers_VehiclesType");
+        });
+
+        modelBuilder.Entity<MembershipVehicle>(entity =>
+        {
+            entity.HasKey(e => e.MembershipVehicleId).HasName("PK__Membersh__F7C3BB92705198B2");
+
+            entity.Property(e => e.IsActive).HasDefaultValue(true);
+            entity.Property(e => e.LicenseVehicle)
+                .HasMaxLength(50)
+                .IsUnicode(false);
+
+            entity.HasOne(d => d.MembershipCard).WithMany(p => p.MembershipVehicles)
+                .HasForeignKey(d => d.MembershipCardId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_MembershipVehicles_MembershipCards");
         });
 
         modelBuilder.Entity<ParkingSession>(entity =>
@@ -255,10 +283,14 @@ public partial class ParkingManagementDbContext : DbContext
             entity.ToTable("VehiclesType");
 
             entity.Property(e => e.DayRate).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.FirstHourRate)
+                .HasDefaultValue(10000.00m)
+                .HasColumnType("decimal(18, 2)");
             entity.Property(e => e.FullDayRate).HasColumnType("decimal(18, 2)");
             entity.Property(e => e.NightRate).HasColumnType("decimal(18, 2)");
-            entity.Property(e => e.FirstHourRate).HasColumnType("decimal(18, 2)");
-            entity.Property(e => e.SubsequentHourRate).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.SubsequentHourRate)
+                .HasDefaultValue(5000.00m)
+                .HasColumnType("decimal(18, 2)");
             entity.Property(e => e.TypeName).HasMaxLength(255);
         });
 

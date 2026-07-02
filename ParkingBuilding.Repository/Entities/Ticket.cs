@@ -11,7 +11,7 @@ public partial class Ticket
 
     public string TicketStatus { get; set; } = null!;
 
-    public virtual ICollection<MonthlyCard> MonthlyCards { get; set; } = new List<MonthlyCard>();
+    public virtual MembershipCard? MembershipCard { get; set; }
 
     public virtual ParkingSession? ParkingSession { get; set; }
 }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 namespace ParkingBuilding.Repository.Entities;
@@ -21,7 +21,7 @@ public partial class VehiclesType
 
     public decimal SubsequentHourRate { get; set; }
 
-    public virtual ICollection<MonthlyTariff> MonthlyTariffs { get; set; } = new List<MonthlyTariff>();
+    public virtual ICollection<MembershipTier> MembershipTiers { get; set; } = new List<MembershipTier>();
 
     public virtual ICollection<ParkingSession> ParkingSessions { get; set; } = new List<ParkingSession>();
 
