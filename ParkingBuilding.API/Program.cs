@@ -41,7 +41,7 @@ namespace ParkingBuilding.API
             builder.Services.AddScoped<IParkingQueryService, ParkingQueryService>();
 
             builder.Services.AddHostedService<BookingCancellationProcessor>();
-            builder.Services.AddHostedService<MonthlyCardExpirationProcessor>();
+            builder.Services.AddHostedService<MembershipCardExpirationProcessor>();
 
             builder.Services.AddCors(options =>
             {
@@ -75,7 +75,7 @@ namespace ParkingBuilding.API
 
             // Đăng ký dịch vụ thanh toán (Service Layer)
             builder.Services.AddScoped<IPaymentService, PaymentService>();
-            builder.Services.AddScoped<IMonthlyCardService, MonthlyCardService>();
+            builder.Services.AddScoped<IMembershipCardService, MembershipCardService>();
 
             // Đăng ký các Repository riêng lẻ (Repository Layer)
             builder.Services.AddScoped<IInvoiceRepository, InvoiceRepository>();

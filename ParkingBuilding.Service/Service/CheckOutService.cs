@@ -193,17 +193,18 @@ namespace ParkingBuilding.Service.Service
                 decimal totalAmount = ParkingPricingCalculator.CalculateFee(checkInTime, checkOutTime, vehicleType);
 
                 // ====================================================================================
-                // KỊCH BẢN 0: XE ĐĂNG KÝ THÈ THÁNG CÒN HIỆU LỰC (Nhận dạng qua TicketId của phiên đỗ)
+                // KỊCH BẢN 0: XE ĐĂNG KÝ THẺ THÀNH VIÊN CÒN HIỆU LỰC (Nhận dạng qua TicketId của phiên đỗ)
                 // ====================================================================================
-                var monthlyCard = session.TicketId != null
-                    ? await _context.MonthlyCards
+                var membershipCard = session.TicketId != null
+                    ? await _context.MembershipCards
+                        .Include(mc => mc.Slot)
                         .FirstOrDefaultAsync(mc => mc.TicketId == session.TicketId
                                              && mc.Status == ParkingStatuses.MonthlyCardActive
                                              && !mc.IsDeleted
                                              && mc.EndTime >= DateTime.UtcNow)
                     : null;
 
-                if (monthlyCard != null)
+                if (membershipCard != null)
                 {
                     session.CheckOutImageUrl = checkOutImageUrl;
                     session.CheckOutTime = checkOutTime;
@@ -217,7 +218,7 @@ namespace ParkingBuilding.Service.Service
                         {
                             SessionId = session.SessionId,
                             TotalAmount = 0,
-                            PaymentMethod = "MONTHLY_CARD",
+                            PaymentMethod = "MEMBERSHIP_CARD",
                             PaymentStatus = "SUCCESS",
                             PaymentTime = DateTime.UtcNow,
                             CreatedDate = DateTime.UtcNow,
@@ -228,7 +229,7 @@ namespace ParkingBuilding.Service.Service
                     else
                     {
                         invoice.TotalAmount = 0;
-                        invoice.PaymentMethod = "MONTHLY_CARD";
+                        invoice.PaymentMethod = "MEMBERSHIP_CARD";
                         invoice.PaymentStatus = "SUCCESS";
                         invoice.PaymentTime = DateTime.UtcNow;
                         invoice.StaffId = currentStaffId;
@@ -238,8 +239,8 @@ namespace ParkingBuilding.Service.Service
                     var slot = session.Slot ?? await _parkingRepository.GetSlotByIdAsync(session.SlotId);
                     if (slot != null)
                     {
-                        // GIẢI PHÓNG Ô ĐỖ ĐỘNG: Chuyển về trạng thái Available để xe khác sử dụng
-                        slot.SlotStatus = ParkingStatuses.SlotAvailable;
+                        // KHÓA Ô ĐỖ XE CỐ ĐỊNH: Set slot status thành Reserved chứ không giải phóng về Available!
+                        slot.SlotStatus = ParkingStatuses.SlotReserved;
                         _context.ParkingSlots.Update(slot);
                     }
 
@@ -249,7 +250,7 @@ namespace ParkingBuilding.Service.Service
                     return new CheckoutResponse
                     {
                         IsSuccess = true,
-                        Message = $"Xe thuộc diện thẻ tháng hoạt động. Cho phép xe {session.LicenseVehicle} ra khỏi bãi (Phí đỗ: 0 VNĐ).",
+                        Message = $"Xe thuộc diện thẻ thành viên hoạt động. Cho phép xe {session.LicenseVehicle} ra khỏi bãi (Phí đỗ: 0 VNĐ).",
                         TicketCode = session.Ticket?.TicketCode ?? "N/A",
                         SlotName = slot?.SlotName ?? "N/A",
                         CheckInLicensePlate = checkInPlate,
@@ -258,7 +259,7 @@ namespace ParkingBuilding.Service.Service
                         CheckInImageUrl = session.CheckInImageUrl,
                         CheckOutImageUrl = checkOutImageUrl,
                         CheckInTime = checkInTime,
-                        CheckOutTime = session.CheckOutTime.Value,
+                        CheckOutTime = checkOutTime,
                         DurationHours = durationHours,
                         TotalAmount = 0,
                         StaffName = staffName,
@@ -823,21 +824,21 @@ namespace ParkingBuilding.Service.Service
             double durationHours = Math.Ceiling(duration.TotalHours);
             if (durationHours <= 0) durationHours = 1;
 
-            // Kiểm tra xem phiên đỗ này có liên kết với vé tháng Active và còn hạn sử dụng hay không
-            var monthlyCard = session.TicketId != null
-                ? await _context.MonthlyCards
+            // Kiểm tra xem phiên đỗ này có liên kết với vé thành viên Active và còn hạn sử dụng hay không
+            var membershipCard = session.TicketId != null
+                ? await _context.MembershipCards
                     .FirstOrDefaultAsync(mc => mc.TicketId == session.TicketId
                                          && mc.Status == ParkingStatuses.MonthlyCardActive
                                          && !mc.IsDeleted
                                          && mc.EndTime >= DateTime.UtcNow)
                 : null;
 
-            bool isMonthlyCardValid = monthlyCard != null;
+            bool isMembershipCardValid = membershipCard != null;
             bool isPaid = false;
             string? paymentStatus = "PENDING";
             decimal totalAmount = 0;
 
-            if (isMonthlyCardValid)
+            if (isMembershipCardValid)
             {
                 totalAmount = 0;
                 isPaid = true;
@@ -886,11 +887,11 @@ namespace ParkingBuilding.Service.Service
                 TotalAmount = totalAmount,
                 IsPaid = isPaid,
                 PaymentStatus = paymentStatus,
-                PaymentMethod = isMonthlyCardValid ? "MONTHLY_CARD" : (session.Invoice?.PaymentMethod ?? "CASH"),
-                DriverName = session.User?.Username ?? (isMonthlyCardValid ? "Khách thẻ tháng" : "Khách vãng lai"),
+                PaymentMethod = isMembershipCardValid ? "MEMBERSHIP_CARD" : (session.Invoice?.PaymentMethod ?? "CASH"),
+                DriverName = session.User?.Username ?? (isMembershipCardValid ? "Khách thẻ thành viên" : "Khách vãng lai"),
                 DriverPhone = session.User?.PhoneNumber ?? "Không có",
                 DriverEmail = session.User?.Email ?? "Không có",
-                CustomerType = isMonthlyCardValid ? "Monthly" : (session.UserId.HasValue ? "Booking" : "WalkIn"),
+                CustomerType = isMembershipCardValid ? "Membership" : (session.UserId.HasValue ? "Booking" : "WalkIn"),
                 VehicleTypeName = session.Type?.TypeName ?? "N/A"
             };
         }

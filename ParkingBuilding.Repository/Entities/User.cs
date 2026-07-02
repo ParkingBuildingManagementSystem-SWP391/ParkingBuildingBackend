@@ -25,7 +25,7 @@ public partial class User
 
     public virtual ICollection<Invoice> Invoices { get; set; } = new List<Invoice>();
 
-    public virtual ICollection<MonthlyCard> MonthlyCards { get; set; } = new List<MonthlyCard>();
+    public virtual ICollection<MembershipCard> MembershipCards { get; set; } = new List<MembershipCard>();
 
     public virtual ICollection<ParkingSession> ParkingSessions { get; set; } = new List<ParkingSession>();
 

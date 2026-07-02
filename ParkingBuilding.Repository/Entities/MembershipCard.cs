@@ -3,17 +3,17 @@ using System.Collections.Generic;
 
 namespace ParkingBuilding.Repository.Entities;
 
-public partial class MonthlyCard
+public partial class MembershipCard
 {
-    public int MonthlyCardId { get; set; }
+    public int MembershipCardId { get; set; }
 
     public int UserId { get; set; }
 
+    public int TierId { get; set; }
+
     public int TicketId { get; set; }
 
-    public int TariffId { get; set; }
-
-    public int DurationMonths { get; set; }
+    public int? SlotId { get; set; }
 
     public DateTime StartTime { get; set; }
 
@@ -23,9 +23,13 @@ public partial class MonthlyCard
 
     public bool IsDeleted { get; set; }
 
-    public virtual MonthlyTariff Tariff { get; set; } = null!;
+    public virtual ICollection<MembershipVehicle> MembershipVehicles { get; set; } = new List<MembershipVehicle>();
+
+    public virtual ParkingSlot? Slot { get; set; }
 
     public virtual Ticket Ticket { get; set; } = null!;
+
+    public virtual MembershipTier Tier { get; set; } = null!;
 
     public virtual User User { get; set; } = null!;
 }

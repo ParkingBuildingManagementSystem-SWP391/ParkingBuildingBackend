@@ -419,47 +419,8 @@ namespace ParkingBuilding.Service.Service
             vehicleType.FirstHourRate = firstHourRate;
             vehicleType.SubsequentHourRate = subsequentHourRate;
 
-            var monthlyTariff = await _context.MonthlyTariffs.FirstOrDefaultAsync(t => t.TypeId == typeId && !t.IsDeleted);
-            if (monthlyTariff != null)
-            {
-                monthlyTariff.MonthlyPrice = monthlyPrice;
-            }
-
             await _context.SaveChangesAsync();
             return true;
-        }
-
-        public async Task<bool> CancelMonthlyCardAsync(int monthlyCardId)
-        {
-            // 1. Tìm thẻ tháng còn đang Active
-            var card = await _context.MonthlyCards
-                .FirstOrDefaultAsync(c => c.MonthlyCardId == monthlyCardId && c.Status == "Active" && !c.IsDeleted);
-
-            if (card == null) return false;
-
-            // 2. Cập nhật trạng thái thẻ tháng sang Canceled
-            card.Status = "Canceled";
-
-            await _context.SaveChangesAsync();
-            return true;
-        }
-
-        public async Task<List<object>> GetAllMonthlyCardsAsync()
-        {
-            return await _context.MonthlyCards
-                .Include(c => c.User)
-                .Where(c => !c.IsDeleted)
-                .OrderByDescending(c => c.StartTime)
-                .Select(c => new {
-                    c.MonthlyCardId,
-                    c.StartTime,
-                    c.EndTime,
-                    c.Status,
-                    c.TariffId,
-                    User = new { c.User.UserId, c.User.Username, c.User.PhoneNumber }
-                })
-                .Cast<object>()
-                .ToListAsync();
         }
 
 
