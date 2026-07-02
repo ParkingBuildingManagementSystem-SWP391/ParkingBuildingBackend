@@ -136,14 +136,14 @@ namespace ParkingBuilding.API.Controllers
                 string responseCode = request.vnp_ResponseCode ?? "";
                 string transactionStatus = request.vnp_TransactionStatus ?? "";
 
-                if (txnRef.StartsWith("MCR_"))
+                if (txnRef.StartsWith("MBC_"))
                 {
-                    var mcService = HttpContext.RequestServices.GetService(typeof(IMonthlyCardService)) as IMonthlyCardService;
-                    if (mcService == null)
+                    var membershipService = HttpContext.RequestServices.GetService(typeof(IMembershipCardService)) as IMembershipCardService;
+                    if (membershipService == null)
                     {
-                        return Ok(new { RspCode = "99", Message = "MonthlyCardService not initialized" });
+                        return Ok(new { RspCode = "99", Message = "MembershipCardService not initialized" });
                     }
-                    var mcResult = await mcService.ConfirmMonthlyCardPaymentAsync(txnRef, vnpayAmount, responseCode, transactionStatus);
+                    var mcResult = await membershipService.ConfirmMembershipCardPaymentAsync(txnRef, vnpayAmount, responseCode, transactionStatus);
                     if (!mcResult.Success)
                     {
                         return Ok(new { RspCode = mcResult.ErrorCode, Message = mcResult.Message });

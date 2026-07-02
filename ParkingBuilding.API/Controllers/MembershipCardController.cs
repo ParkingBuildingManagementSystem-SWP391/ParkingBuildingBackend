@@ -3,24 +3,26 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using ParkingBuilding.Service.DTOs;
 using ParkingBuilding.Service.IService;
+using System;
 using System.Security.Claims;
+using System.Threading.Tasks;
 
 namespace ParkingBuilding.API.Controllers
 {
     [Authorize(Roles = "Registered_Driver")]
     [ApiController]
     [Route("api/[controller]")]
-    public class MonthlyCardController : ControllerBase
+    public class MembershipCardController : ControllerBase
     {
-        private readonly IMonthlyCardService _monthlyCardService;
+        private readonly IMembershipCardService _membershipCardService;
 
-        public MonthlyCardController(IMonthlyCardService monthlyCardService)
+        public MembershipCardController(IMembershipCardService membershipCardService)
         {
-            _monthlyCardService = monthlyCardService;
+            _membershipCardService = membershipCardService;
         }
 
         [HttpPost("register")]
-        public async Task<IActionResult> Register([FromBody] RegisterMonthlyCardDto request)
+        public async Task<IActionResult> Register([FromBody] RegisterMembershipCardDto request)
         {
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userIdClaim))
@@ -33,7 +35,7 @@ namespace ParkingBuilding.API.Controllers
 
             try
             {
-                var result = await _monthlyCardService.RegisterMonthlyCardAsync(currentUserId, request, ipAddress);
+                var result = await _membershipCardService.RegisterMembershipCardAsync(currentUserId, request, ipAddress);
                 return Ok(new { isSuccess = true, data = result });
             }
             catch (ArgumentException ex)
@@ -47,12 +49,12 @@ namespace ParkingBuilding.API.Controllers
         }
 
         /// <summary>
-        /// Lấy thông tin thẻ tháng đang hoạt động của tài xế đang đăng nhập.
+        /// Lấy thông tin thẻ thành viên đang hoạt động của tài xế đang đăng nhập.
         /// </summary>
         [HttpGet("my-card")]
         public async Task<IActionResult> GetMyActiveCard()
         {
-            var userIdClaim = User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
             if (string.IsNullOrEmpty(userIdClaim))
             {
                 return Unauthorized("Không xác định được danh tính tài xế từ Token.");
@@ -62,10 +64,10 @@ namespace ParkingBuilding.API.Controllers
 
             try
             {
-                var card = await _monthlyCardService.GetMyActiveCardAsync(currentUserId);
+                var card = await _membershipCardService.GetMyActiveCardAsync(currentUserId);
                 if (card == null)
                 {
-                    return NotFound(new { isSuccess = false, message = "Bạn chưa đăng ký thẻ tháng hoặc thẻ đã hết hạn." });
+                    return NotFound(new { isSuccess = false, message = "Bạn chưa đăng ký thẻ thành viên hoặc thẻ đã hết hạn." });
                 }
 
                 return Ok(new { isSuccess = true, card });
@@ -77,16 +79,16 @@ namespace ParkingBuilding.API.Controllers
         }
 
         /// <summary>
-        /// Lấy danh sách biểu phí vé tháng đang hoạt động.
+        /// Lấy danh sách các gói cước thành viên đang hoạt động.
         /// </summary>
         [AllowAnonymous]
-        [HttpGet("tariffs")]
-        public async Task<IActionResult> GetTariffs()
+        [HttpGet("tiers")]
+        public async Task<IActionResult> GetTiers()
         {
             try
             {
-                var tariffs = await _monthlyCardService.GetActiveTariffsAsync();
-                return Ok(new { isSuccess = true, data = tariffs });
+                var tiers = await _membershipCardService.GetActiveTiersAsync();
+                return Ok(new { isSuccess = true, data = tiers });
             }
             catch (Exception ex)
             {

@@ -164,47 +164,7 @@ namespace ParkingBuilding.API.Controllers
             }
         }
 
-        /// <summary>
-        /// Hủy thẻ tháng chủ động và giải phóng ô đỗ xe cố định (Không hoàn tiền).
-        /// </summary>
-        [HttpPut("monthly-card/{monthlyCardId}/cancel")]
-        public async Task<IActionResult> CancelMonthlyCard(int monthlyCardId)
-        {
-            _logger.LogInformation("Manager requested to cancel MonthlyCardId={CardId}", monthlyCardId);
-            try
-            {
-                var isSuccess = await _managerService.CancelMonthlyCardAsync(monthlyCardId);
-                if (!isSuccess)
-                {
-                    return NotFound("Không tìm thấy thẻ tháng có hiệu lực để hủy hoặc thẻ đã hết hạn/bị hủy trước đó.");
-                }
 
-                return Ok(new { isSuccess = true, message = "Đã hủy thẻ tháng thành công và giải phóng ô đỗ xe!" });
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Lỗi xảy ra khi hủy thẻ tháng.");
-                return StatusCode(500, "Lỗi hệ thống: " + ex.Message);
-            }
-        }
-
-        /// <summary>
-        /// Lấy toàn bộ danh sách thẻ tháng trong hệ thống để quản lý.
-        /// </summary>
-        [HttpGet("monthly-cards")]
-        public async Task<IActionResult> GetAllMonthlyCards()
-        {
-            try
-            {
-                // Gọi thông qua _managerService chứ không gọi _context
-                var cards = await _managerService.GetAllMonthlyCardsAsync();
-                return Ok(cards);
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(500, "Lỗi khi lấy danh sách thẻ tháng: " + ex.Message);
-            }
-        }
 
 
     }
