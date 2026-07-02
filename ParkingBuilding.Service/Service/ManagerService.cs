@@ -423,6 +423,26 @@ namespace ParkingBuilding.Service.Service
             return true;
         }
 
+        public async Task<UpdateMembershipTierPriceResponse?> UpdateMembershipTierPricingAsync(UpdateMembershipTierPriceRequest request)
+        {
+            var tier = await _context.MembershipTiers
+                .Include(t => t.Type)
+                .FirstOrDefaultAsync(t => t.TypeId == request.TypeId 
+                                     && t.DurationMonths == request.DurationMonths 
+                                     && !t.IsDeleted);
 
+            if (tier == null) return null;
+
+            tier.Price = request.Price;
+            await _context.SaveChangesAsync();
+
+            return new UpdateMembershipTierPriceResponse
+            {
+                VehicleTypeName = tier.Type?.TypeName ?? "Unknown",
+                DurationMonths = tier.DurationMonths,
+                NewPrice = tier.Price,
+                Message = "Cấu hình giá gói thành viên thành công!"
+            };
+        }
     }
 }
