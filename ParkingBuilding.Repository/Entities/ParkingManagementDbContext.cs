@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 
@@ -34,6 +34,11 @@ public partial class ParkingManagementDbContext : DbContext
     public virtual DbSet<User> Users { get; set; }
 
     public virtual DbSet<VehiclesType> VehiclesTypes { get; set; }
+
+    public virtual DbSet<Wallet> Wallets { get; set; }
+
+    public virtual DbSet<WalletTransaction> WalletTransactions { get; set; }
+
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -294,8 +299,35 @@ public partial class ParkingManagementDbContext : DbContext
             entity.Property(e => e.TypeName).HasMaxLength(255);
         });
 
+        modelBuilder.Entity<Wallet>(entity =>
+        {
+            entity.HasKey(w => w.WalletId);
+            entity.Property(w => w.Balance).HasColumnType("decimal(18,2)").HasDefaultValue(0.00m);
+            entity.Property(w => w.CreatedAt).HasDefaultValueSql("GETDATE()");
+            
+            entity.HasOne(w => w.User)
+                  .WithOne()
+                  .HasForeignKey<Wallet>(w => w.UserId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<WalletTransaction>(entity =>
+        {
+            entity.HasKey(wt => wt.TransactionId);
+            entity.Property(wt => wt.Amount).HasColumnType("decimal(18,2)");
+            entity.Property(wt => wt.TransactionType).HasMaxLength(50).IsUnicode(false);
+            entity.Property(wt => wt.Status).HasMaxLength(50).IsUnicode(false).HasDefaultValue("PENDING");
+            entity.Property(wt => wt.CreatedAt).HasDefaultValueSql("GETDATE()");
+
+            entity.HasOne(wt => wt.Wallet)
+                  .WithMany(w => w.WalletTransactions)
+                  .HasForeignKey(wt => wt.WalletId)
+                  .OnDelete(DeleteBehavior.Cascade);
+        });
+
         OnModelCreatingPartial(modelBuilder);
     }
+
 
     partial void OnModelCreatingPartial(ModelBuilder modelBuilder);
 }

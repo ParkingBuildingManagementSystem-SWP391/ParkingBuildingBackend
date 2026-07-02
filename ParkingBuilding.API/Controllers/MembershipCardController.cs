@@ -64,13 +64,13 @@ namespace ParkingBuilding.API.Controllers
 
             try
             {
-                var card = await _membershipCardService.GetMyActiveCardAsync(currentUserId);
-                if (card == null)
+                var cards = await _membershipCardService.GetMyActiveCardsAsync(currentUserId);
+                if (cards == null || cards.Count == 0)
                 {
                     return NotFound(new { isSuccess = false, message = "Bạn chưa đăng ký thẻ thành viên hoặc thẻ đã hết hạn." });
                 }
 
-                return Ok(new { isSuccess = true, card });
+                return Ok(new { isSuccess = true, cards });
             }
             catch (Exception ex)
             {

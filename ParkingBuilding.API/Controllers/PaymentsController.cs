@@ -136,6 +136,21 @@ namespace ParkingBuilding.API.Controllers
                 string responseCode = request.vnp_ResponseCode ?? "";
                 string transactionStatus = request.vnp_TransactionStatus ?? "";
 
+                if (txnRef.StartsWith("WDEP_"))
+                {
+                    var walletService = HttpContext.RequestServices.GetService(typeof(IWalletService)) as IWalletService;
+                    if (walletService == null)
+                    {
+                        return Ok(new { RspCode = "99", Message = "WalletService not initialized" });
+                    }
+                    var walletResult = await walletService.ConfirmDepositPaymentAsync(txnRef, vnpayAmount, responseCode, transactionStatus);
+                    if (!walletResult.Success)
+                    {
+                        return Ok(new { RspCode = "99", Message = walletResult.Message });
+                    }
+                    return Ok(new { RspCode = "00", Message = "Confirm Success" });
+                }
+
                 if (txnRef.StartsWith("MBC_"))
                 {
                     var membershipService = HttpContext.RequestServices.GetService(typeof(IMembershipCardService)) as IMembershipCardService;
