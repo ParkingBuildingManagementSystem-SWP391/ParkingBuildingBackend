@@ -8,7 +8,7 @@ namespace ParkingBuilding.Service.IService
     {
         Task<MembershipCardRegistrationResponseDto> RegisterMembershipCardAsync(int userId, RegisterMembershipCardDto dto, string ipAddress);
         Task<PaymentResultDto> ConfirmMembershipCardPaymentAsync(string txnRef, decimal amount, string responseCode, string transactionStatus);
-        Task<object?> GetMyActiveCardAsync(int userId);
+        Task<List<object>> GetMyActiveCardsAsync(int userId);
         Task<List<object>> GetActiveTiersAsync();
     }
 }

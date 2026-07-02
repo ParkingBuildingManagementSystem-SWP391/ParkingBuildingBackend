@@ -20,20 +20,24 @@ namespace ParkingBuilding.Service.Service
         private readonly VnPayConfig _vnPayConfig;
         private readonly ILogger<MembershipCardService> _logger;
         private readonly IMemoryCache _cache;
+        private readonly IWalletService _walletService;
 
         public MembershipCardService(
             ParkingManagementDbContext context,
             IVnPayService vnPayService,
             IOptions<VnPayConfig> vnPayConfig,
             ILogger<MembershipCardService> logger,
-            IMemoryCache cache)
+            IMemoryCache cache,
+            IWalletService walletService)
         {
             _context = context;
             _vnPayService = vnPayService;
             _vnPayConfig = vnPayConfig.Value;
             _logger = logger;
             _cache = cache;
+            _walletService = walletService;
         }
+
 
         public async Task<MembershipCardRegistrationResponseDto> RegisterMembershipCardAsync(int userId, RegisterMembershipCardDto dto, string ipAddress)
         {
@@ -86,18 +90,55 @@ namespace ParkingBuilding.Service.Service
                     cleanPlates.Add(cleanPlate);
                 }
 
-                // 5. Xác thực và khóa ô đỗ xe (Slot)
-                var slot = await _context.ParkingSlots.FirstOrDefaultAsync(s => s.SlotId == dto.SlotId && !s.IsDeleted)
-                           ?? throw new KeyNotFoundException("Chỗ đỗ xe không tồn tại hoặc đã bị xóa.");
-
-                if (slot.SlotStatus != ParkingStatuses.SlotAvailable)
+                // 5. Xác thực và khóa ô đỗ xe (Slot) theo quy tắc Option A
+                var targetSlotIds = dto.SlotIds ?? new List<int>();
+                if (targetSlotIds.Count == 0 && dto.SlotId.HasValue)
                 {
-                    throw new ArgumentException("Chỗ đỗ xe được chọn hiện tại không trống.");
+                    targetSlotIds.Add(dto.SlotId.Value);
                 }
 
-                if (slot.TypeId != tier.TypeId)
+                // Quy tắc: 1 tháng = 1 slot, 6 tháng = 2 slots, 12 tháng = 3 slots
+                if (targetSlotIds.Distinct().Count() != targetSlotIds.Count)
                 {
-                    throw new ArgumentException("Loại ô đỗ xe không khớp với loại xe của gói thành viên.");
+                    throw new ArgumentException("Danh sách ô đỗ xe không được chứa ô đỗ trùng lặp.");
+                }
+
+                int expectedSlotsCount = tier.DurationMonths switch
+                {
+                    1 => 1,
+                    6 => 2,
+                    12 => 3,
+                    _ => throw new ArgumentException("Thời hạn gói thành viên không hợp lệ.")
+                };
+
+                if (targetSlotIds.Count != expectedSlotsCount)
+                {
+                    throw new ArgumentException($"Gói cước {tier.TierName} ({tier.DurationMonths} tháng) yêu cầu chọn chính xác {expectedSlotsCount} ô đỗ cố định.");
+                }
+
+                var slots = await _context.ParkingSlots
+                    .Where(s => targetSlotIds.Contains(s.SlotId) && !s.IsDeleted)
+                    .ToListAsync();
+
+                if (slots.Count != targetSlotIds.Count)
+                {
+                    throw new KeyNotFoundException("Một hoặc nhiều ô đỗ xe được chọn không tồn tại.");
+                }
+
+                foreach (var s in slots)
+                {
+                    if (s.SlotStatus != ParkingStatuses.SlotAvailable)
+                    {
+                        throw new ArgumentException($"Ô đỗ {s.SlotName} hiện tại không trống.");
+                    }
+                    if (s.TypeId != tier.TypeId)
+                    {
+                        throw new ArgumentException($"Ô đỗ {s.SlotName} không khớp với loại xe của gói thành viên.");
+                    }
+
+                    // Khóa tạm thời
+                    s.SlotStatus = ParkingStatuses.SlotReserved;
+                    _context.ParkingSlots.Update(s);
                 }
 
                 // 6. Tính toán số tiền thanh toán và thời hạn sử dụng
@@ -106,64 +147,152 @@ namespace ParkingBuilding.Service.Service
                 var startTime = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vnTimeZone);
                 var endTime = startTime.AddMonths(tier.DurationMonths);
 
-                // 7. Tạo mã vé cho Membership Card
-                string ticketCode = $"MBC_{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}";
-
-                // 8. Tạo mã giao dịch chứa SlotId để dễ dàng rollback khi hết hạn / thất bại
-                string txnRef = $"MBC_{slot.SlotId}_{DateTime.UtcNow.Ticks}";
-
-                // 9. Khóa ô đỗ xe ngay lập tức bằng trạng thái Reserved
-                slot.SlotStatus = ParkingStatuses.SlotReserved;
-                _context.ParkingSlots.Update(slot);
-
-                // 10. Tạo Invoice PENDING
-                var invoice = new Invoice
+                // 7. Tạo mã vé cho từng Membership Card tương ứng với mỗi slot
+                var ticketCodes = new List<string>();
+                for (int i = 0; i < slots.Count; i++)
                 {
-                    SessionId = null,
-                    TotalAmount = amountToPay,
-                    PaymentMethod = "VNPAY",
-                    PaymentStatus = "PENDING",
-                    TransactionCode = txnRef,
-                    CreatedDate = startTime,
-                };
-                await _context.Invoices.AddAsync(invoice);
-                await _context.SaveChangesAsync();
+                    ticketCodes.Add($"MBC_{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}");
+                }
 
-                // 11. Lưu metadata tạm thời vào RAM cache (15 phút)
-                var metadata = new MembershipRegistrationMetadata
+                // 8. Tạo mã giao dịch chứa các SlotId để rollback khi thất bại
+                string slotIdsString = string.Join("-", targetSlotIds);
+                string txnRef = $"MBC_{slotIdsString}_{DateTime.UtcNow.Ticks}";
+
+                if (dto.PaymentMethod != null && dto.PaymentMethod.ToUpper() == "WALLET")
                 {
-                    UserId = userId,
-                    TierId = tier.TierId,
-                    SlotId = slot.SlotId,
-                    DurationMonths = tier.DurationMonths,
-                    TicketCode = ticketCode,
-                    LicenseVehicles = cleanPlates,
-                    StartTime = startTime,
-                    EndTime = endTime
-                };
-                _cache.Set(txnRef, metadata, TimeSpan.FromMinutes(15));
+                    // A. XỬ LÝ THANH TOÁN BẰNG VÍ ĐIỆN TỬ
+                    bool paymentSuccess = await _walletService.ProcessWalletPaymentAsync(
+                        userId,
+                        amountToPay,
+                        $"Thanh toán gói {tier.TierName} (Slots: {string.Join(", ", slots.Select(s => s.SlotName))})"
+                    );
 
-                // 12. Tạo URL thanh toán VNPay
-                string paymentUrl = _vnPayService.CreatePaymentUrl(
-                    txnRef: txnRef,
-                    amount: amountToPay,
-                    orderInfo: $"DK the thanh vien goi {tier.TierName} cho {tier.DurationMonths} thang",
-                    returnUrl: _vnPayConfig.ReturnUrl + "?invoiceId=" + invoice.InvoiceId,
-                    ipAddress: ipAddress
-                );
+                    if (!paymentSuccess)
+                    {
+                        throw new InvalidOperationException("Số dư ví không đủ để thanh toán gói thành viên.");
+                    }
 
-                await transaction.CommitAsync();
+                    for (int i = 0; i < slots.Count; i++)
+                    {
+                        var targetSlot = slots[i];
+                        var ticketCode = ticketCodes[i];
 
-                return new MembershipCardRegistrationResponseDto
+                        // Tạo Ticket hoạt động luôn
+                        var ticket = new Ticket
+                        {
+                            TicketCode = ticketCode,
+                            TicketStatus = ParkingStatuses.TicketActive
+                        };
+                        await _context.Tickets.AddAsync(ticket);
+                        await _context.SaveChangesAsync();
+
+                        // Tạo MembershipCard
+                        var card = new MembershipCard
+                        {
+                            UserId = userId,
+                            TierId = tier.TierId,
+                            TicketId = ticket.TicketId,
+                            SlotId = targetSlot.SlotId,
+                            StartTime = startTime,
+                            EndTime = endTime,
+                            Status = ParkingStatuses.MonthlyCardActive,
+                            IsDeleted = false
+                        };
+                        await _context.MembershipCards.AddAsync(card);
+                        await _context.SaveChangesAsync();
+
+                        // Đăng ký danh sách xe cho card này
+                        foreach (var plate in cleanPlates)
+                        {
+                            var vehicle = new MembershipVehicle
+                            {
+                                MembershipCardId = card.MembershipCardId,
+                                LicenseVehicle = plate,
+                                IsActive = true
+                            };
+                            await _context.MembershipVehicles.AddAsync(vehicle);
+                        }
+                    }
+
+                    // Tạo Invoice trạng thái SUCCESS
+                    var invoice = new Invoice
+                    {
+                        SessionId = null,
+                        TotalAmount = amountToPay,
+                        PaymentMethod = "WALLET",
+                        PaymentStatus = "SUCCESS",
+                        TransactionCode = txnRef,
+                        CreatedDate = startTime,
+                        PaymentTime = startTime,
+                        UpdatedDate = startTime
+                    };
+                    await _context.Invoices.AddAsync(invoice);
+
+                    await _context.SaveChangesAsync();
+                    await transaction.CommitAsync();
+
+                    return new MembershipCardRegistrationResponseDto
+                    {
+                        Username = user.Username,
+                        TicketCode = string.Join(", ", ticketCodes),
+                        AmountToPay = amountToPay,
+                        SlotId = targetSlotIds.FirstOrDefault(),
+                        LicenseVehicles = cleanPlates,
+                        EndTime = endTime,
+                        PaymentUrl = null
+                    };
+                }
+                else
                 {
-                    Username = user.Username,
-                    TicketCode = ticketCode,
-                    AmountToPay = amountToPay,
-                    SlotId = slot.SlotId,
-                    LicenseVehicles = cleanPlates,
-                    EndTime = endTime,
-                    PaymentUrl = paymentUrl
-                };
+                    // B. GIỮ LUỒNG VNPAY NHƯ CŨ (Lưu cache 15 phút và trả về PaymentUrl)
+                    var invoice = new Invoice
+                    {
+                        SessionId = null,
+                        TotalAmount = amountToPay,
+                        PaymentMethod = "VNPAY",
+                        PaymentStatus = "PENDING",
+                        TransactionCode = txnRef,
+                        CreatedDate = startTime,
+                    };
+                    await _context.Invoices.AddAsync(invoice);
+                    await _context.SaveChangesAsync();
+
+                    // Lưu metadata tạm thời vào RAM cache (15 phút)
+                    var metadata = new MembershipRegistrationMetadata
+                    {
+                        UserId = userId,
+                        TierId = tier.TierId,
+                        SlotIds = targetSlotIds,
+                        DurationMonths = tier.DurationMonths,
+                        TicketCodes = ticketCodes,
+                        LicenseVehicles = cleanPlates,
+                        StartTime = startTime,
+                        EndTime = endTime
+                    };
+                    _cache.Set(txnRef, metadata, TimeSpan.FromMinutes(15));
+
+                    // Tạo URL thanh toán VNPay
+                    string paymentUrl = _vnPayService.CreatePaymentUrl(
+                        txnRef: txnRef,
+                        amount: amountToPay,
+                        orderInfo: $"DK the thanh vien goi {tier.TierName} cho {tier.DurationMonths} thang",
+                        returnUrl: _vnPayConfig.ReturnUrl + "?invoiceId=" + invoice.InvoiceId,
+                        ipAddress: ipAddress
+                    );
+
+                    await transaction.CommitAsync();
+
+                    return new MembershipCardRegistrationResponseDto
+                    {
+                        Username = user.Username,
+                        TicketCode = string.Join(", ", ticketCodes),
+                        AmountToPay = amountToPay,
+                        SlotId = targetSlotIds.FirstOrDefault(),
+                        LicenseVehicles = cleanPlates,
+                        EndTime = endTime,
+                        PaymentUrl = paymentUrl
+                    };
+                }
             }
             catch (Exception)
             {
@@ -195,12 +324,19 @@ namespace ParkingBuilding.Service.Service
                     return new PaymentResultDto { Success = false, ErrorCode = "02", Message = "Hóa đơn đã được xử lý" };
                 }
 
-                // Phân tích cú pháp để tìm SlotId dự phòng từ txnRef (MBC_{SlotId}_{Ticks})
-                int targetSlotId = 0;
+                // Phân tích cú pháp để tìm danh sách các SlotId dự phòng từ txnRef (MBC_{slotIdsString}_{Ticks})
+                var targetSlotIds = new List<int>();
                 var parts = txnRef.Split('_');
                 if (parts.Length >= 2)
                 {
-                    int.TryParse(parts[1], out targetSlotId);
+                    var slotParts = parts[1].Split('-');
+                    foreach (var sp in slotParts)
+                    {
+                        if (int.TryParse(sp, out int parsedId))
+                        {
+                            targetSlotIds.Add(parsedId);
+                        }
+                    }
                 }
 
                 // 2. Xử lý khi thanh toán thất bại
@@ -209,14 +345,17 @@ namespace ParkingBuilding.Service.Service
                     invoice.PaymentStatus = "FAILED";
                     invoice.UpdatedDate = DateTime.UtcNow;
 
-                    // Mở khóa slot đỗ xe
-                    if (targetSlotId > 0)
+                    // Mở khóa các slot đỗ xe
+                    if (targetSlotIds.Count > 0)
                     {
-                        var slot = await _context.ParkingSlots.FirstOrDefaultAsync(s => s.SlotId == targetSlotId);
-                        if (slot != null && slot.SlotStatus == ParkingStatuses.SlotReserved)
+                        var slotsToRelease = await _context.ParkingSlots.Where(s => targetSlotIds.Contains(s.SlotId)).ToListAsync();
+                        foreach (var s in slotsToRelease)
                         {
-                            slot.SlotStatus = ParkingStatuses.SlotAvailable;
-                            _context.ParkingSlots.Update(slot);
+                            if (s.SlotStatus == ParkingStatuses.SlotReserved)
+                            {
+                                s.SlotStatus = ParkingStatuses.SlotAvailable;
+                                _context.ParkingSlots.Update(s);
+                            }
                         }
                     }
 
@@ -230,17 +369,20 @@ namespace ParkingBuilding.Service.Service
                 // 3. Lấy dữ liệu tạm từ Cache
                 if (!_cache.TryGetValue(txnRef, out MembershipRegistrationMetadata? meta) || meta == null)
                 {
-                    // Trường hợp hết hạn cache 15p: Revert slot đỗ về Available và cập nhật Invoice FAILED
+                    // Trường hợp hết hạn cache 15p: Revert các slot đỗ về Available và cập nhật Invoice FAILED
                     invoice.PaymentStatus = "FAILED";
                     invoice.UpdatedDate = DateTime.UtcNow;
 
-                    if (targetSlotId > 0)
+                    if (targetSlotIds.Count > 0)
                     {
-                        var slot = await _context.ParkingSlots.FirstOrDefaultAsync(s => s.SlotId == targetSlotId);
-                        if (slot != null && slot.SlotStatus == ParkingStatuses.SlotReserved)
+                        var slotsToRelease = await _context.ParkingSlots.Where(s => targetSlotIds.Contains(s.SlotId)).ToListAsync();
+                        foreach (var s in slotsToRelease)
                         {
-                            slot.SlotStatus = ParkingStatuses.SlotAvailable;
-                            _context.ParkingSlots.Update(slot);
+                            if (s.SlotStatus == ParkingStatuses.SlotReserved)
+                            {
+                                s.SlotStatus = ParkingStatuses.SlotAvailable;
+                                _context.ParkingSlots.Update(s);
+                            }
                         }
                     }
 
@@ -252,55 +394,61 @@ namespace ParkingBuilding.Service.Service
                 var vnTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
                 var currentDbTime = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vnTimeZone);
 
-                // 4. Tạo Ticket
-                var ticket = new Ticket
+                // 4. Tạo các Tickets và MembershipCards tương ứng với từng slot
+                for (int i = 0; i < meta.SlotIds.Count; i++)
                 {
-                    TicketCode = meta.TicketCode,
-                    TicketStatus = ParkingStatuses.TicketActive
-                };
-                await _context.Tickets.AddAsync(ticket);
-                await _context.SaveChangesAsync(); // Lưu để lấy TicketId
+                    var slotId = meta.SlotIds[i];
+                    var ticketCode = meta.TicketCodes[i];
 
-                // 5. Tạo MembershipCard
-                var card = new MembershipCard
-                {
-                    UserId = meta.UserId,
-                    TierId = meta.TierId,
-                    TicketId = ticket.TicketId,
-                    SlotId = meta.SlotId,
-                    StartTime = currentDbTime,
-                    EndTime = currentDbTime.AddMonths(meta.DurationMonths),
-                    Status = ParkingStatuses.MonthlyCardActive, // "Active"
-                    IsDeleted = false
-                };
-                await _context.MembershipCards.AddAsync(card);
-                await _context.SaveChangesAsync(); // Lưu để lấy MembershipCardId
-
-                // 6. Lưu các biển số xe đăng ký
-                foreach (var plate in meta.LicenseVehicles)
-                {
-                    var vehicle = new MembershipVehicle
+                    // 4.1 Tạo Ticket
+                    var ticket = new Ticket
                     {
-                        MembershipCardId = card.MembershipCardId,
-                        LicenseVehicle = plate,
-                        IsActive = true
+                        TicketCode = ticketCode,
+                        TicketStatus = ParkingStatuses.TicketActive
                     };
-                    await _context.MembershipVehicles.AddAsync(vehicle);
+                    await _context.Tickets.AddAsync(ticket);
+                    await _context.SaveChangesAsync(); // Lưu để lấy TicketId
+
+                    // 4.2 Tạo MembershipCard
+                    var card = new MembershipCard
+                    {
+                        UserId = meta.UserId,
+                        TierId = meta.TierId,
+                        TicketId = ticket.TicketId,
+                        SlotId = slotId,
+                        StartTime = currentDbTime,
+                        EndTime = currentDbTime.AddMonths(meta.DurationMonths),
+                        Status = ParkingStatuses.MonthlyCardActive, // "Active"
+                        IsDeleted = false
+                    };
+                    await _context.MembershipCards.AddAsync(card);
+                    await _context.SaveChangesAsync(); // Lưu để lấy MembershipCardId
+
+                    // 4.3 Lưu các biển số xe đăng ký cho thẻ này
+                    foreach (var plate in meta.LicenseVehicles)
+                    {
+                        var vehicle = new MembershipVehicle
+                        {
+                            MembershipCardId = card.MembershipCardId,
+                            LicenseVehicle = plate,
+                            IsActive = true
+                        };
+                        await _context.MembershipVehicles.AddAsync(vehicle);
+                    }
                 }
 
-                // 7. Cập nhật Invoice sang SUCCESS
+                // 5. Cập nhật Invoice sang SUCCESS
                 invoice.PaymentStatus = "SUCCESS";
                 invoice.PaymentTime = currentDbTime;
                 invoice.UpdatedDate = currentDbTime;
 
-                // 8. Giải phóng cache
+                // 6. Giải phóng cache
                 _cache.Remove(txnRef);
 
                 await _context.SaveChangesAsync();
                 await transaction.CommitAsync();
 
-                _logger.LogInformation("Đăng ký thành công thẻ thành viên: Tài xế ID {UserId}, Thẻ ID {CardId}, Hạn dùng: {End}",
-                    meta.UserId, card.MembershipCardId, card.EndTime);
+                _logger.LogInformation("Đăng ký thành công {Count} thẻ thành viên cho tài xế ID {UserId}.", meta.SlotIds.Count, meta.UserId);
 
                 return new PaymentResultDto { Success = true };
             }
@@ -312,9 +460,9 @@ namespace ParkingBuilding.Service.Service
             }
         }
 
-        public async Task<object?> GetMyActiveCardAsync(int userId)
+        public async Task<List<object>> GetMyActiveCardsAsync(int userId)
         {
-            var card = await _context.MembershipCards
+            var cards = await _context.MembershipCards
                 .Include(c => c.Ticket)
                 .Include(c => c.Tier)
                 .Include(c => c.MembershipVehicles)
@@ -330,9 +478,9 @@ namespace ParkingBuilding.Service.Service
                     TicketCode = c.Ticket != null ? c.Ticket.TicketCode : null,
                     Vehicles = c.MembershipVehicles.Where(v => v.IsActive).Select(v => v.LicenseVehicle).ToList()
                 })
-                .FirstOrDefaultAsync();
+                .ToListAsync();
 
-            return card;
+            return cards.Cast<object>().ToList();
         }
 
         public async Task<List<object>> GetActiveTiersAsync()
@@ -357,9 +505,9 @@ namespace ParkingBuilding.Service.Service
         {
             public int UserId { get; set; }
             public int TierId { get; set; }
-            public int SlotId { get; set; }
+            public List<int> SlotIds { get; set; } = new List<int>();
             public int DurationMonths { get; set; }
-            public string TicketCode { get; set; } = null!;
+            public List<string> TicketCodes { get; set; } = new List<string>();
             public List<string> LicenseVehicles { get; set; } = new List<string>();
             public DateTime StartTime { get; set; }
             public DateTime EndTime { get; set; }

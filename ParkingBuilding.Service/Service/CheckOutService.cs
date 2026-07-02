@@ -20,6 +20,7 @@ namespace ParkingBuilding.Service.Service
         private readonly IVnPayService _vnPayService;
         private readonly IImageStorageService _imageStorageService; 
         private readonly IAiRecognitionService _aiRecognitionService;
+        private readonly IWalletService _walletService;
 
         public CheckOutService(
             IParkingRepository parkingRepository,
@@ -28,7 +29,8 @@ namespace ParkingBuilding.Service.Service
             ILogger<CheckOutService> logger,
             IVnPayService vnPayService,
             IImageStorageService imageStorageService, 
-            IAiRecognitionService aiRecognitionService)
+            IAiRecognitionService aiRecognitionService,
+            IWalletService walletService)
         {
             _parkingRepository = parkingRepository;
             _context = context;
@@ -37,6 +39,7 @@ namespace ParkingBuilding.Service.Service
             _vnPayService = vnPayService;
             _imageStorageService = imageStorageService; 
             _aiRecognitionService = aiRecognitionService;
+            _walletService = walletService;
         }
 
         public async Task<CheckoutResponse> CheckoutVehicleAsync(CheckoutRequest request, int currentStaffId)
@@ -297,7 +300,69 @@ namespace ParkingBuilding.Service.Service
                             session.Invoice.UpdatedDate = DateTime.UtcNow;
                             session.Invoice.StaffId = currentStaffId;
 
-                            if (request.PaymentMethod.ToUpper() == "VNPAY")
+                            if (request.PaymentMethod.ToUpper() == "WALLET")
+                            {
+                                if (session.UserId.HasValue)
+                                {
+                                    int driverId = session.UserId.Value;
+                                    bool walletPaymentSuccess = await _walletService.ProcessWalletPaymentAsync(
+                                        driverId,
+                                        additionalFee,
+                                        $"Tự động trừ ví do đỗ xe quá hạn 20 phút. Phiên: {session.SessionId}"
+                                    );
+
+                                    if (walletPaymentSuccess)
+                                    {
+                                        session.Invoice.PaymentStatus = "SUCCESS";
+                                        session.Invoice.PaymentTime = DateTime.UtcNow;
+                                        session.Invoice.TotalAmount += additionalFee;
+                                        session.Invoice.PaymentMethod = "WALLET";
+
+                                        session.SessionStatus = ParkingStatuses.SessionCompleted;
+                                        if (session.Ticket != null)
+                                        {
+                                            session.Ticket.TicketStatus = ParkingStatuses.TicketCompleted;
+                                        }
+                                        var targetSlot = session.Slot ?? await _parkingRepository.GetSlotByIdAsync(session.SlotId);
+                                        if (targetSlot != null) targetSlot.SlotStatus = ParkingStatuses.SlotAvailable;
+
+                                        _context.ParkingSessions.Update(session);
+                                        if (targetSlot != null) _context.ParkingSlots.Update(targetSlot);
+                                        await _context.SaveChangesAsync();
+                                        await dbTransaction.CommitAsync();
+
+                                        return new CheckoutResponse
+                                        {
+                                            IsSuccess = true,
+                                            Message = $"Hệ thống tự động khấu trừ {additionalFee:N0} VNĐ từ ví tài xế. Mời xe ra!",
+                                            TicketCode = session.Ticket?.TicketCode ?? "N/A",
+                                            SlotName = targetSlot?.SlotName ?? "N/A",
+                                            CheckInLicensePlate = checkInPlate,
+                                            CheckOutLicensePlate = cleanCheckoutPlate ?? "",
+                                            IsLicensePlateMatched = true,
+                                            CheckInImageUrl = session.CheckInImageUrl,
+                                            CheckOutImageUrl = session.CheckOutImageUrl,
+                                            CheckInTime = checkInTime,
+                                            CheckOutTime = checkOutTime,
+                                            DurationHours = durationHours,
+                                            TotalAmount = session.Invoice.TotalAmount,
+                                            StaffName = staffName,
+                                            InvoiceId = session.Invoice.InvoiceId,
+                                            IsPaid = true,
+                                            PaymentUrl = null
+                                        };
+                                    }
+                                    else
+                                    {
+                                        throw new InvalidOperationException($"Số dư ví của tài xế không đủ để thanh toán {additionalFee:N0} VNĐ.");
+                                    }
+                                }
+                                else
+                                {
+                                    throw new InvalidOperationException("Không tìm thấy thông tin tài xế để thanh toán bằng ví.");
+                                }
+                            }
+                            else if (request.PaymentMethod.ToUpper() == "VNPAY")
                             {
                                 string txnRef = "INV" + DateTime.UtcNow.Ticks;
                                 session.Invoice.TransactionCode = txnRef;
@@ -482,7 +547,69 @@ namespace ParkingBuilding.Service.Service
                         session.Invoice.UpdatedDate = DateTime.UtcNow;
                         session.Invoice.TransactionCode = txnRef;
 
-                        if (request.PaymentMethod.ToUpper() == "VNPAY")
+                        if (request.PaymentMethod.ToUpper() == "WALLET")
+                        {
+                            if (session.UserId.HasValue)
+                            {
+                                int driverId = session.UserId.Value;
+                                bool walletPaymentSuccess = await _walletService.ProcessWalletPaymentAsync(
+                                    driverId,
+                                    additionalAmount,
+                                    $"Tự động trừ ví phần chênh lệch sau đặt cọc. Phiên: {session.SessionId}"
+                                );
+
+                                if (walletPaymentSuccess)
+                                {
+                                    session.Invoice.PaymentStatus = "SUCCESS";
+                                    session.Invoice.PaymentTime = DateTime.UtcNow;
+                                    session.Invoice.TotalAmount = totalAmount; // Tổng phí thực tế
+                                    session.Invoice.PaymentMethod = "WALLET";
+
+                                    session.SessionStatus = ParkingStatuses.SessionCompleted;
+                                    if (session.Ticket != null)
+                                    {
+                                        session.Ticket.TicketStatus = ParkingStatuses.TicketCompleted;
+                                    }
+                                    var targetSlot = session.Slot ?? await _parkingRepository.GetSlotByIdAsync(session.SlotId);
+                                    if (targetSlot != null) targetSlot.SlotStatus = ParkingStatuses.SlotAvailable;
+
+                                    _context.ParkingSessions.Update(session);
+                                    if (targetSlot != null) _context.ParkingSlots.Update(targetSlot);
+                                    await _context.SaveChangesAsync();
+                                    await dbTransaction.CommitAsync();
+
+                                    return new CheckoutResponse
+                                    {
+                                        IsSuccess = true,
+                                        Message = $"Hệ thống tự động khấu trừ {additionalAmount:N0} VNĐ từ ví tài xế. Mời xe ra!",
+                                        TicketCode = session.Ticket?.TicketCode ?? "N/A",
+                                        SlotName = targetSlot?.SlotName ?? "N/A",
+                                        CheckInLicensePlate = checkInPlate,
+                                        CheckOutLicensePlate = cleanCheckoutPlate ?? "",
+                                        IsLicensePlateMatched = true,
+                                        CheckInImageUrl = session.CheckInImageUrl,
+                                        CheckOutImageUrl = session.CheckOutImageUrl,
+                                        CheckInTime = checkInTime,
+                                        CheckOutTime = checkOutTime,
+                                        DurationHours = durationHours,
+                                        TotalAmount = totalAmount,
+                                        StaffName = staffName,
+                                        InvoiceId = session.Invoice.InvoiceId,
+                                        IsPaid = true,
+                                        PaymentUrl = null
+                                    };
+                                }
+                                else
+                                {
+                                    throw new InvalidOperationException($"Số dư ví không đủ để thanh toán {additionalAmount:N0} VNĐ chênh lệch.");
+                                }
+                            }
+                            else
+                            {
+                                throw new InvalidOperationException("Không tìm thấy thông tin tài xế để thanh toán bằng ví.");
+                            }
+                        }
+                        else if (request.PaymentMethod.ToUpper() == "VNPAY")
                         {
                             _context.Invoices.Update(session.Invoice);
                             _context.ParkingSessions.Update(session);
@@ -581,7 +708,69 @@ namespace ParkingBuilding.Service.Service
                     invoice.UpdatedDate = DateTime.UtcNow;
                     invoice.TransactionCode = txnRef;
 
-                    if (request.PaymentMethod.ToUpper() == "VNPAY")
+                    if (request.PaymentMethod.ToUpper() == "WALLET")
+                    {
+                        if (session.UserId.HasValue)
+                        {
+                            int driverId = session.UserId.Value;
+                            bool walletPaymentSuccess = await _walletService.ProcessWalletPaymentAsync(
+                                driverId,
+                                actualAmountToPay,
+                                $"Tự động trừ ví phần phí đỗ xe chênh lệch. Phiên: {session.SessionId}"
+                            );
+
+                            if (walletPaymentSuccess)
+                            {
+                                invoice.PaymentStatus = "SUCCESS";
+                                invoice.PaymentTime = DateTime.UtcNow;
+                                invoice.TotalAmount = totalAmount; // Cập nhật tổng số tiền
+                                invoice.PaymentMethod = "WALLET";
+
+                                session.SessionStatus = ParkingStatuses.SessionCompleted;
+                                if (session.Ticket != null)
+                                {
+                                    session.Ticket.TicketStatus = ParkingStatuses.TicketCompleted;
+                                }
+                                var targetSlot = session.Slot ?? await _parkingRepository.GetSlotByIdAsync(session.SlotId);
+                                if (targetSlot != null) targetSlot.SlotStatus = ParkingStatuses.SlotAvailable;
+
+                                _context.ParkingSessions.Update(session);
+                                if (targetSlot != null) _context.ParkingSlots.Update(targetSlot);
+                                await _context.SaveChangesAsync();
+                                await dbTransaction.CommitAsync();
+
+                                return new CheckoutResponse
+                                {
+                                    IsSuccess = true,
+                                    Message = $"Hệ thống tự động khấu trừ {actualAmountToPay:N0} VNĐ từ ví tài xế. Mời xe ra!",
+                                    TicketCode = session.Ticket?.TicketCode ?? "N/A",
+                                    SlotName = targetSlot?.SlotName ?? "N/A",
+                                    CheckInLicensePlate = checkInPlate,
+                                    CheckOutLicensePlate = cleanCheckoutPlate ?? "",
+                                    IsLicensePlateMatched = true,
+                                    CheckInImageUrl = session.CheckInImageUrl,
+                                    CheckOutImageUrl = session.CheckOutImageUrl,
+                                    CheckInTime = checkInTime,
+                                    CheckOutTime = checkOutTime,
+                                    DurationHours = durationHours,
+                                    TotalAmount = totalAmount,
+                                    StaffName = staffName,
+                                    InvoiceId = invoice.InvoiceId,
+                                    IsPaid = true,
+                                    PaymentUrl = null
+                                };
+                            }
+                            else
+                            {
+                                throw new InvalidOperationException($"Số dư ví không đủ để thanh toán {actualAmountToPay:N0} VNĐ.");
+                            }
+                        }
+                        else
+                        {
+                            throw new InvalidOperationException("Không tìm thấy thông tin tài xế để thanh toán bằng ví.");
+                        }
+                    }
+                    else if (request.PaymentMethod.ToUpper() == "VNPAY")
                     {
                         _context.Invoices.Update(invoice);
                         _context.ParkingSessions.Update(session);
@@ -656,7 +845,78 @@ namespace ParkingBuilding.Service.Service
                 // ====================================================================================
                 // KỊCH BẢN 3: PHIÊN ĐỖ XE CHƯA CÓ HÓA ĐƠN NÀO ĐƯỢC TẠO (KHÔNG ĐẶT CỌC GIỮ CHỖ)
                 // ====================================================================================
-                if (request.PaymentMethod.ToUpper() == "VNPAY")
+                if (request.PaymentMethod.ToUpper() == "WALLET")
+                {
+                    if (session.UserId.HasValue)
+                    {
+                        int driverId = session.UserId.Value;
+                        bool walletPaymentSuccess = await _walletService.ProcessWalletPaymentAsync(
+                            driverId,
+                            totalAmount,
+                            $"Thanh toán phí đỗ xe lúc checkout. Phiên: {session.SessionId}"
+                        );
+
+                        if (walletPaymentSuccess)
+                        {
+                            var invoice = new Invoice
+                            {
+                                SessionId = session.SessionId,
+                                TotalAmount = totalAmount,
+                                PaymentMethod = "WALLET",
+                                PaymentStatus = "SUCCESS",
+                                TransactionCode = "WPAY_" + DateTime.UtcNow.Ticks,
+                                CreatedDate = DateTime.UtcNow,
+                                PaymentTime = DateTime.UtcNow,
+                                StaffId = currentStaffId
+                            };
+
+                            await _context.Invoices.AddAsync(invoice);
+
+                            session.SessionStatus = ParkingStatuses.SessionCompleted;
+                            if (session.Ticket != null)
+                            {
+                                session.Ticket.TicketStatus = ParkingStatuses.TicketCompleted;
+                            }
+                            var targetSlot = session.Slot ?? await _parkingRepository.GetSlotByIdAsync(session.SlotId);
+                            if (targetSlot != null) targetSlot.SlotStatus = ParkingStatuses.SlotAvailable;
+
+                            _context.ParkingSessions.Update(session);
+                            if (targetSlot != null) _context.ParkingSlots.Update(targetSlot);
+                            await _context.SaveChangesAsync();
+                            await dbTransaction.CommitAsync();
+
+                            return new CheckoutResponse
+                            {
+                                IsSuccess = true,
+                                Message = $"Hệ thống tự động khấu trừ {totalAmount:N0} VNĐ từ ví tài xế. Mời xe ra!",
+                                TicketCode = session.Ticket?.TicketCode ?? "N/A",
+                                SlotName = targetSlot?.SlotName ?? "N/A",
+                                CheckInLicensePlate = checkInPlate,
+                                CheckOutLicensePlate = cleanCheckoutPlate ?? "",
+                                IsLicensePlateMatched = true,
+                                CheckInImageUrl = session.CheckInImageUrl,
+                                CheckOutImageUrl = session.CheckOutImageUrl,
+                                CheckInTime = checkInTime,
+                                CheckOutTime = checkOutTime,
+                                DurationHours = durationHours,
+                                TotalAmount = totalAmount,
+                                StaffName = staffName,
+                                InvoiceId = invoice.InvoiceId,
+                                IsPaid = true,
+                                PaymentUrl = null
+                            };
+                        }
+                        else
+                        {
+                            throw new InvalidOperationException($"Số dư ví không đủ để thanh toán {totalAmount:N0} VNĐ.");
+                        }
+                    }
+                    else
+                    {
+                        throw new InvalidOperationException("Không tìm thấy thông tin tài xế để thanh toán bằng ví.");
+                    }
+                }
+                else if (request.PaymentMethod.ToUpper() == "VNPAY")
                 {
                     string txnRef = "INV" + DateTime.UtcNow.Ticks;
 

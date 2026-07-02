@@ -76,11 +76,13 @@ namespace ParkingBuilding.API
             // Đăng ký dịch vụ thanh toán (Service Layer)
             builder.Services.AddScoped<IPaymentService, PaymentService>();
             builder.Services.AddScoped<IMembershipCardService, MembershipCardService>();
+            builder.Services.AddScoped<IWalletService, WalletService>();
 
             // Đăng ký các Repository riêng lẻ (Repository Layer)
             builder.Services.AddScoped<IInvoiceRepository, InvoiceRepository>();
             builder.Services.AddScoped<ISessionRepository, SessionRepository>();
             builder.Services.AddScoped<ISlotRepository, SlotRepository>();
+            builder.Services.AddScoped<IWalletRepository, WalletRepository>();
 
             // Đăng ký Repository của phân hệ Manager
             builder.Services.AddScoped<IManagerRepository, ManagerRepository>();
@@ -103,10 +105,10 @@ namespace ParkingBuilding.API
             // Đăng ký dịch vụ lưu trữ hình ảnh Cloudinary
             builder.Services.AddScoped<IImageStorageService, CloudinaryStorageService>();
 
-            // Đăng ký HttpClient kèm cấu hình Timeout tối đa 10 giây để nhận dạng nhanh hơn và tránh treo cổng xe
+            // Đăng ký HttpClient kèm cấu hình Timeout tối đa 20 giây để nhận dạng nhanh hơn và tránh treo cổng xe
             builder.Services.AddHttpClient<IAiRecognitionService, FastApiLicensePlateService>(client =>
             {
-                client.Timeout = TimeSpan.FromSeconds(10);
+                client.Timeout = TimeSpan.FromSeconds(20);
             });
 
 

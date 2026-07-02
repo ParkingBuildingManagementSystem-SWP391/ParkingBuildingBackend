@@ -88,7 +88,7 @@ namespace ParkingBuilding.Service.Service
             incident.ResolvedId = resolvedUserId;
             incident.ResolvedAt = DateTime.Now;
             incident.ResolutionNotes = dto.ResolutionNotes;
-            incident.FineAmount = dto.FineAmount ?? 0;
+            incident.FineAmount = 0; // Luồng thanh toán sự cố bị xóa bỏ theo yêu cầu
 
             // XỬ LÝ NGHIỆP VỤ ĐẶC BIỆT: Nếu là mất thẻ (Lost Ticket) và có phiên đỗ xe
             if (incident.IssueType.Equals("Lost Ticket", StringComparison.OrdinalIgnoreCase) && incident.SessionId.HasValue)
@@ -110,33 +110,7 @@ namespace ParkingBuilding.Service.Service
                     var slot = await _unitOfWork.Slots.GetByIdAsync(session.SlotId);
                     if (slot != null)
                     {
-                        // Kiểm tra nếu ô đỗ này có thẻ tháng đăng ký hoạt động
                         slot.SlotStatus = ParkingStatuses.SlotAvailable;
-                    }
-
-                    // 3. TẠO HOẶC CẬP NHẬT HÓA ĐƠN THU TIỀN PHẠT MẤT THẺ ĐỂ ĐỐI SOÁT DOANH THU (TRÁNH LỖI TRÙNG SESSIONID)
-                    var existingInvoice = await _context.Invoices.FirstOrDefaultAsync(inv => inv.SessionId == session.SessionId);
-                    if (existingInvoice == null)
-                    {
-                        var invoice = new Invoice
-                        {
-                            SessionId = session.SessionId,
-                            TotalAmount = dto.FineAmount ?? 0,
-                            PaymentTime = DateTime.Now,
-                            StaffId = resolvedUserId,
-                            PaymentMethod = "CASH",
-                            PaymentStatus = "SUCCESS",
-                            CreatedDate = DateTime.Now
-                        };
-                        await _unitOfWork.Invoices.AddAsync(invoice);
-                    }
-                    else
-                    {
-                        existingInvoice.TotalAmount = dto.FineAmount ?? 0;
-                        existingInvoice.PaymentTime = DateTime.Now;
-                        existingInvoice.StaffId = resolvedUserId;
-                        existingInvoice.PaymentMethod = "CASH";
-                        existingInvoice.PaymentStatus = "SUCCESS";
                     }
                 }
             }
