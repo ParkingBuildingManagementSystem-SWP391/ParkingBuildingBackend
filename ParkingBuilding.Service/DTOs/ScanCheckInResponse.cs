@@ -21,5 +21,6 @@ namespace ParkingBuilding.Service.DTOs
         public string TicketCode { get; set; } = null!;
         public bool RequiresPayment { get; set; }
         public string? PaymentStatus { get; set; }
+        public bool RequiresWalkIn { get; set; }
     }
 }
