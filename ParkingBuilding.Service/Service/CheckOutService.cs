@@ -145,8 +145,10 @@ namespace ParkingBuilding.Service.Service
                 }
 
                 string checkInPlate = (session.LicenseVehicle ?? "").Trim().ToUpper();
+                string normCheckIn = checkInPlate.Replace("-", "").Replace(".", "").Replace(" ", "").ToUpper();
+                string normCheckOut = (cleanCheckoutPlate ?? "").Trim().Replace("-", "").Replace(".", "").Replace(" ", "").ToUpper();
 
-                if (checkInPlate != cleanCheckoutPlate)
+                if (normCheckIn != normCheckOut)
                 {
                     _logger.LogWarning("CẢNH BÁO AN NINH: Nghi ngờ tráo xe! Xe ra '{OutPlate}' không khớp xe vào '{InPlate}' tại SessionId {SessionId}.",
                         cleanCheckoutPlate, checkInPlate, session.SessionId);
@@ -802,8 +804,8 @@ namespace ParkingBuilding.Service.Service
             // ĐỐI CHIẾU BIỂN SỐ XE THỰC TẾ LÚC RA VS BIỂN SỐ GHI NHẬN LÚC VÀO (Chỉ xe cơ giới, bỏ qua xe đạp)
             if (session.TypeId != 1 && !string.IsNullOrEmpty(detectedPlate) && detectedPlate.Trim().ToLower() != "string")
             {
-                var cleanDetected = detectedPlate.Trim().Replace("-", "").Replace(".", "").ToUpper();
-                var cleanRegistered = session.LicenseVehicle.Trim().Replace("-", "").Replace(".", "").ToUpper();
+                var cleanDetected = detectedPlate.Trim().Replace("-", "").Replace(".", "").Replace(" ", "").ToUpper();
+                var cleanRegistered = session.LicenseVehicle.Trim().Replace("-", "").Replace(".", "").Replace(" ", "").ToUpper();
 
                 if (cleanRegistered != cleanDetected)
                 {
