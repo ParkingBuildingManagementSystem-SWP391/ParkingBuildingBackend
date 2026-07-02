@@ -305,7 +305,7 @@ namespace ParkingBuilding.Service.Service
                         txnRef: txnRef,
                         amount: amountToPay,
                         orderInfo: $"DK the thanh vien goi {tier.TierName} cho {tier.DurationMonths} thang",
-                        returnUrl: _vnPayConfig.ReturnUrl + "?invoiceId=" + invoice.InvoiceId,
+                        returnUrl: _vnPayConfig.ReturnUrl + "?type=membership&invoiceId=" + invoice.InvoiceId,
                         ipAddress: ipAddress
                     );
 
