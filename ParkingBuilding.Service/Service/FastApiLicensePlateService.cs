@@ -19,11 +19,11 @@ namespace ParkingBuilding.Service.Service
         public FastApiLicensePlateService(HttpClient httpClient, IConfiguration configuration)
         {
             _httpClient = httpClient;
-            // Đọc cấu hình động từ appsettings.json, nếu trống thì fallback về url mặc định (predict-file)
+            // Đọc cấu hình động từ appsettings.json, nếu trống thì fallback về endpoint nhẹ cho Backend.
             var configuredUrl = configuration["AiSettings:PythonAiUrl"];
             _pythonAiUrl = !string.IsNullOrWhiteSpace(configuredUrl)
                 ? configuredUrl
-                : "https://vinhth-parking-license-ai.hf.space/predict-file";
+                : "https://vinhth-parking-license-ai.hf.space/predict-file-fast";
         }
 
 
@@ -45,14 +45,20 @@ namespace ParkingBuilding.Service.Service
                 fileBytes = copyStream.ToArray();
             }
 
-            // Nếu cấu hình trỏ thẳng tới /predict-file thì dùng luôn, ngược lại chuyển đổi tự động
+            // Nếu cấu hình đã trỏ thẳng tới endpoint nhận file thì dùng nguyên URL đó.
+            // Nếu chỉ cấu hình base URL thì mặc định dùng endpoint nhẹ cho Backend.
             string requestUrl = _pythonAiUrl;
-            if (!requestUrl.EndsWith("/predict-file"))
+            var normalizedUrl = requestUrl.TrimEnd('/');
+            if (normalizedUrl.EndsWith("/predict", StringComparison.OrdinalIgnoreCase))
             {
-                if (requestUrl.EndsWith("/predict"))
-                    requestUrl = requestUrl.Substring(0, requestUrl.Length - "/predict".Length);
-                requestUrl = $"{requestUrl.TrimEnd('/')}/predict-file";
+                normalizedUrl = normalizedUrl.Substring(0, normalizedUrl.Length - "/predict".Length);
             }
+            if (!normalizedUrl.EndsWith("/predict-file", StringComparison.OrdinalIgnoreCase) &&
+                !normalizedUrl.EndsWith("/predict-file-fast", StringComparison.OrdinalIgnoreCase))
+            {
+                normalizedUrl = $"{normalizedUrl}/predict-file-fast";
+            }
+            requestUrl = normalizedUrl;
 
             // Dùng ByteArrayContent thay cho StreamContent để tránh vấn đề stream bị đóng sớm
             using var form = new MultipartFormDataContent();

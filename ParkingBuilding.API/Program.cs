@@ -105,10 +105,10 @@ namespace ParkingBuilding.API
             // Đăng ký dịch vụ lưu trữ hình ảnh Cloudinary
             builder.Services.AddScoped<IImageStorageService, CloudinaryStorageService>();
 
-            // Đăng ký HttpClient kèm cấu hình Timeout tối đa 20 giây để nhận dạng nhanh hơn và tránh treo cổng xe
+            // Đăng ký HttpClient kèm cấu hình Timeout đủ rộng cho HuggingFace cold start.
             builder.Services.AddHttpClient<IAiRecognitionService, FastApiLicensePlateService>(client =>
             {
-                client.Timeout = TimeSpan.FromSeconds(20);
+                client.Timeout = TimeSpan.FromSeconds(60);
             });
 
 
