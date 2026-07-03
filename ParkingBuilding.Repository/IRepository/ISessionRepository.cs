@@ -24,5 +24,8 @@ namespace ParkingBuilding.Repository.IRepository
 
         // API 3: Lấy chi tiết phiên đỗ dựa vào mã vé
         Task<ParkingSession?> GetSessionDetailByTicketCodeAsync(string ticketCode);
+
+        // API 4: Lấy chi tiết phiên đỗ dựa vào SessionId
+        Task<ParkingSession?> GetSessionDetailByIdAsync(int sessionId);
     }
 }

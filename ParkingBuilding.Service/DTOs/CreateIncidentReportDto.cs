@@ -8,7 +8,7 @@ namespace ParkingBuilding.Service.DTOs
 {
     public class CreateIncidentReportDto
     {
-        public int? SessionId { get; set; } // Nullable nếu là sự cố thiết bị/nhân viên
+        public string LicenseVehicle { get; set; } = null!;
         public string IssueType { get; set; } = null!;
         public string? Description { get; set; }
         public string? ImageProofUrl { get; set; }

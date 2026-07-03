@@ -19,19 +19,22 @@ namespace ParkingBuilding.Service.Service
         private readonly VnPayConfig _vnPayConfig;
         private readonly ILogger<BookingService> _logger;
         private readonly IVnPayService _vnPayService;
+        private readonly IWalletService _walletService;
 
         public BookingService(
             IParkingRepository parkingRepository,
             ParkingManagementDbContext context,
             IOptions<VnPayConfig> vnPayConfig,
             ILogger<BookingService> logger,
-            IVnPayService vnPayService)
+            IVnPayService vnPayService,
+            IWalletService walletService)
         {
             _parkingRepository = parkingRepository;
             _context = context;
             _vnPayConfig = vnPayConfig.Value;
             _logger = logger;
             _vnPayService = vnPayService;
+            _walletService = walletService;
         }
 
         public async Task<BookSlotResponse> BookSlotAsync(int userId, BookSlotRequest request)
@@ -197,15 +200,40 @@ namespace ParkingBuilding.Service.Service
 
                     await _parkingRepository.CreateSessionAsync(newSession, slot);
 
-                    string txnRef = "DEP" + DateTime.UtcNow.Ticks; 
+                    string paymentMethod = string.IsNullOrWhiteSpace(request.PaymentMethod)
+                        ? "VNPAY"
+                        : request.PaymentMethod.Trim().ToUpper();
+
+                    if (paymentMethod != "VNPAY" && paymentMethod != "WALLET")
+                    {
+                        throw new ArgumentException("Phuong thuc thanh toan booking chi ho tro VNPAY hoac WALLET.");
+                    }
+
+                    if (paymentMethod == "WALLET")
+                    {
+                        bool walletPaymentSuccess = await _walletService.ProcessWalletPaymentAsync(
+                            userId,
+                            depositAmount,
+                            $"Thanh toan coc dat cho phien {newSession.SessionId}");
+
+                        if (!walletPaymentSuccess)
+                        {
+                            throw new InvalidOperationException("So du vi khong du de thanh toan tien coc dat cho.");
+                        }
+                    }
+
+                    string txnRef = paymentMethod == "WALLET"
+                        ? "DEPWALLET" + DateTime.UtcNow.Ticks
+                        : "DEP" + DateTime.UtcNow.Ticks; 
                     var invoice = new Invoice
                     {
                         Session = newSession,
                         TotalAmount = depositAmount,
-                        PaymentMethod = "VNPAY",
-                        PaymentStatus = "PENDING",
+                        PaymentMethod = paymentMethod,
+                        PaymentStatus = paymentMethod == "WALLET" ? "Deposited" : "PENDING",
                         TransactionCode = txnRef,
                         CreatedDate = now,
+                        PaymentTime = paymentMethod == "WALLET" ? DateTime.UtcNow : null,
                         UpdatedDate = null 
                     };
 
@@ -213,6 +241,21 @@ namespace ParkingBuilding.Service.Service
                     await _context.SaveChangesAsync();
                     _logger.LogInformation("Lưu dữ liệu thành công bảng Invoices, hàm bookslotasync của booking");
                     await transaction.CommitAsync();
+
+                    if (paymentMethod == "WALLET")
+                    {
+                        return new BookSlotResponse
+                        {
+                            IsSuccess = true,
+                            Message = $"Dat cho va thanh toan tien coc {depositAmount:N0} VND bang vi thanh cong.",
+                            TicketCode = ticket.TicketCode,
+                            SlotName = slot.SlotName,
+                            BookingTime = newSession.BookingTime,
+                            RequiresPayment = false,
+                            PaymentUrl = string.Empty,
+                            InvoiceId = invoice.InvoiceId
+                        };
+                    }
 
                     string paymentUrl = _vnPayService.CreatePaymentUrl(
                         txnRef: txnRef,

@@ -132,7 +132,24 @@ namespace ParkingBuilding.Repository.Repository
                 .Include(s => s.Slot)
                 .Include(s => s.Ticket)
                 .Include(s => s.User)
+                .Include(s => s.IncidentReports)
+                    .ThenInclude(i => i.Reported)
+                .Include(s => s.IncidentReports)
+                    .ThenInclude(i => i.Resolved)
                 .FirstOrDefaultAsync(s => s.Ticket != null && s.Ticket.TicketCode == ticketCode && !s.IsDeleted);
+        }
+
+        public async Task<ParkingSession?> GetSessionDetailByIdAsync(int sessionId)
+        {
+            return await _context.ParkingSessions
+                .Include(s => s.Slot)
+                .Include(s => s.Ticket)
+                .Include(s => s.User)
+                .Include(s => s.IncidentReports)
+                    .ThenInclude(i => i.Reported)
+                .Include(s => s.IncidentReports)
+                    .ThenInclude(i => i.Resolved)
+                .FirstOrDefaultAsync(s => s.SessionId == sessionId && !s.IsDeleted);
         }
     }
 }

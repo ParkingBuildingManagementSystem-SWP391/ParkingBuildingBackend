@@ -8,6 +8,7 @@ namespace ParkingBuilding.Service.DTOs
 {
     public class ParkingSessionDetailResponeDto
     {
+        public int SessionId { get; set; }
         public string? Username { get; set; }
         public string SlotName { get; set; } = null!;
         public string LicenseVehicle { get; set; } = null!;
@@ -18,5 +19,6 @@ namespace ParkingBuilding.Service.DTOs
         public string? CheckInImageUrl { get; set; }
         public string? CheckOutImageUrl { get; set; }
         public string SessionStatus { get; set; } = null!;
+        public List<IncidentReportResponseDto> Incidents { get; set; } = new();
     }
 }

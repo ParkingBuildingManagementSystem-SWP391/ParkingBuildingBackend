@@ -187,5 +187,25 @@ namespace ParkingBuilding.API.Controllers
                 return StatusCode(500, new { error = "Lỗi hệ thống khi lấy chi tiết phiên đỗ xe: " + ex.Message });
             }
         }
+
+        [HttpGet("sessions/{sessionId:int}")]
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> GetSessionDetailById(int sessionId)
+        {
+            try
+            {
+                var sessionDetail = await _adminService.GetSessionDetailByIdAsync(sessionId);
+                if (sessionDetail == null)
+                {
+                    return NotFound(new { error = $"Khong tim thay phien do xe co SessionId: {sessionId}" });
+                }
+
+                return Ok(sessionDetail);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = "Loi he thong khi lay chi tiet phien do xe: " + ex.Message });
+            }
+        }
     }
 }

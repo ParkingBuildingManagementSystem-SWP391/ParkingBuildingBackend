@@ -6,7 +6,6 @@ using ParkingBuilding.Service.IService;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace ParkingBuilding.Service.Service
@@ -29,24 +28,34 @@ namespace ParkingBuilding.Service.Service
 
         public async Task<IncidentReportResponseDto> CreateIncidentAsync(CreateIncidentReportDto dto, int reportedUserId)
         {
-            if (dto.SessionId.HasValue)
+            if (string.IsNullOrWhiteSpace(dto.LicenseVehicle))
             {
-                var session = await _context.ParkingSessions.FindAsync(dto.SessionId.Value);
-                if (session == null)
-                {
-                    throw new ArgumentException("Phiên đỗ xe không tồn tại.");
-                }
+                throw new ArgumentException("License plate is required.");
+            }
 
-                var user = await _context.Users.Include(u => u.Role).FirstOrDefaultAsync(u => u.UserId == reportedUserId);
-                if (user != null && user.Role?.RoleName == "Registered_Driver" && session.UserId != reportedUserId)
-                {
-                    throw new UnauthorizedAccessException("Bạn không có quyền báo cáo sự cố cho phiên đỗ xe của người khác.");
-                }
+            var normalizedLicense = dto.LicenseVehicle.Trim().ToUpper();
+            var session = await _context.ParkingSessions
+                .Where(s => s.LicenseVehicle.Trim().ToUpper() == normalizedLicense
+                         && s.SessionStatus.Trim() == ParkingStatuses.SessionInProgress
+                         && !s.IsDeleted)
+                .OrderByDescending(s => s.CheckInTime)
+                .ThenByDescending(s => s.SessionId)
+                .FirstOrDefaultAsync();
+
+            if (session == null)
+            {
+                throw new ArgumentException("No active parking session was found for this license plate.");
+            }
+
+            var user = await _context.Users.Include(u => u.Role).FirstOrDefaultAsync(u => u.UserId == reportedUserId);
+            if (user != null && user.Role?.RoleName == "Registered_Driver" && session.UserId != reportedUserId)
+            {
+                throw new UnauthorizedAccessException("You do not have permission to report an incident for another driver's parking session.");
             }
 
             var incident = new IncidentReport
             {
-                SessionId = dto.SessionId,
+                SessionId = session.SessionId,
                 IssueType = dto.IssueType,
                 Description = dto.Description,
                 ImageProofUrl = dto.ImageProofUrl,
@@ -58,7 +67,6 @@ namespace ParkingBuilding.Service.Service
             await _incidentRepo.AddAsync(incident);
             await _unitOfWork.SaveChangesAsync();
 
-            // Lấy lại thông tin chi tiết kèm nạp nốt các bảng liên quan để map sang DTO
             var createdIncident = await _incidentRepo.GetIncidentDetailByIdAsync(incident.IncidentId);
             return MapToResponseDto(createdIncident!);
         }
@@ -88,25 +96,21 @@ namespace ParkingBuilding.Service.Service
             incident.ResolvedId = resolvedUserId;
             incident.ResolvedAt = DateTime.Now;
             incident.ResolutionNotes = dto.ResolutionNotes;
-            incident.FineAmount = 0; // Luồng thanh toán sự cố bị xóa bỏ theo yêu cầu
+            incident.FineAmount = 0;
 
-            // XỬ LÝ NGHIỆP VỤ ĐẶC BIỆT: Nếu là mất thẻ (Lost Ticket) và có phiên đỗ xe
             if (incident.IssueType.Equals("Lost Ticket", StringComparison.OrdinalIgnoreCase) && incident.SessionId.HasValue)
             {
-                // Tìm phiên đỗ xe để đóng lượt gửi (Checkout)
                 var session = await _unitOfWork.Sessions.GetByIdAsync(incident.SessionId.Value);
                 if (session != null && session.SessionStatus == ParkingStatuses.SessionInProgress)
                 {
                     session.SessionStatus = ParkingStatuses.SessionCompleted;
                     session.CheckOutTime = DateTime.Now;
 
-                    // 1. Khóa thẻ lại vì đã bị mất (không cho phép quét thẻ này nữa)
                     if (session.Ticket != null)
                     {
                         session.Ticket.TicketStatus = "Blocked";
                     }
 
-                    // 2. Giải phóng chỗ đỗ (Parking Slot)
                     var slot = await _unitOfWork.Slots.GetByIdAsync(session.SlotId);
                     if (slot != null)
                     {
@@ -118,7 +122,6 @@ namespace ParkingBuilding.Service.Service
             return await _unitOfWork.SaveChangesAsync();
         }
 
-        // Helper Map Entity sang Response DTO
         private IncidentReportResponseDto MapToResponseDto(IncidentReport i)
         {
             return new IncidentReportResponseDto
