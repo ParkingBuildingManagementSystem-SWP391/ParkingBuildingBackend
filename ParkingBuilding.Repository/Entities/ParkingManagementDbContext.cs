@@ -121,10 +121,6 @@ public partial class ParkingManagementDbContext : DbContext
 
             entity.HasIndex(e => e.TicketId, "UQ__Membersh__712CC606C2922FA4").IsUnique();
 
-            entity.HasIndex(e => e.UserId, "UQ_ActiveOrPending_Membership_User")
-                .IsUnique()
-                .HasFilter("(([Status]='Active' OR [Status]='PendingPayment') AND [IsDeleted]=(0))");
-
             entity.Property(e => e.EndTime).HasColumnType("datetime");
             entity.Property(e => e.StartTime)
                 .HasDefaultValueSql("(getdate())")
@@ -201,6 +197,10 @@ public partial class ParkingManagementDbContext : DbContext
             entity.ToTable("ParkingSession");
 
             entity.HasIndex(e => e.TicketId, "UQ__ParkingS__712CC60626606947").IsUnique();
+
+            entity.HasIndex(e => e.LicenseVehicle, "UQ_ActiveOrReserved_ParkingSession_LicenseVehicle")
+                .IsUnique()
+                .HasFilter("([IsDeleted]=(0) AND ([SessionStatus]='Reserved' OR [SessionStatus]='InProgress'))");
 
             entity.Property(e => e.BookingTime).HasColumnType("datetime");
             entity.Property(e => e.CheckInImageUrl).HasMaxLength(500);
