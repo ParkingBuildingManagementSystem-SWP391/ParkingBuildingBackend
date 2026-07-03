@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace ParkingBuilding.Repository.Entities;
@@ -19,7 +19,7 @@ public partial class ParkingSlot
 
     public virtual Floor Floor { get; set; } = null!;
 
-    public virtual MembershipCard? MembershipCard { get; set; }
+    public virtual ICollection<MembershipSlot> MembershipSlots { get; set; } = new List<MembershipSlot>();
 
     public virtual ICollection<ParkingSession> ParkingSessions { get; set; } = new List<ParkingSession>();
 

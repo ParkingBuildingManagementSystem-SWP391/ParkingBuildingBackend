@@ -444,5 +444,145 @@ namespace ParkingBuilding.Service.Service
                 Message = "Cấu hình giá gói thành viên thành công!"
             };
         }
+        public async Task<List<ManagerMembershipCardResponseDto>> GetMembershipCardsAsync(string? status, string? search)
+        {
+            var query = _context.MembershipCards
+                .Include(c => c.User)
+                .Include(c => c.Ticket)
+                .Include(c => c.Tier)
+                    .ThenInclude(t => t.Type)
+                .Include(c => c.MembershipVehicles)
+                .Include(c => c.MembershipSlots)
+                    .ThenInclude(ms => ms.Slot)
+                .AsSplitQuery()
+                .AsQueryable();
+
+            if (!string.IsNullOrWhiteSpace(status))
+            {
+                var cleanStatus = status.Trim();
+                query = query.Where(c => c.Status == cleanStatus);
+            }
+
+            if (!string.IsNullOrWhiteSpace(search))
+            {
+                var cleanSearch = search.Trim().ToUpper();
+                query = query.Where(c =>
+                    (c.User.Username != null && c.User.Username.ToUpper().Contains(cleanSearch)) ||
+                    (c.User.Email != null && c.User.Email.ToUpper().Contains(cleanSearch)) ||
+                    (c.User.PhoneNumber != null && c.User.PhoneNumber.ToUpper().Contains(cleanSearch)) ||
+                    (c.Ticket != null && c.Ticket.TicketCode.ToUpper().Contains(cleanSearch)) ||
+                    c.MembershipVehicles.Any(v => v.LicenseVehicle.ToUpper().Contains(cleanSearch)));
+            }
+
+            var cards = await query
+                .OrderByDescending(c => c.StartTime)
+                .ToListAsync();
+
+            return cards.Select(c => new ManagerMembershipCardResponseDto
+                {
+                    MembershipCardId = c.MembershipCardId,
+                    UserId = c.UserId,
+                    Username = c.User.Username,
+                    Email = c.User.Email,
+                    PhoneNumber = c.User.PhoneNumber,
+                    TierId = c.TierId,
+                    TierName = c.Tier.TierName,
+                    VehicleTypeId = c.Tier.TypeId,
+                    VehicleTypeName = c.Tier.Type != null ? c.Tier.Type.TypeName : null,
+                    Price = c.Tier.Price,
+                    DurationMonths = c.Tier.DurationMonths,
+                    TicketCode = c.Ticket != null ? c.Ticket.TicketCode : null,
+                    StartTime = c.StartTime,
+                    EndTime = c.EndTime,
+                    Status = c.Status,
+                    IsDeleted = c.IsDeleted,
+                    LicenseVehicles = c.MembershipVehicles
+                        .Where(v => v.IsActive)
+                        .Select(v => v.LicenseVehicle)
+                        .ToList(),
+                    Slots = c.MembershipSlots
+                        .Select(ms => new MembershipCardSlotDto
+                        {
+                            SlotId = ms.SlotId,
+                            SlotName = ms.Slot != null ? ms.Slot.SlotName : null,
+                            SlotStatus = ms.Slot != null ? ms.Slot.SlotStatus : null
+                        })
+                        .ToList()
+                })
+                .ToList();
+        }
+
+        public async Task<ManagerCancelMembershipCardResultDto> CancelMembershipCardByManagerAsync(int cardId)
+        {
+            using var transaction = await _context.Database.BeginTransactionAsync();
+            try
+            {
+                var card = await _context.MembershipCards
+                    .Include(c => c.Ticket)
+                    .Include(c => c.MembershipVehicles)
+                    .Include(c => c.MembershipSlots)
+                    .FirstOrDefaultAsync(c => c.MembershipCardId == cardId && !c.IsDeleted);
+
+                if (card == null)
+                {
+                    return new ManagerCancelMembershipCardResultDto
+                    {
+                        IsSuccess = false,
+                        Message = "Khong tim thay the thanh vien hoac the da bi huy."
+                    };
+                }
+
+                var hasActiveSession = await _context.ParkingSessions
+                    .AnyAsync(s => s.TicketId == card.TicketId
+                                && s.SessionStatus == ParkingStatuses.SessionInProgress
+                                && !s.IsDeleted);
+
+                if (hasActiveSession)
+                {
+                    return new ManagerCancelMembershipCardResultDto
+                    {
+                        IsSuccess = false,
+                        Message = "The dang co xe trong bai, vui long checkout xe truoc khi huy the."
+                    };
+                }
+
+                card.Status = ParkingStatuses.MonthlyCardCancelled;
+                card.IsDeleted = true;
+
+                if (card.Ticket != null)
+                {
+                    card.Ticket.TicketStatus = ParkingStatuses.TicketExpired;
+                }
+
+                foreach (var vehicle in card.MembershipVehicles)
+                {
+                    vehicle.IsActive = false;
+                }
+
+                foreach (var membershipSlot in card.MembershipSlots)
+                {
+                    var slot = await _context.ParkingSlots.FirstOrDefaultAsync(s => s.SlotId == membershipSlot.SlotId);
+                    if (slot != null && slot.SlotStatus == ParkingStatuses.SlotReserved)
+                    {
+                        slot.SlotStatus = ParkingStatuses.SlotAvailable;
+                        _context.ParkingSlots.Update(slot);
+                    }
+                }
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                return new ManagerCancelMembershipCardResultDto
+                {
+                    IsSuccess = true,
+                    Message = "Da huy the thanh vien thanh cong."
+                };
+            }
+            catch
+            {
+                await transaction.RollbackAsync();
+                throw;
+            }
+        }
     }
 }

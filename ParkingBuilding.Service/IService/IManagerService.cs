@@ -12,9 +12,8 @@ namespace ParkingBuilding.Service.IService
         Task<SlotDetailResponse?> GetSlotDetailAsync(int slotId);
         Task<bool> UpdateVehicleTypePricingAsync(int typeId, decimal dayRate, decimal nightRate, decimal fullDayRate, decimal monthlyPrice, decimal firstHourRate, decimal subsequentHourRate);
         Task<UpdateMembershipTierPriceResponse?> UpdateMembershipTierPricingAsync(UpdateMembershipTierPriceRequest request);
-
-
-
+        Task<List<ManagerMembershipCardResponseDto>> GetMembershipCardsAsync(string? status, string? search);
+        Task<ManagerCancelMembershipCardResultDto> CancelMembershipCardByManagerAsync(int cardId);
 
     }
 }
