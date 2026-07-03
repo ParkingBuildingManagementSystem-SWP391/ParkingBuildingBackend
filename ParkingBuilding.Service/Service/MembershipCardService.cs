@@ -233,13 +233,19 @@ namespace ParkingBuilding.Service.Service
 
                     return new MembershipCardRegistrationResponseDto
                     {
+                        // Backward compat
                         Username = user.Username,
                         TicketCode = string.Join(", ", ticketCodes),
                         AmountToPay = amountToPay,
                         SlotId = targetSlotIds.FirstOrDefault(),
                         LicenseVehicles = cleanPlates,
+                        StartTime = startTime,
                         EndTime = endTime,
-                        PaymentUrl = null
+                        PaymentUrl = null,
+                        // Các field mới - đầy đủ thông tin
+                        TicketCodes = ticketCodes,
+                        SlotIds = targetSlotIds,
+                        SlotNames = slots.Select(s => s.SlotName).ToList()
                     };
                 }
                 else
@@ -313,13 +319,19 @@ namespace ParkingBuilding.Service.Service
 
                     return new MembershipCardRegistrationResponseDto
                     {
+                        // Backward compat
                         Username = user.Username,
                         TicketCode = string.Join(", ", ticketCodes),
                         AmountToPay = amountToPay,
                         SlotId = targetSlotIds.FirstOrDefault(),
                         LicenseVehicles = cleanPlates,
+                        StartTime = startTime,
                         EndTime = endTime,
-                        PaymentUrl = paymentUrl
+                        PaymentUrl = paymentUrl,
+                        // Các field mới - đầy đủ thông tin
+                        TicketCodes = ticketCodes,
+                        SlotIds = targetSlotIds,
+                        SlotNames = slots.Select(s => s.SlotName).ToList()
                     };
                 }
             }
