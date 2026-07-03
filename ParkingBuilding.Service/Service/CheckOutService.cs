@@ -104,10 +104,34 @@ namespace ParkingBuilding.Service.Service
 
             if (string.IsNullOrWhiteSpace(request.CheckoutLicensePlate) || request.CheckoutLicensePlate.Trim().ToLower() == "string")
             {
-                throw new ArgumentException("Yêu cầu nhập biển số xe thực tế lúc ra bãi để kiểm tra an ninh đối khớp.");
+                bool isBicycle = false;
+                if (request.SessionId.HasValue && request.SessionId.Value > 0)
+                {
+                    var tempSession = await _context.ParkingSessions.FindAsync(request.SessionId.Value);
+                    if (tempSession != null && tempSession.TypeId == 1) isBicycle = true;
+                }
+                else if (!string.IsNullOrEmpty(cleanTicketCode))
+                {
+                    var tempSession = await _context.ParkingSessions
+                        .Include(s => s.Ticket)
+                        .FirstOrDefaultAsync(s => s.Ticket != null 
+                                             && s.Ticket.TicketCode.Trim() == cleanTicketCode.Trim() 
+                                             && s.SessionStatus == ParkingStatuses.SessionInProgress 
+                                             && !s.IsDeleted);
+                    if (tempSession != null && tempSession.TypeId == 1) isBicycle = true;
+                }
+
+                if (isBicycle)
+                {
+                    request.CheckoutLicensePlate = $"BIKE_OUT_{Guid.NewGuid().ToString().Substring(0, 5).ToUpper()}";
+                }
+                else
+                {
+                    throw new ArgumentException("Yêu cầu nhập biển số xe thực tế lúc ra bãi để kiểm tra an ninh đối khớp.");
+                }
             }
             
-            string cleanCheckoutPlate;
+            string cleanCheckoutPlate = "";
             if (request.CheckoutLicensePlate.StartsWith("BIKE_"))
             {
                 cleanCheckoutPlate = request.CheckoutLicensePlate.Trim().ToUpper();
@@ -145,8 +169,8 @@ namespace ParkingBuilding.Service.Service
 
                     if (sessions.Count > 0)
                     {
-                        var normCheckout = cleanCheckoutPlate.Trim().Replace("-", "").Replace(".", "").Replace(" ", "").ToUpper();
-                        session = sessions.FirstOrDefault(s => s.LicenseVehicle.Trim().Replace("-", "").Replace(".", "").Replace(" ", "").ToUpper() == normCheckout);
+                        var normCheckout = cleanCheckoutPlate!.Replace("-", "").Replace(".", "").Replace(" ", "").ToUpper();
+                        session = sessions.FirstOrDefault(s => s.LicenseVehicle != null && s.LicenseVehicle.Replace("-", "").Replace(".", "").Replace(" ", "").ToUpper() == normCheckout);
                         if (session == null)
                         {
                             session = sessions.FirstOrDefault();
@@ -180,7 +204,7 @@ namespace ParkingBuilding.Service.Service
                 string normCheckIn = checkInPlate.Replace("-", "").Replace(".", "").Replace(" ", "").ToUpper();
                 string normCheckOut = (cleanCheckoutPlate ?? "").Trim().Replace("-", "").Replace(".", "").Replace(" ", "").ToUpper();
 
-                if (normCheckIn != normCheckOut)
+                if (session.TypeId != 1 && normCheckIn != normCheckOut)
                 {
                     _logger.LogWarning("CẢNH BÁO AN NINH: Nghi ngờ tráo xe! Xe ra '{OutPlate}' không khớp xe vào '{InPlate}' tại SessionId {SessionId}.",
                         cleanCheckoutPlate, checkInPlate, session.SessionId);
@@ -193,7 +217,7 @@ namespace ParkingBuilding.Service.Service
                         TicketCode = session.Ticket?.TicketCode ?? "N/A",
                         SlotName = session.Slot?.SlotName ?? "N/A",
                         CheckInLicensePlate = checkInPlate,
-                        CheckOutLicensePlate = cleanCheckoutPlate,
+                        CheckOutLicensePlate = cleanCheckoutPlate ?? "",
                         IsLicensePlateMatched = false,
                         CheckInImageUrl = session.CheckInImageUrl,
                         CheckOutImageUrl = checkOutImageUrl,

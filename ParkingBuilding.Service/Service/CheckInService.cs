@@ -141,7 +141,7 @@ namespace ParkingBuilding.Service.Service
                     // >>> KỊCH BẢN CHECK-IN BẰNG THẺ THÀNH VIÊN <<<
 
                     // 1. Kiểm tra biển số xe đi vào có thuộc danh sách biển số đã đăng ký và đang hoạt động không
-                    if (cleanLicense != null)
+                    if (membershipCard.Tier.TypeId != 1 && cleanLicense != null)
                     {
                         var isRegisteredPlate = membershipCard.MembershipVehicles
                             .Any(v => v.LicenseVehicle.Trim().ToUpper() == cleanLicense.Trim().ToUpper() && v.IsActive);
@@ -297,7 +297,7 @@ namespace ParkingBuilding.Service.Service
                     session = await _parkingRepository.GetReservedSessionByTicketCodeAsync(cleanTicketCode);
                 }
 
-                if (session != null && cleanLicense != null)
+                if (session != null && session.TypeId != 1 && cleanLicense != null)
                 {
                     if (!string.IsNullOrEmpty(session.LicenseVehicle))
                     {
@@ -364,7 +364,7 @@ namespace ParkingBuilding.Service.Service
                 DriverName = session.User?.Username ?? "N/A",
                 DriverPhone = session.User?.PhoneNumber ?? "N/A",
                 DriverEmail = session.User?.Email ?? "N/A",
-                TicketCode = session.Ticket?.TicketCode ?? cleanTicketCode,
+                TicketCode = session.Ticket?.TicketCode ?? cleanTicketCode ?? "",
                 RequiresPayment = session.Invoice != null && session.Invoice.PaymentStatus == "PENDING",
                 PaymentStatus = session.Invoice?.PaymentStatus ?? "NoPayment"
             };
@@ -535,7 +535,7 @@ namespace ParkingBuilding.Service.Service
                 {
                     // 1. Kiểm tra xem biển số được phát hiện (detectedPlate) có đăng ký trong thẻ hay không (nếu có detectedPlate)
                     bool isPlateRegistered = true;
-                    if (!string.IsNullOrWhiteSpace(detectedPlate) && detectedPlate.Trim().ToLower() != "string")
+                    if (membershipCard.Tier.TypeId != 1 && !string.IsNullOrWhiteSpace(detectedPlate) && detectedPlate.Trim().ToLower() != "string")
                     {
                         isPlateRegistered = membershipCard.MembershipVehicles
                             .Any(v => v.LicenseVehicle.Trim().ToUpper() == detectedPlate.Trim().ToUpper() && v.IsActive);
