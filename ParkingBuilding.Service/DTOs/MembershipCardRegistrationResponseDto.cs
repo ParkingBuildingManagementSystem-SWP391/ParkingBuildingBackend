@@ -17,6 +17,10 @@ namespace ParkingBuilding.Service.DTOs
         public List<string> LicenseVehicles { get; set; } = new List<string>();
         public DateTime EndTime { get; set; }
         public string? PaymentUrl { get; set; }
+        public long? InvoiceId { get; set; }
+        public string? PaymentStatus { get; set; }
+        public string? PaymentMethod { get; set; }
+        public string? TransactionCode { get; set; }
 
         // === Các field mới - đầy đủ thông tin ===
 

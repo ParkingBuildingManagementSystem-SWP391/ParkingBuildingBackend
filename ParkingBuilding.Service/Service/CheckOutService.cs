@@ -50,6 +50,13 @@ namespace ParkingBuilding.Service.Service
                 throw new ArgumentNullException(nameof(request));
             }
 
+            string paymentMethod = string.IsNullOrWhiteSpace(request.PaymentMethod)
+                ? "CASH"
+                : request.PaymentMethod.Trim().ToUpper();
+            bool isAutoPayment = paymentMethod == "AUTO";
+            bool isWalletPayment = paymentMethod == "WALLET";
+            bool isVnPayPayment = paymentMethod == "VNPAY";
+
             if (QrCodeParserHelper.TryParseQr(request.TicketCode, out var parsedTicket, out var parsedPlate, out var parsedSessionId, out var parsedSlot))
             {
                 request.TicketCode = parsedTicket;
@@ -201,6 +208,13 @@ namespace ParkingBuilding.Service.Service
 
                 _logger.LogInformation("Đối khớp biển số thành công cho Session {SessionId}.", session.SessionId);
 
+                if (isAutoPayment)
+                {
+                    paymentMethod = session.UserId.HasValue ? "WALLET" : "CASH";
+                    isWalletPayment = paymentMethod == "WALLET";
+                    isVnPayPayment = false;
+                }
+
                 var staff = await _parkingRepository.GetStaffByIdAsync(currentStaffId);
                 string staffName = staff?.Username ?? "Nhân viên hệ thống";
 
@@ -324,7 +338,7 @@ namespace ParkingBuilding.Service.Service
                             session.Invoice.UpdatedDate = DateTime.UtcNow;
                             session.Invoice.StaffId = currentStaffId;
 
-                            if (request.PaymentMethod.ToUpper() == "WALLET")
+                            if (isWalletPayment)
                             {
                                 if (session.UserId.HasValue)
                                 {
@@ -378,7 +392,31 @@ namespace ParkingBuilding.Service.Service
                                     }
                                     else
                                     {
-                                        throw new InvalidOperationException($"Số dư ví của tài xế không đủ để thanh toán {additionalFee:N0} VNĐ.");
+                                        session.Invoice.PaymentMethod = "CASH";
+                                        _context.ParkingSessions.Update(session);
+                                        await _context.SaveChangesAsync();
+                                        await dbTransaction.CommitAsync();
+
+                                        return new CheckoutResponse
+                                        {
+                                            IsSuccess = true,
+                                            Message = $"So du vi khong du. Chuyen sang thanh toan tien mat phi phat sinh: {additionalFee:N0} VND.",
+                                            TicketCode = session.Ticket?.TicketCode ?? "N/A",
+                                            SlotName = session.Slot?.SlotName ?? "N/A",
+                                            CheckInLicensePlate = checkInPlate,
+                                            CheckOutLicensePlate = cleanCheckoutPlate ?? "",
+                                            IsLicensePlateMatched = true,
+                                            CheckInImageUrl = session.CheckInImageUrl,
+                                            CheckOutImageUrl = session.CheckOutImageUrl,
+                                            CheckInTime = checkInTime,
+                                            CheckOutTime = checkOutTime,
+                                            DurationHours = durationHours,
+                                            TotalAmount = additionalFee,
+                                            StaffName = staffName,
+                                            InvoiceId = session.Invoice.InvoiceId,
+                                            IsPaid = false,
+                                            PaymentUrl = null
+                                        };
                                     }
                                 }
                                 else
@@ -386,7 +424,7 @@ namespace ParkingBuilding.Service.Service
                                     throw new InvalidOperationException("Không tìm thấy thông tin tài xế để thanh toán bằng ví.");
                                 }
                             }
-                            else if (request.PaymentMethod.ToUpper() == "VNPAY")
+                            else if (isVnPayPayment)
                             {
                                 string txnRef = "INV" + DateTime.UtcNow.Ticks;
                                 session.Invoice.TransactionCode = txnRef;
@@ -517,7 +555,7 @@ namespace ParkingBuilding.Service.Service
                         session.Invoice.PaymentTime = DateTime.UtcNow;
                         session.Invoice.UpdatedDate = DateTime.UtcNow;
                         session.Invoice.StaffId = currentStaffId;
-                        session.Invoice.PaymentMethod = request.PaymentMethod.ToUpper();
+                        session.Invoice.PaymentMethod = paymentMethod;
 
                         session.SessionStatus = ParkingStatuses.SessionCompleted;
                         if (session.Ticket != null)
@@ -566,12 +604,12 @@ namespace ParkingBuilding.Service.Service
                         string txnRef = "INV" + DateTime.UtcNow.Ticks + "_" + depositAmount;
                         session.Invoice.PaymentStatus = "PENDING";
                         session.Invoice.TotalAmount = additionalAmount; 
-                        session.Invoice.PaymentMethod = request.PaymentMethod.ToUpper();
+                        session.Invoice.PaymentMethod = paymentMethod;
                         session.Invoice.StaffId = currentStaffId;
                         session.Invoice.UpdatedDate = DateTime.UtcNow;
                         session.Invoice.TransactionCode = txnRef;
 
-                        if (request.PaymentMethod.ToUpper() == "WALLET")
+                        if (isWalletPayment)
                         {
                             if (session.UserId.HasValue)
                             {
@@ -625,7 +663,32 @@ namespace ParkingBuilding.Service.Service
                                 }
                                 else
                                 {
-                                    throw new InvalidOperationException($"Số dư ví không đủ để thanh toán {additionalAmount:N0} VNĐ chênh lệch.");
+                                    session.Invoice.PaymentMethod = "CASH";
+                                    _context.Invoices.Update(session.Invoice);
+                                    _context.ParkingSessions.Update(session);
+                                    await _context.SaveChangesAsync();
+                                    await dbTransaction.CommitAsync();
+
+                                    return new CheckoutResponse
+                                    {
+                                        IsSuccess = true,
+                                        Message = $"So du vi khong du. Chuyen sang thanh toan tien mat phan chenh lech sau coc: {additionalAmount:N0} VND.",
+                                        TicketCode = session.Ticket?.TicketCode ?? "N/A",
+                                        SlotName = session.Slot?.SlotName ?? "N/A",
+                                        CheckInLicensePlate = checkInPlate,
+                                        CheckOutLicensePlate = cleanCheckoutPlate ?? "",
+                                        IsLicensePlateMatched = true,
+                                        CheckInImageUrl = session.CheckInImageUrl,
+                                        CheckOutImageUrl = session.CheckOutImageUrl,
+                                        CheckInTime = checkInTime,
+                                        CheckOutTime = checkOutTime,
+                                        DurationHours = durationHours,
+                                        TotalAmount = additionalAmount,
+                                        StaffName = staffName,
+                                        InvoiceId = session.Invoice.InvoiceId,
+                                        IsPaid = false,
+                                        PaymentUrl = null
+                                    };
                                 }
                             }
                             else
@@ -633,7 +696,7 @@ namespace ParkingBuilding.Service.Service
                                 throw new InvalidOperationException("Không tìm thấy thông tin tài xế để thanh toán bằng ví.");
                             }
                         }
-                        else if (request.PaymentMethod.ToUpper() == "VNPAY")
+                        else if (isVnPayPayment)
                         {
                             _context.Invoices.Update(session.Invoice);
                             _context.ParkingSessions.Update(session);
@@ -726,13 +789,13 @@ namespace ParkingBuilding.Service.Service
                     string txnRef = "INV" + DateTime.UtcNow.Ticks + (depositAmount > 0 ? "_" + depositAmount : "");
 
                     invoice.TotalAmount = actualAmountToPay;
-                    invoice.PaymentMethod = request.PaymentMethod.ToUpper();
+                    invoice.PaymentMethod = paymentMethod;
                     invoice.PaymentStatus = "PENDING";
                     invoice.StaffId = currentStaffId;
                     invoice.UpdatedDate = DateTime.UtcNow;
                     invoice.TransactionCode = txnRef;
 
-                    if (request.PaymentMethod.ToUpper() == "WALLET")
+                    if (isWalletPayment)
                     {
                         if (session.UserId.HasValue)
                         {
@@ -786,7 +849,32 @@ namespace ParkingBuilding.Service.Service
                             }
                             else
                             {
-                                throw new InvalidOperationException($"Số dư ví không đủ để thanh toán {actualAmountToPay:N0} VNĐ.");
+                                invoice.PaymentMethod = "CASH";
+                                _context.Invoices.Update(invoice);
+                                _context.ParkingSessions.Update(session);
+                                await _context.SaveChangesAsync();
+                                await dbTransaction.CommitAsync();
+
+                                return new CheckoutResponse
+                                {
+                                    IsSuccess = true,
+                                    Message = $"So du vi khong du. Chuyen sang thanh toan tien mat so tien can thu: {actualAmountToPay:N0} VND.",
+                                    TicketCode = session.Ticket?.TicketCode ?? "N/A",
+                                    SlotName = session.Slot?.SlotName ?? "N/A",
+                                    CheckInLicensePlate = checkInPlate,
+                                    CheckOutLicensePlate = cleanCheckoutPlate ?? "",
+                                    IsLicensePlateMatched = true,
+                                    CheckInImageUrl = session.CheckInImageUrl,
+                                    CheckOutImageUrl = session.CheckOutImageUrl,
+                                    CheckInTime = checkInTime,
+                                    CheckOutTime = checkOutTime,
+                                    DurationHours = durationHours,
+                                    TotalAmount = actualAmountToPay,
+                                    StaffName = staffName,
+                                    InvoiceId = invoice.InvoiceId,
+                                    IsPaid = false,
+                                    PaymentUrl = null
+                                };
                             }
                         }
                         else
@@ -794,7 +882,7 @@ namespace ParkingBuilding.Service.Service
                             throw new InvalidOperationException("Không tìm thấy thông tin tài xế để thanh toán bằng ví.");
                         }
                     }
-                    else if (request.PaymentMethod.ToUpper() == "VNPAY")
+                    else if (isVnPayPayment)
                     {
                         _context.Invoices.Update(invoice);
                         _context.ParkingSessions.Update(session);
@@ -869,7 +957,7 @@ namespace ParkingBuilding.Service.Service
                 // ====================================================================================
                 // KỊCH BẢN 3: PHIÊN ĐỖ XE CHƯA CÓ HÓA ĐƠN NÀO ĐƯỢC TẠO (KHÔNG ĐẶT CỌC GIỮ CHỖ)
                 // ====================================================================================
-                if (request.PaymentMethod.ToUpper() == "WALLET")
+                if (isWalletPayment)
                 {
                     if (session.UserId.HasValue)
                     {
@@ -932,7 +1020,42 @@ namespace ParkingBuilding.Service.Service
                         }
                         else
                         {
-                            throw new InvalidOperationException($"Số dư ví không đủ để thanh toán {totalAmount:N0} VNĐ.");
+                            var invoice = new Invoice
+                            {
+                                SessionId = session.SessionId,
+                                TotalAmount = totalAmount,
+                                PaymentTime = null,
+                                StaffId = currentStaffId,
+                                CreatedDate = DateTime.UtcNow,
+                                PaymentMethod = "CASH",
+                                PaymentStatus = "PENDING"
+                            };
+
+                            await _context.Invoices.AddAsync(invoice);
+                            _context.ParkingSessions.Update(session);
+                            await _context.SaveChangesAsync();
+                            await dbTransaction.CommitAsync();
+
+                            return new CheckoutResponse
+                            {
+                                IsSuccess = true,
+                                Message = $"So du vi khong du. Chuyen sang thanh toan tien mat. So tien can thu: {totalAmount:N0} VND.",
+                                TicketCode = session.Ticket?.TicketCode ?? "N/A",
+                                SlotName = session.Slot?.SlotName ?? "N/A",
+                                CheckInLicensePlate = checkInPlate,
+                                CheckOutLicensePlate = cleanCheckoutPlate ?? "",
+                                IsLicensePlateMatched = true,
+                                CheckInImageUrl = session.CheckInImageUrl,
+                                CheckOutImageUrl = session.CheckOutImageUrl,
+                                CheckInTime = checkInTime,
+                                CheckOutTime = checkOutTime,
+                                DurationHours = durationHours,
+                                TotalAmount = totalAmount,
+                                StaffName = staffName,
+                                InvoiceId = invoice.InvoiceId,
+                                IsPaid = false,
+                                PaymentUrl = null
+                            };
                         }
                     }
                     else
@@ -940,7 +1063,7 @@ namespace ParkingBuilding.Service.Service
                         throw new InvalidOperationException("Không tìm thấy thông tin tài xế để thanh toán bằng ví.");
                     }
                 }
-                else if (request.PaymentMethod.ToUpper() == "VNPAY")
+                else if (isVnPayPayment)
                 {
                     string txnRef = "INV" + DateTime.UtcNow.Ticks;
 

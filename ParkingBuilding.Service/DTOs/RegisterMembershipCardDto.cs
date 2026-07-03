@@ -15,6 +15,6 @@ namespace ParkingBuilding.Service.DTOs
         [Required(ErrorMessage = "Vui lòng cung cấp ít nhất một biển số xe.")]
         public List<string> LicenseVehicles { get; set; } = new List<string>();
 
-        public string PaymentMethod { get; set; } = "VNPAY"; // "VNPAY" hoặc "WALLET"
+        public string PaymentMethod { get; set; } = "VNPAY"; // "VNPAY", "WALLET" hoac "AUTO"
     }
 }

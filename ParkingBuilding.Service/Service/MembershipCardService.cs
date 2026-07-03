@@ -194,6 +194,12 @@ namespace ParkingBuilding.Service.Service
             string singleTicketCode = $"MBC_{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}";
             string txnRef = $"MBC_{slot.SlotId}_{DateTime.UtcNow.Ticks}";
 
+            if (dto.PaymentMethod != null && dto.PaymentMethod.ToUpper() == "AUTO")
+            {
+                var walletBalance = await _walletService.GetBalanceAsync(userId);
+                dto.PaymentMethod = walletBalance >= amountToPay ? "WALLET" : "VNPAY";
+            }
+
             if (dto.PaymentMethod != null && dto.PaymentMethod.ToUpper() == "WALLET")
             {
                 using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
@@ -285,7 +291,11 @@ namespace ParkingBuilding.Service.Service
                         LicenseVehicles = cleanPlates,
                         StartTime = startTime,
                         EndTime = endTime,
-                        PaymentUrl = null
+                        PaymentUrl = null,
+                        InvoiceId = invoice.InvoiceId,
+                        PaymentStatus = invoice.PaymentStatus,
+                        PaymentMethod = invoice.PaymentMethod,
+                        TransactionCode = invoice.TransactionCode
                     };
                 }
                 catch (Exception)
@@ -311,6 +321,20 @@ namespace ParkingBuilding.Service.Service
 
                 _pendingRegistrations[txnRef] = metadata;
 
+                var pendingInvoice = new Invoice
+                {
+                    SessionId = null,
+                    TotalAmount = amountToPay,
+                    PaymentMethod = "VNPAY",
+                    PaymentStatus = "PENDING",
+                    TransactionCode = txnRef,
+                    CreatedDate = DateTime.UtcNow,
+                    PaymentTime = null,
+                    UpdatedDate = null
+                };
+                await _context.Invoices.AddAsync(pendingInvoice);
+                await _context.SaveChangesAsync();
+
                 string paymentUrl = _vnPayService.CreatePaymentUrl(
                     txnRef: txnRef,
                     amount: amountToPay,
@@ -331,7 +355,11 @@ namespace ParkingBuilding.Service.Service
                     LicenseVehicles = cleanPlates,
                     StartTime = startTime,
                     EndTime = endTime,
-                    PaymentUrl = paymentUrl
+                    PaymentUrl = paymentUrl,
+                    InvoiceId = pendingInvoice.InvoiceId,
+                    PaymentStatus = pendingInvoice.PaymentStatus,
+                    PaymentMethod = pendingInvoice.PaymentMethod,
+                    TransactionCode = pendingInvoice.TransactionCode
                 };
             }
         }
@@ -345,6 +373,14 @@ namespace ParkingBuilding.Service.Service
 
             if (responseCode != "00" || transactionStatus != "00")
             {
+                var failedInvoice = await _context.Invoices.FirstOrDefaultAsync(i => i.TransactionCode == txnRef);
+                if (failedInvoice != null && failedInvoice.PaymentStatus == "PENDING")
+                {
+                    failedInvoice.PaymentStatus = "FAILED";
+                    failedInvoice.UpdatedDate = DateTime.UtcNow;
+                    await _context.SaveChangesAsync();
+                }
+
                 _pendingRegistrations.TryRemove(txnRef, out _);
                 return new PaymentResultDto { Success = false, ErrorCode = "00", Message = "Thanh toán thất bại từ cổng VNPay" };
             }
@@ -357,6 +393,37 @@ namespace ParkingBuilding.Service.Service
                 if (user == null || tier == null)
                 {
                     throw new Exception("Thông tin người dùng hoặc gói thành viên không hợp lệ.");
+                }
+
+                if (amount != tier.Price)
+                {
+                    return new PaymentResultDto { Success = false, ErrorCode = "04", Message = "So tien thanh toan khong khop voi gia goi thanh vien." };
+                }
+
+                var invoice = await _context.Invoices.FirstOrDefaultAsync(i => i.TransactionCode == txnRef);
+                if (invoice == null)
+                {
+                    invoice = new Invoice
+                    {
+                        SessionId = null,
+                        TotalAmount = amount,
+                        PaymentMethod = "VNPAY",
+                        PaymentStatus = "PENDING",
+                        TransactionCode = txnRef,
+                        CreatedDate = DateTime.UtcNow
+                    };
+                    await _context.Invoices.AddAsync(invoice);
+                    await _context.SaveChangesAsync();
+                }
+
+                if (invoice.PaymentStatus == "SUCCESS")
+                {
+                    return new PaymentResultDto { Success = false, ErrorCode = "02", Message = "Hoa don da duoc xu ly truoc do.", InvoiceId = invoice.InvoiceId };
+                }
+
+                if (invoice.PaymentStatus != "PENDING")
+                {
+                    return new PaymentResultDto { Success = false, ErrorCode = "02", Message = "Hoa don khong con o trang thai cho thanh toan.", InvoiceId = invoice.InvoiceId };
                 }
 
                 var hasSameVehicleTypePackage = await _context.MembershipCards
@@ -421,18 +488,12 @@ namespace ParkingBuilding.Service.Service
                     });
                 }
 
-                var invoice = new Invoice
-                {
-                    SessionId = null,
-                    TotalAmount = amount,
-                    PaymentMethod = "VNPAY",
-                    PaymentStatus = "SUCCESS",
-                    TransactionCode = txnRef,
-                    CreatedDate = DateTime.UtcNow,
-                    PaymentTime = DateTime.UtcNow,
-                    UpdatedDate = DateTime.UtcNow
-                };
-                await _context.Invoices.AddAsync(invoice);
+                invoice.TotalAmount = amount;
+                invoice.PaymentMethod = "VNPAY";
+                invoice.PaymentStatus = "SUCCESS";
+                invoice.PaymentTime = DateTime.UtcNow;
+                invoice.UpdatedDate = DateTime.UtcNow;
+                _context.Invoices.Update(invoice);
 
                 slot.SlotStatus = ParkingStatuses.SlotReserved;
                 _context.ParkingSlots.Update(slot);
@@ -443,7 +504,12 @@ namespace ParkingBuilding.Service.Service
                 _pendingRegistrations.TryRemove(txnRef, out _);
 
                 _logger.LogInformation("Xác nhận thanh toán thành công qua VNPay cho giao dịch {TxnRef}. Đã kích hoạt các thẻ thành viên.", txnRef);
-                return new PaymentResultDto { Success = true };
+                return new PaymentResultDto
+                {
+                    Success = true,
+                    InvoiceId = invoice.InvoiceId,
+                    Message = "Dang ky goi thanh vien va thanh toan VNPay thanh cong."
+                };
             }
             catch (Exception ex)
             {

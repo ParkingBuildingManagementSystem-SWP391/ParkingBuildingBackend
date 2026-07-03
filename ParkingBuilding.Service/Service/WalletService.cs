@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.DependencyInjection;
 using ParkingBuilding.Repository.Entities;
 using ParkingBuilding.Repository.IRepository;
 using ParkingBuilding.Service.DTOs;
@@ -17,17 +18,20 @@ namespace ParkingBuilding.Service.Service
         private readonly IVnPayService _vnPayService;
         private readonly VnPayConfig _vnPayConfig;
         private readonly ILogger<WalletService> _logger;
+        private readonly IServiceScopeFactory _serviceScopeFactory;
 
         public WalletService(
             IWalletRepository walletRepository,
             IVnPayService vnPayService,
             IOptions<VnPayConfig> vnPayConfig,
-            ILogger<WalletService> logger)
+            ILogger<WalletService> logger,
+            IServiceScopeFactory serviceScopeFactory)
         {
             _walletRepository = walletRepository;
             _vnPayService = vnPayService;
             _vnPayConfig = vnPayConfig.Value;
             _logger = logger;
+            _serviceScopeFactory = serviceScopeFactory;
         }
 
         public async Task<decimal> GetBalanceAsync(int userId)
@@ -120,6 +124,7 @@ namespace ParkingBuilding.Service.Service
             if (wallet.Balance < amount)
             {
                 _logger.LogWarning("Tài xế ID {UserId} không đủ số dư ví. Yêu cầu: {Req}, Có: {Have}", userId, amount, wallet.Balance);
+                await RecordFailedPaymentAsync(userId, amount, description, wallet.Balance);
                 return false;
             }
 
@@ -139,6 +144,43 @@ namespace ParkingBuilding.Service.Service
             };
             await _walletRepository.AddTransactionAsync(tx);
             return true;
+        }
+
+        private async Task RecordFailedPaymentAsync(int userId, decimal amount, string description, decimal currentBalance)
+        {
+            try
+            {
+                using var scope = _serviceScopeFactory.CreateScope();
+                var walletRepository = scope.ServiceProvider.GetRequiredService<IWalletRepository>();
+
+                var wallet = await walletRepository.GetWalletByUserIdAsync(userId);
+                if (wallet == null)
+                {
+                    wallet = new Wallet
+                    {
+                        UserId = userId,
+                        Balance = 0.00m,
+                        CreatedAt = DateTime.UtcNow
+                    };
+                    await walletRepository.CreateWalletAsync(wallet);
+                }
+
+                var failedTx = new WalletTransaction
+                {
+                    WalletId = wallet.WalletId,
+                    Amount = -amount,
+                    TransactionType = "PAYMENT",
+                    Status = "FAILED",
+                    Description = $"{description} - FAILED: so du vi khong du. Yeu cau {amount:N0} VND, hien co {currentBalance:N0} VND.",
+                    TransactionCode = $"WPAY_FAIL_{DateTime.UtcNow.Ticks}"
+                };
+
+                await walletRepository.AddTransactionAsync(failedTx);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Khong the ghi nhan giao dich vi FAILED cho user {UserId}, so tien {Amount}.", userId, amount);
+            }
         }
 
         private async Task<Wallet> GetOrCreateWalletAsync(int userId)

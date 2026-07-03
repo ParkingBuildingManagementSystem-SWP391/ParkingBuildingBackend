@@ -30,6 +30,7 @@ namespace ParkingBuilding.Service.Service
         private readonly ParkingManagementDbContext _context;
         private readonly ILogger<PaymentService> _logger;
         private readonly IVnPayService _vnPayService;
+        private readonly IWalletService _walletService;
 
         public PaymentService(
             IInvoiceRepository invoiceRepo,
@@ -37,7 +38,8 @@ namespace ParkingBuilding.Service.Service
             ISlotRepository slotRepo,
             ParkingManagementDbContext context,
             ILogger<PaymentService> logger,
-            IVnPayService vnPayService)
+            IVnPayService vnPayService,
+            IWalletService walletService)
         {
             _invoiceRepo = invoiceRepo;
             _sessionRepo = sessionRepo;
@@ -45,6 +47,7 @@ namespace ParkingBuilding.Service.Service
             _context = context;
             _logger = logger;
             _vnPayService = vnPayService;
+            _walletService = walletService;
         }
 
         /// <summary>
@@ -204,6 +207,135 @@ namespace ParkingBuilding.Service.Service
 
         /// <summary>
         /// Tạo hóa đơn PENDING trên hệ thống và trả về Link QR thanh toán VNPay cho tài xế tự thanh toán trước trên App.
+        /// </summary>
+        // Handles switching an existing pending invoice from VNPay to wallet payment.
+        public async Task<PaymentResultDto> PayPendingInvoiceByWalletAsync(int invoiceId, int currentUserId)
+        {
+            using var transaction = await _context.Database.BeginTransactionAsync();
+
+            try
+            {
+                var invoice = await _context.Invoices
+                    .Include(i => i.Session)
+                        .ThenInclude(s => s!.Slot)
+                    .Include(i => i.Session)
+                        .ThenInclude(s => s!.Ticket)
+                    .FirstOrDefaultAsync(i => i.InvoiceId == invoiceId);
+
+                if (invoice == null)
+                {
+                    return new PaymentResultDto { Success = false, Message = "Hoa don khong ton tai." };
+                }
+
+                if (invoice.PaymentStatus != "PENDING")
+                {
+                    return new PaymentResultDto { Success = false, Message = "Hoa don khong con o trang thai cho thanh toan." };
+                }
+
+                var session = invoice.Session;
+                if (session == null || session.IsDeleted || session.SessionStatus == ParkingStatuses.SessionCanceled || session.SessionStatus == ParkingStatuses.SessionCompleted)
+                {
+                    return new PaymentResultDto { Success = false, Message = "Phien do cua hoa don da het han, da huy hoac da hoan tat." };
+                }
+
+                if (session.UserId != currentUserId)
+                {
+                    return new PaymentResultDto { Success = false, Message = "Ban khong co quyen thanh toan hoa don nay." };
+                }
+
+                bool isDeposit = !string.IsNullOrWhiteSpace(invoice.TransactionCode)
+                                 && invoice.TransactionCode.StartsWith("DEP", StringComparison.OrdinalIgnoreCase);
+
+                if (isDeposit
+                    && session.SessionStatus == ParkingStatuses.SessionReserved
+                    && session.ExpectedCheckInTime.HasValue
+                    && session.ExpectedCheckInTime.Value < DateTime.UtcNow.AddMinutes(-15))
+                {
+                    return new PaymentResultDto { Success = false, Message = "Hoa don dat cho da het han thanh toan." };
+                }
+
+                if (!isDeposit)
+                {
+                    var vehicleType = await _context.VehiclesTypes.FirstOrDefaultAsync(vt => vt.TypeId == session.TypeId)
+                                      ?? throw new Exception("Loai xe cua phien do khong ton tai.");
+
+                    DateTime checkInTime = session.CheckInTime ?? DateTime.UtcNow;
+                    DateTime checkOutTime = session.CheckOutTime ?? DateTime.UtcNow;
+
+                    if (checkInTime.Kind == DateTimeKind.Unspecified) checkInTime = DateTime.SpecifyKind(checkInTime, DateTimeKind.Utc);
+                    if (checkOutTime.Kind == DateTimeKind.Unspecified) checkOutTime = DateTime.SpecifyKind(checkOutTime, DateTimeKind.Utc);
+
+                    invoice.TotalAmount = ParkingPricingCalculator.CalculateFee(checkInTime, checkOutTime, vehicleType);
+                }
+
+                bool walletPaymentSuccess = await _walletService.ProcessWalletPaymentAsync(
+                    currentUserId,
+                    invoice.TotalAmount,
+                    $"Thanh toan hoa don {invoice.InvoiceId} bang vi");
+
+                if (!walletPaymentSuccess)
+                {
+                    await transaction.RollbackAsync();
+                    return new PaymentResultDto { Success = false, Message = "So du vi khong du de thanh toan hoa don nay." };
+                }
+
+                invoice.PaymentMethod = "WALLET";
+                invoice.PaymentStatus = isDeposit ? "Deposited" : "SUCCESS";
+                invoice.PaymentTime = DateTime.UtcNow;
+                invoice.UpdatedDate = DateTime.UtcNow;
+                invoice.TransactionCode = $"WPAY_INV_{invoice.InvoiceId}_{DateTime.UtcNow.Ticks}";
+
+                if (isDeposit)
+                {
+                    if (session.Ticket != null)
+                    {
+                        session.Ticket.TicketStatus = ParkingStatuses.TicketActive;
+                    }
+
+                    session.SessionStatus = ParkingStatuses.SessionReserved;
+
+                    if (session.Slot != null)
+                    {
+                        session.Slot.SlotStatus = ParkingStatuses.SlotReserved;
+                    }
+                }
+                else if (session.CheckOutTime != null)
+                {
+                    session.SessionStatus = ParkingStatuses.SessionCompleted;
+
+                    if (session.Ticket != null)
+                    {
+                        session.Ticket.TicketStatus = ParkingStatuses.TicketCompleted;
+                    }
+
+                    if (session.Slot != null)
+                    {
+                        session.Slot.SlotStatus = ParkingStatuses.SlotAvailable;
+                    }
+                }
+
+                await _context.SaveChangesAsync();
+                await transaction.CommitAsync();
+
+                return new PaymentResultDto
+                {
+                    Success = true,
+                    InvoiceId = invoice.InvoiceId,
+                    Message = isDeposit
+                        ? "Thanh toan tien coc bang vi thanh cong."
+                        : "Thanh toan hoa don bang vi thanh cong."
+                };
+            }
+            catch (Exception ex)
+            {
+                await transaction.RollbackAsync();
+                _logger.LogError(ex, "Loi khi thanh toan hoa don pending {InvoiceId} bang vi cho user {UserId}.", invoiceId, currentUserId);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Tao hoa don PENDING va tra ve link thanh toan VNPay.
         /// </summary>
         public async Task<PaymentResultDto> CreateVnPayPaymentUrlAsync(CreateVnPayPaymentDto request, VnPayConfig config, int currentUserId)
         {
@@ -449,7 +581,8 @@ namespace ParkingBuilding.Service.Service
                 currentUserId, invoiceId, invoice.PaymentStatus);
             if (invoice.PaymentStatus == "SUCCESS")
             {
-                if (invoice.TransactionCode != null && invoice.TransactionCode.StartsWith("MCR"))
+                if (invoice.TransactionCode != null
+                    && (invoice.TransactionCode.StartsWith("MCR") || invoice.TransactionCode.StartsWith("MBC_")))
                 {
                     return "SUCCESS_MONTHLY";
                 }
