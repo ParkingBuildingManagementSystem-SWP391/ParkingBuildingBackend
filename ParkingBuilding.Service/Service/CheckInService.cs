@@ -120,6 +120,9 @@ namespace ParkingBuilding.Service.Service
 
             if (cleanTicketCode != null)
             {
+                var vnTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
+                var localNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vnTimeZone);
+
                 // Kiểm tra xem TicketCode quét vào có thuộc một thẻ thành viên ACTIVE và còn hạn hay không
                 var membershipCard = await _context.MembershipCards
                     .Include(mc => mc.Ticket)
@@ -131,7 +134,7 @@ namespace ParkingBuilding.Service.Service
                     .FirstOrDefaultAsync(mc => mc.Ticket.TicketCode.Trim() == cleanTicketCode.Trim()
                                          && mc.Status == ParkingStatuses.MonthlyCardActive
                                          && !mc.IsDeleted
-                                         && mc.EndTime >= DateTime.UtcNow);
+                                         && mc.EndTime >= localNow);
 
                 if (membershipCard != null)
                 {
@@ -513,6 +516,9 @@ namespace ParkingBuilding.Service.Service
             // 1. Kiểm tra xem đây có phải mã vé thành viên hoạt động không
             if (!string.IsNullOrEmpty(cleanTicketCode))
             {
+                var vnTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
+                var localNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vnTimeZone);
+
                 var membershipCard = await _context.MembershipCards
                     .Include(mc => mc.Ticket)
                     .Include(mc => mc.Tier)
@@ -523,7 +529,7 @@ namespace ParkingBuilding.Service.Service
                     .FirstOrDefaultAsync(mc => mc.Ticket.TicketCode.Trim() == cleanTicketCode
                                          && mc.Status == ParkingStatuses.MonthlyCardActive
                                          && !mc.IsDeleted
-                                         && mc.EndTime >= DateTime.UtcNow);
+                                         && mc.EndTime >= localNow);
 
                 if (membershipCard != null)
                 {

@@ -41,6 +41,7 @@ namespace ParkingBuilding.API.BackgroundServices
                         var localNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vnTimeZone);
 
                         var expiredCards = await context.MembershipCards
+                            .AsSplitQuery()
                             .Include(mc => mc.MembershipVehicles)
                             .Include(mc => mc.MembershipSlots)
                                 .ThenInclude(ms => ms.Slot)

@@ -233,6 +233,9 @@ namespace ParkingBuilding.Service.Service
                                   ?? throw new Exception("Loại xe của phiên đỗ không tồn tại.");
                 decimal totalAmount = ParkingPricingCalculator.CalculateFee(checkInTime, checkOutTime, vehicleType);
 
+                var vnTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
+                var localNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vnTimeZone);
+
                 // ====================================================================================
                 // KỊCH BẢN 0: XE ĐĂNG KÝ THẺ THÀNH VIÊN CÒN HIỆU LỰC (Nhận dạng qua TicketId của phiên đỗ)
                 // ====================================================================================
@@ -244,7 +247,7 @@ namespace ParkingBuilding.Service.Service
                                              && mc.UserId == session.UserId
                                              && mc.Status == ParkingStatuses.MonthlyCardActive
                                              && !mc.IsDeleted
-                                             && mc.EndTime >= DateTime.UtcNow)
+                                             && mc.EndTime >= localNow)
                     : null;
 
                 if (membershipCard != null)
@@ -1257,13 +1260,16 @@ namespace ParkingBuilding.Service.Service
             if (durationHours <= 0) durationHours = 1;
 
             // Kiểm tra xem phiên đỗ này có liên kết với vé thành viên Active và còn hạn sử dụng hay không
+            var vnTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
+            var localNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vnTimeZone);
+
             var membershipCard = (session.TicketId != null && session.UserId.HasValue)
                 ? await _context.MembershipCards
                     .FirstOrDefaultAsync(mc => mc.TicketId == session.TicketId
                                          && mc.UserId == session.UserId
                                          && mc.Status == ParkingStatuses.MonthlyCardActive
                                          && !mc.IsDeleted
-                                         && mc.EndTime >= DateTime.UtcNow)
+                                         && mc.EndTime >= localNow)
                 : null;
 
             bool isMembershipCardValid = membershipCard != null;

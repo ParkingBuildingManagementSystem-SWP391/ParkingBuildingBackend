@@ -181,7 +181,12 @@ public partial class ParkingManagementDbContext : DbContext
 
         modelBuilder.Entity<MembershipSlot>(entity =>
         {
+            entity.ToTable("MembershipSlots");
+
             entity.HasKey(e => e.MembershipSlotId).HasName("PK_MembershipSlots");
+
+            entity.HasIndex(e => new { e.MembershipCardId, e.SlotId }, "UQ_MembershipSlots_Card_Slot")
+                .IsUnique();
 
             entity.HasOne(d => d.MembershipCard).WithMany(p => p.MembershipSlots)
                 .HasForeignKey(d => d.MembershipCardId)
