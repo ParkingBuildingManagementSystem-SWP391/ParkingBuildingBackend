@@ -394,10 +394,9 @@ namespace ParkingBuilding.Service.Service
                     CreatedDate = DateTime.UtcNow
                     };
                 await _invoiceRepo.AddAsync(invoice);
+                await _context.SaveChangesAsync();
                 finalAmount = calculatedFee;
             }
-
-            await _invoiceRepo.AddAsync(invoice);
 
             string paymentUrl = _vnPayService.CreatePaymentUrl(
                 txnRef: txnRef,

@@ -26,6 +26,7 @@ namespace ParkingBuilding.Service.Service
         private readonly ILogger<MembershipCardService> _logger;
         private readonly IMemoryCache _cache;
         private readonly IWalletService _walletService;
+        private readonly IEmailService _emailService;
 
         public MembershipCardService(
             ParkingManagementDbContext context,
@@ -33,7 +34,8 @@ namespace ParkingBuilding.Service.Service
             IOptions<VnPayConfig> vnPayConfig,
             ILogger<MembershipCardService> logger,
             IMemoryCache cache,
-            IWalletService walletService)
+            IWalletService walletService,
+            IEmailService emailService)
         {
             _context = context;
             _vnPayService = vnPayService;
@@ -41,6 +43,7 @@ namespace ParkingBuilding.Service.Service
             _logger = logger;
             _cache = cache;
             _walletService = walletService;
+            _emailService = emailService;
         }
 
 
@@ -88,7 +91,7 @@ namespace ParkingBuilding.Service.Service
                 throw new ArgumentException("Vui lòng cung cấp ít nhất một biển số xe.");
             }
 
-            if (dto.TierId == 1 || dto.TierId == 4 || dto.TierId == 7)
+            if (tier.MaxVehicles == 1)
             {
                 if (dto.LicenseVehicles.Count != 1)
                 {
@@ -278,6 +281,34 @@ namespace ParkingBuilding.Service.Service
 
                     await _context.SaveChangesAsync();
                     await transaction.CommitAsync();
+
+                    try
+                    {
+                        if (!string.IsNullOrEmpty(user.Email))
+                        {
+                            string subject = "Xác nhận đăng ký thẻ thành viên thành công - Smart Parking Building";
+                            string licensePlatesStr = string.Join(", ", cleanPlates);
+                            string body = $@"
+                                <h3>Đăng ký thẻ thành viên thành công</h3>
+                                <p>Chào <b>{user.Username}</b>,</p>
+                                <p>Bạn đã thanh toán thành công qua Ví và kích hoạt thẻ thành viên tại Smart Parking Building.</p>
+                                <ul>
+                                    <li><b>Gói cước:</b> {tier.TierName} ({tier.DurationMonths} tháng)</li>
+                                    <li><b>Mã vé (Ticket Code):</b> {singleTicketCode}</li>
+                                    <li><b>Thời gian hiệu lực:</b> {startTime:dd/MM/yyyy HH:mm} đến {endTime:dd/MM/yyyy HH:mm}</li>
+                                    <li><b>Danh sách biển số đăng ký:</b> {licensePlatesStr}</li>
+                                    <li><b>Vị trí ô đỗ cố định:</b> {slot.SlotName}</li>
+                                </ul>
+                                <br/>
+                                <p>Trân trọng,<br/>Ban quản lý Smart Parking Building</p>";
+
+                            await _emailService.SendEmailAsync(user.Email, subject, body);
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Lỗi gửi email xác nhận đăng ký thẻ thành viên qua ví cho User ID {UserId}", userId);
+                    }
 
                     return new MembershipCardRegistrationResponseDto
                     {
@@ -504,6 +535,35 @@ namespace ParkingBuilding.Service.Service
                 _pendingRegistrations.TryRemove(txnRef, out _);
 
                 _logger.LogInformation("Xác nhận thanh toán thành công qua VNPay cho giao dịch {TxnRef}. Đã kích hoạt các thẻ thành viên.", txnRef);
+
+                try
+                {
+                    if (!string.IsNullOrEmpty(user.Email))
+                    {
+                        string subject = "Xác nhận đăng ký thẻ thành viên thành công - Smart Parking Building";
+                        string licensePlatesStr = string.Join(", ", metadata.LicenseVehicles);
+                        string body = $@"
+                            <h3>Đăng ký thẻ thành viên thành công</h3>
+                            <p>Chào <b>{user.Username}</b>,</p>
+                            <p>Bạn đã thanh toán thành công qua VNPay và kích hoạt thẻ thành viên tại Smart Parking Building.</p>
+                            <ul>
+                                <li><b>Gói cước:</b> {tier.TierName} ({tier.DurationMonths} tháng)</li>
+                                <li><b>Mã vé (Ticket Code):</b> {ticket.TicketCode}</li>
+                                <li><b>Thời gian hiệu lực:</b> {metadata.StartTime:dd/MM/yyyy HH:mm} đến {metadata.EndTime:dd/MM/yyyy HH:mm}</li>
+                                <li><b>Danh sách biển số đăng ký:</b> {licensePlatesStr}</li>
+                                <li><b>Vị trí ô đỗ cố định:</b> {slot.SlotName}</li>
+                            </ul>
+                            <br/>
+                            <p>Trân trọng,<br/>Ban quản lý Smart Parking Building</p>";
+
+                        await _emailService.SendEmailAsync(user.Email, subject, body);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Lỗi gửi email xác nhận đăng ký thẻ thành viên qua VNPay cho User ID {UserId}", metadata.UserId);
+                }
+
                 return new PaymentResultDto
                 {
                     Success = true,
@@ -577,6 +637,16 @@ namespace ParkingBuilding.Service.Service
                                            && !c.IsDeleted);
                 if (card == null) return false;
 
+                var hasActiveSession = await _context.ParkingSessions
+                    .AnyAsync(s => s.TicketId == card.TicketId
+                                && s.SessionStatus == ParkingStatuses.SessionInProgress
+                                && !s.IsDeleted);
+
+                if (hasActiveSession)
+                {
+                    throw new InvalidOperationException("Thẻ đang có xe trong bãi, vui lòng checkout xe trước khi hủy thẻ.");
+                }
+
                 card.Status = ParkingStatuses.MonthlyCardCancelled;
                 card.IsDeleted = true;
                 card.Ticket.TicketStatus = ParkingStatuses.TicketExpired;
@@ -645,8 +715,20 @@ namespace ParkingBuilding.Service.Service
             if (cleanPlates.Distinct().Count() != cleanPlates.Count)
                 throw new ArgumentException("Danh sĂ¡ch biá»ƒn sá»‘ xe khĂ´ng Ä‘Æ°á»£c chá»©a biá»ƒn sá»‘ trĂ¹ng láº·p.");
 
-            if (cleanPlates.Count > card.Tier.MaxVehicles)
-                throw new ArgumentException($"Gói này chỉ cho phép tối đa {card.Tier.MaxVehicles} biển số.");
+            if (card.Tier.MaxVehicles == 1)
+            {
+                if (cleanPlates.Count != 1)
+                {
+                    throw new ArgumentException("Gói thành viên này chỉ cho phép đăng ký duy nhất 1 biển số xe.");
+                }
+            }
+            else
+            {
+                if (cleanPlates.Count > card.Tier.MaxVehicles)
+                {
+                    throw new ArgumentException($"Gói này chỉ cho phép tối đa {card.Tier.MaxVehicles} biển số.");
+                }
+            }
 
             var registeredPlates = await GetRegisteredMembershipPlatesAsync(cleanPlates, cardId);
             if (registeredPlates.Count > 0)
