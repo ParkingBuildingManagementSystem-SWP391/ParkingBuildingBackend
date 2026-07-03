@@ -30,5 +30,8 @@ namespace ParkingBuilding.Service.IService
 
         // 3. API 3: Nghiệp vụ tìm chi tiết phiên đỗ qua mã vé
         Task<ParkingSessionDetailResponeDto?> GetSessionDetailByTicketCodeAsync(string ticketCode);
+
+        // 4. API 4: Nghiệp vụ tìm chi tiết phiên đỗ qua SessionId
+        Task<ParkingSessionDetailResponeDto?> GetSessionDetailByIdAsync(int sessionId);
     }
 }

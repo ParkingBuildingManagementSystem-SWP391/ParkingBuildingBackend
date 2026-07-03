@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using ParkingBuilding.Service.DTOs;
 using ParkingBuilding.Service.IService;
@@ -52,8 +53,19 @@ namespace ParkingBuilding.API.Controllers
                 return Unauthorized(new { message = "Token không chứa ID tài khoản hợp lệ." });
             }
 
-            var result = await _incidentService.CreateIncidentAsync(dto, userId);
-            return CreatedAtAction(nameof(GetIncidentDetail), new { id = result.IncidentId }, result);
+            try
+            {
+                var result = await _incidentService.CreateIncidentAsync(dto, userId);
+                return CreatedAtAction(nameof(GetIncidentDetail), new { id = result.IncidentId }, result);
+            }
+            catch (ArgumentException ex)
+            {
+                return BadRequest(new { message = ex.Message });
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, new { message = ex.Message });
+            }
         }
 
         // 4. Giải quyết sự cố (Chỉ dành cho Manager)

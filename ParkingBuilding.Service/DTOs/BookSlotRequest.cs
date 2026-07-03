@@ -19,5 +19,7 @@ namespace ParkingBuilding.Service.DTOs
         public int TypeId { get; set; }
         [Required]
         public DateTime ExpectedCheckInTime { get; set; } = DateTime.Now;// Thời gian xe dự kiến vào bãi
+
+        public string PaymentMethod { get; set; } = "VNPAY"; // "VNPAY" hoáº·c "WALLET"
     }
 }

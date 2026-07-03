@@ -7,7 +7,9 @@ using System.Threading.Tasks;
 namespace ParkingBuilding.Service.DTOs
 {
     public class ParkingSessionResponeDto
-    {       
+    {
+        public int SessionId { get; set; }
+        public string LicenseVehicle { get; set; } = null!;
         public string SlotName { get; set; } = null!;
         public int TypeId { get; set; }
         public string? TicketCode { get; set; }
