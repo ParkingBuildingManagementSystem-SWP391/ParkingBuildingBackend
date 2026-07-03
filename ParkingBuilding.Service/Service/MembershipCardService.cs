@@ -8,6 +8,7 @@ using ParkingBuilding.Service.IService;
 using ParkingBuilding.Service.Service.Helpers;
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -41,7 +42,7 @@ namespace ParkingBuilding.Service.Service
 
         public async Task<MembershipCardRegistrationResponseDto> RegisterMembershipCardAsync(int userId, RegisterMembershipCardDto dto, string ipAddress)
         {
-            using var transaction = await _context.Database.BeginTransactionAsync();
+            using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
             try
             {
                 // 1. Xác thực tài xế tồn tại
@@ -53,6 +54,18 @@ namespace ParkingBuilding.Service.Service
                              ?? throw new KeyNotFoundException("Gói cước thành viên không tồn tại hoặc đã bị xóa.");
 
                 // 3. Kiểm tra tính hợp lệ của DTO so với Tier
+                var hasSameVehicleTypePackage = await _context.MembershipCards
+                    .Include(c => c.Tier)
+                    .AnyAsync(c => c.UserId == userId
+                                && c.Tier.TypeId == tier.TypeId
+                                && (c.Status == ParkingStatuses.MonthlyCardActive
+                                    || c.Status == ParkingStatuses.MonthlyCardPendingPayment)
+                                && !c.IsDeleted);
+                if (hasSameVehicleTypePackage)
+                {
+                    throw new InvalidOperationException("Tai xe da co goi thanh vien cho loai xe nay dang hoat dong hoac dang cho thanh toan.");
+                }
+
                 if (tier.DurationMonths != 1 && tier.DurationMonths != 6 && tier.DurationMonths != 12)
                 {
                     throw new ArgumentException("Thời hạn thuê của gói thành viên không hợp lệ (chỉ được phép là 1, 6 hoặc 12 tháng).");
@@ -90,18 +103,15 @@ namespace ParkingBuilding.Service.Service
                     cleanPlates.Add(cleanPlate);
                 }
 
-                // ✅ Chặn đăng ký trùng: 1 user chỉ có 1 card Active/PendingPayment
-                var hasActive = await _context.MembershipCards
-                    .AnyAsync(c => c.UserId == userId
-                                && (c.Status == ParkingStatuses.MonthlyCardActive || c.Status == ParkingStatuses.MonthlyCardPendingPayment)
-                                && !c.IsDeleted);
-                if (hasActive)
-                    throw new InvalidOperationException(
-                        "Bạn đã có thẻ thành viên đang hoạt động hoặc đang chờ thanh toán. Vui lòng hủy thẻ cũ trước khi đăng ký mới.");
-
-                // 5. Xác thực và khóa ô đỗ xe – Luôn chỉ cần 1 slot
+                // 5. Xác thực và khóa ô đỗ xe – mỗi gói thành viên luôn giữ đúng 1 slot
                 if (cleanPlates.Distinct().Count() != cleanPlates.Count)
                     throw new ArgumentException("Danh sĂ¡ch biá»ƒn sá»‘ xe khĂ´ng Ä‘Æ°á»£c chá»©a biá»ƒn sá»‘ trĂ¹ng láº·p.");
+
+                var registeredPlates = await GetRegisteredMembershipPlatesAsync(cleanPlates);
+                if (registeredPlates.Count > 0)
+                {
+                    throw new ArgumentException($"Bien so {string.Join(", ", registeredPlates)} da duoc dang ky trong goi thanh vien khac.");
+                }
 
                 var targetSlotIds = dto.SlotIds ?? new List<int>();
                 if (targetSlotIds.Count == 0 && dto.SlotId.HasValue)
@@ -541,6 +551,8 @@ namespace ParkingBuilding.Service.Service
             if (newPlates == null || newPlates.Count == 0)
                 throw new ArgumentException("Vui lĂ²ng cung cáº¥p Ă­t nháº¥t má»™t biá»ƒn sá»‘ xe.");
 
+            using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
+
             var card = await _context.MembershipCards
                 .Include(c => c.Tier)
                 .Include(c => c.MembershipVehicles)
@@ -574,6 +586,12 @@ namespace ParkingBuilding.Service.Service
             if (cleanPlates.Count > card.Tier.MaxVehicles)
                 throw new ArgumentException($"Gói này chỉ cho phép tối đa {card.Tier.MaxVehicles} biển số.");
 
+            var registeredPlates = await GetRegisteredMembershipPlatesAsync(cleanPlates, cardId);
+            if (registeredPlates.Count > 0)
+            {
+                throw new ArgumentException($"Bien so {string.Join(", ", registeredPlates)} da duoc dang ky trong goi thanh vien khac.");
+            }
+
             // Xóa cũ, thêm mới
             _context.MembershipVehicles.RemoveRange(card.MembershipVehicles);
             foreach (var plate in cleanPlates)
@@ -587,7 +605,28 @@ namespace ParkingBuilding.Service.Service
             }
 
             await _context.SaveChangesAsync();
+            await transaction.CommitAsync();
             return true;
+        }
+
+        private async Task<List<string>> GetRegisteredMembershipPlatesAsync(List<string> cleanPlates, int? excludedCardId = null)
+        {
+            var query = _context.MembershipVehicles
+                .Include(v => v.MembershipCard)
+                .Where(v => cleanPlates.Contains(v.LicenseVehicle)
+                            && !v.MembershipCard.IsDeleted
+                            && (v.MembershipCard.Status == ParkingStatuses.MonthlyCardActive
+                                || v.MembershipCard.Status == ParkingStatuses.MonthlyCardPendingPayment));
+
+            if (excludedCardId.HasValue)
+            {
+                query = query.Where(v => v.MembershipCardId != excludedCardId.Value);
+            }
+
+            return await query
+                .Select(v => v.LicenseVehicle)
+                .Distinct()
+                .ToListAsync();
         }
 
         public class MembershipRegistrationMetadata

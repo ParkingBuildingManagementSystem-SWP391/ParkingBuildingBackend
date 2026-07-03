@@ -7,6 +7,7 @@ using ParkingBuilding.Service.DTOs;
 using ParkingBuilding.Service.IService;
 using ParkingBuilding.Service.Service.Helpers;
 using System;
+using System.Data;
 using System.Threading.Tasks;
 
 namespace ParkingBuilding.Service.Service
@@ -35,7 +36,7 @@ namespace ParkingBuilding.Service.Service
 
         public async Task<BookSlotResponse> BookSlotAsync(int userId, BookSlotRequest request)
         {
-            using var transaction = await _context.Database.BeginTransactionAsync();
+            using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);
             try
             {
                 string cleanedVehiclePlate;
@@ -79,8 +80,9 @@ namespace ParkingBuilding.Service.Service
 
                 // B. LUẬT BẢO MẬT: Kiểm tra xem biển số xe này đã có đơn đặt nào đang chờ check-in chưa
                 var isPlateActive = await _context.ParkingSessions
-                    .AnyAsync(s => s.LicenseVehicle == request.LicenseVehicle 
-                                  && s.SessionStatus == ParkingStatuses.SessionReserved 
+                    .AnyAsync(s => s.LicenseVehicle.Trim().ToUpper() == request.LicenseVehicle.Trim().ToUpper()
+                                  && (s.SessionStatus.Trim() == ParkingStatuses.SessionReserved
+                                      || s.SessionStatus.Trim() == ParkingStatuses.SessionInProgress)
                                   && !s.IsDeleted);
 
                 if (isPlateActive)
