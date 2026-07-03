@@ -1,13 +1,12 @@
 using Microsoft.AspNetCore.Http;
-using System;
-using System.Net.Http;
-using System.Net.Http.Headers;
-using System.Net.Http.Json;
-using System.Text.Json;
-using System.Threading.Tasks;
 using Microsoft.Extensions.Configuration;
 using ParkingBuilding.Service.Helpers;
 using ParkingBuilding.Service.IService;
+using System;
+using System.Net.Http;
+using System.Net.Http.Headers;
+using System.Text.Json;
+using System.Threading.Tasks;
 
 namespace ParkingBuilding.Service.Service
 {
@@ -19,14 +18,12 @@ namespace ParkingBuilding.Service.Service
         public FastApiLicensePlateService(HttpClient httpClient, IConfiguration configuration)
         {
             _httpClient = httpClient;
-            // Đọc cấu hình động từ appsettings.json, nếu trống thì fallback về endpoint nhẹ cho Backend.
+
             var configuredUrl = configuration["AiSettings:PythonAiUrl"];
             _pythonAiUrl = !string.IsNullOrWhiteSpace(configuredUrl)
                 ? configuredUrl
                 : "https://vinhth-parking-license-ai.hf.space/predict-file-fast";
         }
-
-
 
         public async Task<string> PredictLicensePlateFromFileAsync(IFormFile file)
         {
@@ -35,9 +32,6 @@ namespace ParkingBuilding.Service.Service
                 throw new ArgumentException("File ảnh không hợp lệ hoặc bị trống.");
             }
 
-            // ✅ FIX: Đọc toàn bộ nội dung file thành byte[] TRƯỚC khi tạo MultipartFormDataContent
-            // Lý do: Nếu dùng StreamContent(file.OpenReadStream()), stream có thể bị Dispose bởi
-            // caller (Controller) trước khi HttpClient gửi xong → Python AI nhận file rỗng.
             byte[] fileBytes;
             using (var copyStream = new MemoryStream())
             {
@@ -45,26 +39,23 @@ namespace ParkingBuilding.Service.Service
                 fileBytes = copyStream.ToArray();
             }
 
-            // Nếu cấu hình đã trỏ thẳng tới endpoint nhận file thì dùng nguyên URL đó.
-            // Nếu chỉ cấu hình base URL thì mặc định dùng endpoint nhẹ cho Backend.
-            string requestUrl = _pythonAiUrl;
-            var normalizedUrl = requestUrl.TrimEnd('/');
-            if (normalizedUrl.EndsWith("/predict", StringComparison.OrdinalIgnoreCase))
-            {
-                normalizedUrl = normalizedUrl.Substring(0, normalizedUrl.Length - "/predict".Length);
-            }
-            if (!normalizedUrl.EndsWith("/predict-file", StringComparison.OrdinalIgnoreCase) &&
-                !normalizedUrl.EndsWith("/predict-file-fast", StringComparison.OrdinalIgnoreCase))
-            {
-                normalizedUrl = $"{normalizedUrl}/predict-file-fast";
-            }
-            requestUrl = normalizedUrl;
+            return await PredictLicensePlateFromBytesAsync(fileBytes, file.ContentType, file.FileName);
+        }
 
-            // Dùng ByteArrayContent thay cho StreamContent để tránh vấn đề stream bị đóng sớm
+        public async Task<string> PredictLicensePlateFromBytesAsync(byte[] fileBytes, string? contentType, string? fileName)
+        {
+            if (fileBytes == null || fileBytes.Length == 0)
+            {
+                throw new ArgumentException("File ảnh không hợp lệ hoặc bị trống.");
+            }
+
+            var requestUrl = BuildRequestUrl();
+
             using var form = new MultipartFormDataContent();
             var fileContent = new ByteArrayContent(fileBytes);
-            fileContent.Headers.ContentType = new MediaTypeHeaderValue(file.ContentType ?? "image/jpeg");
-            form.Add(fileContent, "file", file.FileName ?? "image.jpg");
+            fileContent.Headers.ContentType = new MediaTypeHeaderValue(
+                string.IsNullOrWhiteSpace(contentType) ? "image/jpeg" : contentType);
+            form.Add(fileContent, "file", string.IsNullOrWhiteSpace(fileName) ? "image.jpg" : fileName);
 
             using var response = await _httpClient.PostAsync(requestUrl, form);
             var rawText = await response.Content.ReadAsStringAsync();
@@ -81,8 +72,11 @@ namespace ParkingBuilding.Service.Service
                 {
                     if (!result.IsSuccess)
                     {
-                        throw new Exception(string.IsNullOrWhiteSpace(result.Message) ? "Python AI nhận dạng không thành công." : result.Message);
+                        throw new Exception(string.IsNullOrWhiteSpace(result.Message)
+                            ? "Python AI nhận dạng không thành công."
+                            : result.Message);
                     }
+
                     if (!string.IsNullOrWhiteSpace(result.LicensePlate))
                     {
                         return result.LicensePlate.Trim();
@@ -91,7 +85,6 @@ namespace ParkingBuilding.Service.Service
             }
             catch (JsonException)
             {
-                // Trường hợp Python trả về plain string thay vì JSON object
                 if (!string.IsNullOrWhiteSpace(rawText))
                 {
                     return rawText.Trim().Replace("\"", "");
@@ -99,6 +92,24 @@ namespace ParkingBuilding.Service.Service
             }
 
             throw new Exception("Python AI không nhận diện được biển số từ file ảnh này.");
+        }
+
+        private string BuildRequestUrl()
+        {
+            var normalizedUrl = _pythonAiUrl.TrimEnd('/');
+
+            if (normalizedUrl.EndsWith("/predict", StringComparison.OrdinalIgnoreCase))
+            {
+                normalizedUrl = normalizedUrl[..^"/predict".Length];
+            }
+
+            if (!normalizedUrl.EndsWith("/predict-file", StringComparison.OrdinalIgnoreCase) &&
+                !normalizedUrl.EndsWith("/predict-file-fast", StringComparison.OrdinalIgnoreCase))
+            {
+                normalizedUrl = $"{normalizedUrl}/predict-file-fast";
+            }
+
+            return normalizedUrl;
         }
     }
 }

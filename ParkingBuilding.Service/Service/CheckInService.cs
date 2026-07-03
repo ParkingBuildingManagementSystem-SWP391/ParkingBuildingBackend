@@ -182,9 +182,12 @@ namespace ParkingBuilding.Service.Service
                     }
 
                     // 4. Tìm slot rảnh trong danh sách MembershipSlots
+                    // Cho phép cả SlotReserved (trường hợp bình thường) và SlotAvailable
+                    // (trường hợp slot bị đổi trạng thái do cancel thẻ cũ hoặc admin can thiệp DB)
                     var availableMs = membershipCard.MembershipSlots
                         .FirstOrDefault(ms => ms.Slot != null
-                                           && ms.Slot.SlotStatus == ParkingStatuses.SlotReserved
+                                           && (ms.Slot.SlotStatus == ParkingStatuses.SlotReserved
+                                               || ms.Slot.SlotStatus == ParkingStatuses.SlotAvailable)
                                            && !ms.Slot.IsDeleted);
 
                     if (availableMs == null)
