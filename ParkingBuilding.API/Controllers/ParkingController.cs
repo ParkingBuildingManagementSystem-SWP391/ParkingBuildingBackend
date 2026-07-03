@@ -288,15 +288,8 @@ namespace ParkingBuilding.API.Controllers
                     fileBytes = memoryStream.ToArray();
                 }
 
-                // 3. Tạo các luồng nhớ độc lập cho mỗi tác vụ
-                var aiStream = new MemoryStream(fileBytes);
+                // 3. Tạo luồng nhớ độc lập cho tác vụ upload
                 var uploadStream = new MemoryStream(fileBytes);
-
-                var aiFile = new FormFile(aiStream, 0, fileBytes.Length, request.ImageFile.Name, request.ImageFile.FileName)
-                {
-                    Headers = request.ImageFile.Headers,
-                    ContentType = request.ImageFile.ContentType
-                };
 
                 var uploadFile = new FormFile(uploadStream, 0, fileBytes.Length, request.ImageFile.Name, request.ImageFile.FileName)
                 {
@@ -305,7 +298,10 @@ namespace ParkingBuilding.API.Controllers
                 };
 
                 // 4. Chạy song song nhận diện AI và upload lên Cloudinary
-                var aiTask = _aiRecognitionService.PredictLicensePlateFromFileAsync(aiFile);
+                var aiTask = _aiRecognitionService.PredictLicensePlateFromBytesAsync(
+                    fileBytes,
+                    request.ImageFile.ContentType,
+                    request.ImageFile.FileName);
                 var uploadTask = _imageStorageService.UploadImageDetailedAsync(uploadFile, "parking_temp");
 
                 try
@@ -319,7 +315,6 @@ namespace ParkingBuilding.API.Controllers
                 finally
                 {
                     // Đảm bảo giải phóng các luồng nhớ sau khi hoàn tất
-                    aiStream.Dispose();
                     uploadStream.Dispose();
                 }
 
