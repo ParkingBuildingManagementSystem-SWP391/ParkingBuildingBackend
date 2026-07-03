@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 
@@ -18,6 +18,8 @@ public partial class ParkingManagementDbContext : DbContext
     public virtual DbSet<Invoice> Invoices { get; set; }
 
     public virtual DbSet<MembershipCard> MembershipCards { get; set; }
+
+    public virtual DbSet<MembershipSlot> MembershipSlots { get; set; }
 
     public virtual DbSet<MembershipTier> MembershipTiers { get; set; }
 
@@ -175,6 +177,21 @@ public partial class ParkingManagementDbContext : DbContext
                 .HasForeignKey(d => d.MembershipCardId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_MembershipVehicles_MembershipCards");
+        });
+
+        modelBuilder.Entity<MembershipSlot>(entity =>
+        {
+            entity.HasKey(e => e.MembershipSlotId).HasName("PK_MembershipSlots");
+
+            entity.HasOne(d => d.MembershipCard).WithMany(p => p.MembershipSlots)
+                .HasForeignKey(d => d.MembershipCardId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_MembershipSlots_MembershipCards");
+
+            entity.HasOne(d => d.Slot).WithMany()
+                .HasForeignKey(d => d.SlotId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_MembershipSlots_ParkingSlots");
         });
 
         modelBuilder.Entity<ParkingSession>(entity =>
