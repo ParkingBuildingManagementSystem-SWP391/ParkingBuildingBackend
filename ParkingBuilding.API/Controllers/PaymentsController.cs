@@ -96,6 +96,29 @@ namespace ParkingBuilding.API.Controllers
         }
 
 
+        [HttpPost("pay-pending-invoice-wallet")]
+        public async Task<IActionResult> PayPendingInvoiceByWallet([FromBody] PayPendingInvoiceWalletRequest request)
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+                              ?? User.FindFirst("id")?.Value;
+
+            if (string.IsNullOrEmpty(userIdClaim))
+            {
+                return Unauthorized("Khong tim thay thong tin nguoi dung.");
+            }
+
+            int currentUserId = int.Parse(userIdClaim);
+            var result = await _paymentService.PayPendingInvoiceByWalletAsync(request.InvoiceId, currentUserId);
+
+            if (!result.Success)
+            {
+                return BadRequest(result.Message);
+            }
+
+            return Ok(result);
+        }
+
+
         [AllowAnonymous]
         [HttpGet("vnpay-ipn")]
         /// <summary>

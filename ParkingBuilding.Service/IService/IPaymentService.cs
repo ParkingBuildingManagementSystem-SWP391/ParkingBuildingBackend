@@ -11,6 +11,7 @@ namespace ParkingBuilding.Service.IService {
         Task<PaymentResultDto> ProcessCashPaymentAsync(CashPaymentDto request, int currentStaffId);
         Task<PaymentResultDto> CreateVnPayPaymentUrlAsync(CreateVnPayPaymentDto request, VnPayConfig config, int currentUserId);
         Task<PaymentResultDto> ConfirmVnPayPaymentAsync(string txnRef, decimal amount, string responseCode, string transactionStatus);
+        Task<PaymentResultDto> PayPendingInvoiceByWalletAsync(int invoiceId, int currentUserId);
 
 
         Task<string?> GetPaymentStatusAsync(int invoiceId, int currentUserId, string currentUserRole);

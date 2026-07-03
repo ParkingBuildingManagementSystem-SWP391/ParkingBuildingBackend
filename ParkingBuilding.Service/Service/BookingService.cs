@@ -204,12 +204,12 @@ namespace ParkingBuilding.Service.Service
                         ? "VNPAY"
                         : request.PaymentMethod.Trim().ToUpper();
 
-                    if (paymentMethod != "VNPAY" && paymentMethod != "WALLET")
+                    if (paymentMethod != "VNPAY" && paymentMethod != "WALLET" && paymentMethod != "AUTO")
                     {
-                        throw new ArgumentException("Phuong thuc thanh toan booking chi ho tro VNPAY hoac WALLET.");
+                        throw new ArgumentException("Phuong thuc thanh toan booking chi ho tro VNPAY, WALLET hoac AUTO.");
                     }
 
-                    if (paymentMethod == "WALLET")
+                    if (paymentMethod == "WALLET" || paymentMethod == "AUTO")
                     {
                         bool walletPaymentSuccess = await _walletService.ProcessWalletPaymentAsync(
                             userId,
@@ -218,7 +218,18 @@ namespace ParkingBuilding.Service.Service
 
                         if (!walletPaymentSuccess)
                         {
-                            throw new InvalidOperationException("So du vi khong du de thanh toan tien coc dat cho.");
+                            if (paymentMethod == "AUTO")
+                            {
+                                paymentMethod = "VNPAY";
+                            }
+                            else
+                            {
+                                throw new InvalidOperationException("So du vi khong du de thanh toan tien coc dat cho.");
+                            }
+                        }
+                        else
+                        {
+                            paymentMethod = "WALLET";
                         }
                     }
 
