@@ -13,8 +13,6 @@ public partial class MembershipCard
 
     public int TicketId { get; set; }
 
-
-
     public DateTime StartTime { get; set; }
 
     public DateTime EndTime { get; set; }
@@ -23,9 +21,13 @@ public partial class MembershipCard
 
     public bool IsDeleted { get; set; }
 
+    public int SlotId { get; set; }
+
     public virtual ICollection<MembershipVehicle> MembershipVehicles { get; set; } = new List<MembershipVehicle>();
 
     public virtual ICollection<MembershipSlot> MembershipSlots { get; set; } = new List<MembershipSlot>();
+
+    public virtual ParkingSlot Slot { get; set; } = null!;
 
     public virtual Ticket Ticket { get; set; } = null!;
 

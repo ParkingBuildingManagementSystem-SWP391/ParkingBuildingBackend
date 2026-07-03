@@ -1,19 +1,25 @@
-using System;
+﻿using System;
+using System.Collections.Generic;
 
-namespace ParkingBuilding.Repository.Entities
+namespace ParkingBuilding.Repository.Entities;
+
+public partial class WalletTransaction
 {
-    public class WalletTransaction
-    {
-        public int TransactionId { get; set; }
-        public int WalletId { get; set; }
-        public decimal Amount { get; set; }
-        public string TransactionType { get; set; } = null!; // "DEPOSIT", "PAYMENT"
-        public string Status { get; set; } = "PENDING";      // "PENDING", "SUCCESS", "FAILED"
-        public string? Description { get; set; }
-        public string? TransactionCode { get; set; }          // Mã giao dịch VNPay nếu nạp tiền
-        public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+    public int TransactionId { get; set; }
 
-        // Navigation properties
-        public virtual Wallet Wallet { get; set; } = null!;
-    }
+    public int WalletId { get; set; }
+
+    public decimal Amount { get; set; }
+
+    public string TransactionType { get; set; } = null!;
+
+    public string Status { get; set; } = null!;
+
+    public string? Description { get; set; }
+
+    public string? TransactionCode { get; set; }
+
+    public DateTime CreatedAt { get; set; }
+
+    public virtual Wallet Wallet { get; set; } = null!;
 }

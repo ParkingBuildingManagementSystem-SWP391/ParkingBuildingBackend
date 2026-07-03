@@ -124,13 +124,35 @@ namespace ParkingBuilding.Service.Service
 
                 if (cleanTicketCode != null)
                 {
-                    session = await _parkingRepository.GetActiveSessionByTicketCodeAsync(cleanTicketCode);
+                    var sessions = await _context.ParkingSessions
+                        .Include(s => s.Slot)
+                        .Include(s => s.Ticket)
+                        .Include(s => s.Type)
+                        .Include(s => s.Invoice)
+                        .Include(s => s.User)
+                        .Where(s => s.Ticket != null
+                                 && s.Ticket.TicketCode.Trim() == cleanTicketCode.Trim()
+                                 && s.SessionStatus == ParkingStatuses.SessionInProgress
+                                 && !s.IsDeleted)
+                        .ToListAsync();
+
+                    if (sessions.Count > 0)
+                    {
+                        var normCheckout = cleanCheckoutPlate.Trim().Replace("-", "").Replace(".", "").Replace(" ", "").ToUpper();
+                        session = sessions.FirstOrDefault(s => s.LicenseVehicle.Trim().Replace("-", "").Replace(".", "").Replace(" ", "").ToUpper() == normCheckout);
+                        if (session == null)
+                        {
+                            session = sessions.FirstOrDefault();
+                        }
+                    }
                 }
-                else if (request.SessionId.HasValue && request.SessionId.Value > 0)
+
+                if (session == null && request.SessionId.HasValue && request.SessionId.Value > 0)
                 {
                     session = await _parkingRepository.GetActiveSessionByIdAsync(request.SessionId.Value);
                 }
-                else if (cleanCheckoutPlate != null)
+
+                if (session == null && cleanCheckoutPlate != null)
                 {
                     session = await _parkingRepository.GetActiveSessionByLicensePlateAsync(cleanCheckoutPlate);
                 }
@@ -200,11 +222,12 @@ namespace ParkingBuilding.Service.Service
                 // ====================================================================================
                 // KỊCH BẢN 0: XE ĐĂNG KÝ THẺ THÀNH VIÊN CÒN HIỆU LỰC (Nhận dạng qua TicketId của phiên đỗ)
                 // ====================================================================================
-                var membershipCard = session.TicketId != null
+                var membershipCard = (session.TicketId != null && session.UserId.HasValue)
                     ? await _context.MembershipCards
                         .Include(mc => mc.MembershipSlots)
                             .ThenInclude(ms => ms.Slot)
                         .FirstOrDefaultAsync(mc => mc.TicketId == session.TicketId
+                                             && mc.UserId == session.UserId
                                              && mc.Status == ParkingStatuses.MonthlyCardActive
                                              && !mc.IsDeleted
                                              && mc.EndTime >= DateTime.UtcNow)
@@ -1045,12 +1068,35 @@ namespace ParkingBuilding.Service.Service
 
             if (isTicketCodeEmpty && !string.IsNullOrWhiteSpace(detectedPlate))
             {
-                // Truy vấn phiên hoạt động theo biển số xe thực tế
                 session = await _parkingRepository.GetActiveSessionByLicensePlateAsync(detectedPlate.Trim());
             }
             else
             {
-                session = await _parkingRepository.GetActiveSessionByTicketCodeAsync(cleanTicketCode);
+                var sessions = await _context.ParkingSessions
+                    .Include(s => s.Slot)
+                    .Include(s => s.Ticket)
+                    .Include(s => s.Type)
+                    .Include(s => s.Invoice)
+                    .Include(s => s.User)
+                    .Where(s => s.Ticket != null
+                             && s.Ticket.TicketCode.Trim() == cleanTicketCode.Trim()
+                             && s.SessionStatus == ParkingStatuses.SessionInProgress
+                             && !s.IsDeleted)
+                    .ToListAsync();
+
+                if (sessions.Count > 0)
+                {
+                    if (!string.IsNullOrWhiteSpace(detectedPlate) && detectedPlate.Trim().ToLower() != "string")
+                    {
+                        var normDetected = detectedPlate.Trim().Replace("-", "").Replace(".", "").Replace(" ", "").ToUpper();
+                        session = sessions.FirstOrDefault(s => s.LicenseVehicle.Trim().Replace("-", "").Replace(".", "").Replace(" ", "").ToUpper() == normDetected);
+                    }
+                    if (session == null)
+                    {
+                        session = sessions.FirstOrDefault();
+                    }
+                }
+
                 if (session == null)
                 {
                     session = await _parkingRepository.GetActiveSessionByLicensePlateAsync(cleanTicketCode);
@@ -1088,9 +1134,10 @@ namespace ParkingBuilding.Service.Service
             if (durationHours <= 0) durationHours = 1;
 
             // Kiểm tra xem phiên đỗ này có liên kết với vé thành viên Active và còn hạn sử dụng hay không
-            var membershipCard = session.TicketId != null
+            var membershipCard = (session.TicketId != null && session.UserId.HasValue)
                 ? await _context.MembershipCards
                     .FirstOrDefaultAsync(mc => mc.TicketId == session.TicketId
+                                         && mc.UserId == session.UserId
                                          && mc.Status == ParkingStatuses.MonthlyCardActive
                                          && !mc.IsDeleted
                                          && mc.EndTime >= DateTime.UtcNow)

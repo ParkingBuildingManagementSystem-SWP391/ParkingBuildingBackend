@@ -41,7 +41,6 @@ public partial class ParkingManagementDbContext : DbContext
 
     public virtual DbSet<WalletTransaction> WalletTransactions { get; set; }
 
-
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Floor>(entity =>
@@ -119,6 +118,8 @@ public partial class ParkingManagementDbContext : DbContext
         {
             entity.HasKey(e => e.MembershipCardId).HasName("PK__Membersh__D72ABE79E4AEA4FB");
 
+            entity.ToTable(tb => tb.HasTrigger("TR_MembershipCards_PreventDuplicateVehicleTypePerDriver"));
+
             entity.HasIndex(e => e.TicketId, "UQ__Membersh__712CC606C2922FA4").IsUnique();
 
             entity.Property(e => e.EndTime).HasColumnType("datetime");
@@ -128,6 +129,11 @@ public partial class ParkingManagementDbContext : DbContext
             entity.Property(e => e.Status)
                 .HasMaxLength(50)
                 .IsUnicode(false);
+
+            entity.HasOne(d => d.Slot).WithMany(p => p.MembershipCards)
+                .HasForeignKey(d => d.SlotId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_MembershipCards_ParkingSlots");
 
             entity.HasOne(d => d.Ticket).WithOne(p => p.MembershipCard)
                 .HasForeignKey<MembershipCard>(d => d.TicketId)
@@ -143,23 +149,6 @@ public partial class ParkingManagementDbContext : DbContext
                 .HasForeignKey(d => d.UserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_MembershipCards_Users");
-        });
-
-        modelBuilder.Entity<MembershipSlot>(entity =>
-        {
-            entity.HasKey(e => e.MembershipSlotId);
-
-            entity.HasOne(d => d.MembershipCard)
-                .WithMany(p => p.MembershipSlots)
-                .HasForeignKey(d => d.MembershipCardId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK_MembershipSlots_MembershipCards");
-
-            entity.HasOne(d => d.Slot)
-                .WithMany(p => p.MembershipSlots)
-                .HasForeignKey(d => d.SlotId)
-                .OnDelete(DeleteBehavior.ClientSetNull)
-                .HasConstraintName("FK_MembershipSlots_ParkingSlots");
         });
 
         modelBuilder.Entity<MembershipTier>(entity =>
@@ -190,6 +179,21 @@ public partial class ParkingManagementDbContext : DbContext
                 .HasConstraintName("FK_MembershipVehicles_MembershipCards");
         });
 
+        modelBuilder.Entity<MembershipSlot>(entity =>
+        {
+            entity.HasKey(e => e.MembershipSlotId).HasName("PK_MembershipSlots");
+
+            entity.HasOne(d => d.MembershipCard).WithMany(p => p.MembershipSlots)
+                .HasForeignKey(d => d.MembershipCardId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_MembershipSlots_MembershipCards");
+
+            entity.HasOne(d => d.Slot).WithMany()
+                .HasForeignKey(d => d.SlotId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_MembershipSlots_ParkingSlots");
+        });
+
         modelBuilder.Entity<ParkingSession>(entity =>
         {
             entity.HasKey(e => e.SessionId).HasName("PK__ParkingS__C9F4929061E687F5");
@@ -197,10 +201,6 @@ public partial class ParkingManagementDbContext : DbContext
             entity.ToTable("ParkingSession");
 
             entity.HasIndex(e => e.TicketId, "UQ__ParkingS__712CC60626606947").IsUnique();
-
-            entity.HasIndex(e => e.LicenseVehicle, "UQ_ActiveOrReserved_ParkingSession_LicenseVehicle")
-                .IsUnique()
-                .HasFilter("([IsDeleted]=(0) AND ([SessionStatus]='Reserved' OR [SessionStatus]='InProgress'))");
 
             entity.Property(e => e.BookingTime).HasColumnType("datetime");
             entity.Property(e => e.CheckInImageUrl).HasMaxLength(500);
@@ -316,33 +316,42 @@ public partial class ParkingManagementDbContext : DbContext
 
         modelBuilder.Entity<Wallet>(entity =>
         {
-            entity.HasKey(w => w.WalletId);
-            entity.Property(w => w.Balance).HasColumnType("decimal(18,2)").HasDefaultValue(0.00m);
-            entity.Property(w => w.CreatedAt).HasDefaultValueSql("GETDATE()");
-            
-            entity.HasOne(w => w.User)
-                  .WithOne()
-                  .HasForeignKey<Wallet>(w => w.UserId)
-                  .OnDelete(DeleteBehavior.Cascade);
+            entity.HasIndex(e => e.UserId, "UQ_Wallets_UserId").IsUnique();
+
+            entity.Property(e => e.Balance).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("(getdate())")
+                .HasColumnType("datetime");
+            entity.Property(e => e.UpdatedAt).HasColumnType("datetime");
+
+            entity.HasOne(d => d.User).WithOne(p => p.Wallet).HasForeignKey<Wallet>(d => d.UserId);
         });
 
         modelBuilder.Entity<WalletTransaction>(entity =>
         {
-            entity.HasKey(wt => wt.TransactionId);
-            entity.Property(wt => wt.Amount).HasColumnType("decimal(18,2)");
-            entity.Property(wt => wt.TransactionType).HasMaxLength(50).IsUnicode(false);
-            entity.Property(wt => wt.Status).HasMaxLength(50).IsUnicode(false).HasDefaultValue("PENDING");
-            entity.Property(wt => wt.CreatedAt).HasDefaultValueSql("GETDATE()");
+            entity.HasKey(e => e.TransactionId);
 
-            entity.HasOne(wt => wt.Wallet)
-                  .WithMany(w => w.WalletTransactions)
-                  .HasForeignKey(wt => wt.WalletId)
-                  .OnDelete(DeleteBehavior.Cascade);
+            entity.Property(e => e.Amount).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("(getdate())")
+                .HasColumnType("datetime");
+            entity.Property(e => e.Description).HasMaxLength(255);
+            entity.Property(e => e.Status)
+                .HasMaxLength(50)
+                .IsUnicode(false)
+                .HasDefaultValue("PENDING");
+            entity.Property(e => e.TransactionCode)
+                .HasMaxLength(255)
+                .IsUnicode(false);
+            entity.Property(e => e.TransactionType)
+                .HasMaxLength(50)
+                .IsUnicode(false);
+
+            entity.HasOne(d => d.Wallet).WithMany(p => p.WalletTransactions).HasForeignKey(d => d.WalletId);
         });
 
         OnModelCreatingPartial(modelBuilder);
     }
-
 
     partial void OnModelCreatingPartial(ModelBuilder modelBuilder);
 }

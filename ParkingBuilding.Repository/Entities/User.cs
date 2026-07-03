@@ -30,4 +30,6 @@ public partial class User
     public virtual ICollection<ParkingSession> ParkingSessions { get; set; } = new List<ParkingSession>();
 
     public virtual Role Role { get; set; } = null!;
+
+    public virtual Wallet? Wallet { get; set; }
 }
