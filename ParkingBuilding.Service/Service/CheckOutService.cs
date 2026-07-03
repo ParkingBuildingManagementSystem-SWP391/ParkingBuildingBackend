@@ -202,7 +202,8 @@ namespace ParkingBuilding.Service.Service
                 // ====================================================================================
                 var membershipCard = session.TicketId != null
                     ? await _context.MembershipCards
-                        .Include(mc => mc.Slot)
+                        .Include(mc => mc.MembershipSlots)
+                            .ThenInclude(ms => ms.Slot)
                         .FirstOrDefaultAsync(mc => mc.TicketId == session.TicketId
                                              && mc.Status == ParkingStatuses.MonthlyCardActive
                                              && !mc.IsDeleted

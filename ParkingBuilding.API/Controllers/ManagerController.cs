@@ -191,5 +191,45 @@ namespace ParkingBuilding.API.Controllers
                 return StatusCode(500, "Lỗi máy chủ khi cập nhật: " + ex.Message);
             }
         }
+        /// <summary>
+        /// Lay danh sach the thanh vien de Manager quan ly.
+        /// </summary>
+        [HttpGet("membership-cards")]
+        public async Task<IActionResult> GetMembershipCards([FromQuery] string? status, [FromQuery] string? search)
+        {
+            try
+            {
+                var cards = await _managerService.GetMembershipCardsAsync(status, search);
+                return Ok(new { isSuccess = true, data = cards });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred while fetching membership cards.");
+                return StatusCode(500, new { isSuccess = false, message = "Internal server error." });
+            }
+        }
+
+        /// <summary>
+        /// Huy the thanh vien boi Manager.
+        /// </summary>
+        [HttpDelete("membership-cards/{cardId}/cancel")]
+        public async Task<IActionResult> CancelMembershipCard(int cardId)
+        {
+            try
+            {
+                var result = await _managerService.CancelMembershipCardByManagerAsync(cardId);
+                if (!result.IsSuccess)
+                {
+                    return Conflict(new { isSuccess = false, message = result.Message });
+                }
+
+                return Ok(new { isSuccess = true, message = result.Message });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred while cancelling membership card {CardId}.", cardId);
+                return StatusCode(500, new { isSuccess = false, message = "Internal server error." });
+            }
+        }
     }
 }

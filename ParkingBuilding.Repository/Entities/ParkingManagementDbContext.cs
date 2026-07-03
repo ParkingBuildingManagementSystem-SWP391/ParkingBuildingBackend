@@ -19,6 +19,8 @@ public partial class ParkingManagementDbContext : DbContext
 
     public virtual DbSet<MembershipCard> MembershipCards { get; set; }
 
+    public virtual DbSet<MembershipSlot> MembershipSlots { get; set; }
+
     public virtual DbSet<MembershipTier> MembershipTiers { get; set; }
 
     public virtual DbSet<MembershipVehicle> MembershipVehicles { get; set; }
@@ -117,11 +119,11 @@ public partial class ParkingManagementDbContext : DbContext
         {
             entity.HasKey(e => e.MembershipCardId).HasName("PK__Membersh__D72ABE79E4AEA4FB");
 
-            entity.HasIndex(e => e.SlotId, "UQ_Active_Membership_Slot")
-                .IsUnique()
-                .HasFilter("([SlotId] IS NOT NULL AND [Status]='Active' AND [IsDeleted]=(0))");
-
             entity.HasIndex(e => e.TicketId, "UQ__Membersh__712CC606C2922FA4").IsUnique();
+
+            entity.HasIndex(e => e.UserId, "UQ_ActiveOrPending_Membership_User")
+                .IsUnique()
+                .HasFilter("(([Status]='Active' OR [Status]='PendingPayment') AND [IsDeleted]=(0))");
 
             entity.Property(e => e.EndTime).HasColumnType("datetime");
             entity.Property(e => e.StartTime)
@@ -130,10 +132,6 @@ public partial class ParkingManagementDbContext : DbContext
             entity.Property(e => e.Status)
                 .HasMaxLength(50)
                 .IsUnicode(false);
-
-            entity.HasOne(d => d.Slot).WithOne(p => p.MembershipCard)
-                .HasForeignKey<MembershipCard>(d => d.SlotId)
-                .HasConstraintName("FK_MembershipCards_ParkingSlots");
 
             entity.HasOne(d => d.Ticket).WithOne(p => p.MembershipCard)
                 .HasForeignKey<MembershipCard>(d => d.TicketId)
@@ -149,6 +147,23 @@ public partial class ParkingManagementDbContext : DbContext
                 .HasForeignKey(d => d.UserId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_MembershipCards_Users");
+        });
+
+        modelBuilder.Entity<MembershipSlot>(entity =>
+        {
+            entity.HasKey(e => e.MembershipSlotId);
+
+            entity.HasOne(d => d.MembershipCard)
+                .WithMany(p => p.MembershipSlots)
+                .HasForeignKey(d => d.MembershipCardId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_MembershipSlots_MembershipCards");
+
+            entity.HasOne(d => d.Slot)
+                .WithMany(p => p.MembershipSlots)
+                .HasForeignKey(d => d.SlotId)
+                .OnDelete(DeleteBehavior.ClientSetNull)
+                .HasConstraintName("FK_MembershipSlots_ParkingSlots");
         });
 
         modelBuilder.Entity<MembershipTier>(entity =>

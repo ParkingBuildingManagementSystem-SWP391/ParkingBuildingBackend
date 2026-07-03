@@ -11,9 +11,8 @@ using System.Threading.Tasks;
 namespace ParkingBuilding.API.BackgroundServices
 {
     /// <summary>
-    /// Tiến trình chạy ngầm (Background Service) tự động quét và xử lý các thẻ thành viên đã hết hạn sử dụng,
-    /// đồng thời giải phóng các ô đỗ xe bị giữ bởi giao dịch VNPay hết hạn (quá 15 phút).
-    /// Hoạt động chu kỳ 1 phút/lần.
+    /// Background worker that expires membership cards and releases slots held by expired
+    /// pending membership payment transactions.
     /// </summary>
     public class MembershipCardExpirationProcessor : BackgroundService
     {
@@ -38,46 +37,46 @@ namespace ParkingBuilding.API.BackgroundServices
                     {
                         var context = scope.ServiceProvider.GetRequiredService<ParkingManagementDbContext>();
 
-                        // Tính toán thời gian hiện tại theo múi giờ Việt Nam để so khớp với DB
                         var vnTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
                         var localNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vnTimeZone);
 
-                        // 1. Quét và khóa thẻ thành viên đã hết hạn sử dụng, đặt các xe đăng ký về active = 0, giải phóng slot đỗ
                         var expiredCards = await context.MembershipCards
                             .Include(mc => mc.MembershipVehicles)
-                            .Include(mc => mc.Slot)
-                            .Where(mc => mc.Status == ParkingStatuses.MonthlyCardActive // "Active"
+                            .Include(mc => mc.MembershipSlots)
+                                .ThenInclude(ms => ms.Slot)
+                            .Where(mc => mc.Status == ParkingStatuses.MonthlyCardActive
                                          && !mc.IsDeleted
                                          && mc.EndTime < localNow)
                             .ToListAsync(stoppingToken);
 
                         if (expiredCards.Any())
                         {
-                            _logger.LogInformation($"Phát hiện {expiredCards.Count} thẻ thành viên hết hạn sử dụng. Bắt đầu thu hồi tài nguyên...");
+                            _logger.LogInformation("Found {Count} expired membership cards. Releasing resources.", expiredCards.Count);
 
                             foreach (var card in expiredCards)
                             {
-                                card.Status = ParkingStatuses.MonthlyCardExpired; // "Expired"
-                                
-                                // Giải phóng chỗ đỗ cố định
-                                if (card.Slot != null && (card.Slot.SlotStatus == ParkingStatuses.SlotReserved || card.Slot.SlotStatus == ParkingStatuses.SlotAvailable))
+                                card.Status = ParkingStatuses.MonthlyCardExpired;
+
+                                foreach (var membershipSlot in card.MembershipSlots)
                                 {
-                                    card.Slot.SlotStatus = ParkingStatuses.SlotAvailable;
+                                    var slot = membershipSlot.Slot;
+                                    if (slot != null && (slot.SlotStatus == ParkingStatuses.SlotReserved || slot.SlotStatus == ParkingStatuses.SlotAvailable))
+                                    {
+                                        slot.SlotStatus = ParkingStatuses.SlotAvailable;
+                                    }
                                 }
 
-                                // Hủy kích hoạt tất cả biển số xe liên quan
                                 foreach (var vehicle in card.MembershipVehicles)
                                 {
                                     vehicle.IsActive = false;
                                 }
 
-                                _logger.LogInformation($"Đã tự động thu hồi thẻ thành viên ID: {card.MembershipCardId} của tài xế ID: {card.UserId} do hết hạn.");
+                                _logger.LogInformation("Expired membership card {CardId} for user {UserId}.", card.MembershipCardId, card.UserId);
                             }
 
                             await context.SaveChangesAsync(stoppingToken);
                         }
 
-                        // 2. Quét và giải phóng chỗ đỗ xe từ các giao dịch VNPay đăng ký membership PENDING đã quá 15 phút
                         var expiredPendingInvoices = await context.Invoices
                             .Where(i => i.PaymentMethod == "VNPAY"
                                         && i.PaymentStatus == "PENDING"
@@ -88,7 +87,7 @@ namespace ParkingBuilding.API.BackgroundServices
 
                         if (expiredPendingInvoices.Any())
                         {
-                            _logger.LogInformation($"Phát hiện {expiredPendingInvoices.Count} giao dịch đăng ký thẻ thành viên quá hạn 15 phút chưa thanh toán.");
+                            _logger.LogInformation("Found {Count} expired pending membership transactions.", expiredPendingInvoices.Count);
 
                             foreach (var invoice in expiredPendingInvoices)
                             {
@@ -98,21 +97,31 @@ namespace ParkingBuilding.API.BackgroundServices
                                 var tempPrefix = $"TEMP_{invoice.TransactionCode}_";
                                 var tickets = await context.Tickets
                                     .Include(t => t.MembershipCard)
+                                        .ThenInclude(mc => mc!.MembershipSlots)
                                     .Where(t => t.TicketCode.StartsWith(tempPrefix))
                                     .ToListAsync(stoppingToken);
 
                                 foreach (var ticket in tickets)
                                 {
-                                    ticket.TicketStatus = ParkingStatuses.TicketExpired; // "Expired"
-                                    if (ticket.MembershipCard != null)
+                                    ticket.TicketStatus = ParkingStatuses.TicketExpired;
+                                    if (ticket.MembershipCard == null)
                                     {
-                                        ticket.MembershipCard.Status = ParkingStatuses.MonthlyCardExpired; // "Expired"
+                                        continue;
+                                    }
 
-                                        var slot = await context.ParkingSlots.FirstOrDefaultAsync(s => s.SlotId == ticket.MembershipCard.SlotId, stoppingToken);
+                                    ticket.MembershipCard.Status = ParkingStatuses.MonthlyCardExpired;
+
+                                    foreach (var membershipSlot in ticket.MembershipCard.MembershipSlots)
+                                    {
+                                        var slot = await context.ParkingSlots.FirstOrDefaultAsync(s => s.SlotId == membershipSlot.SlotId, stoppingToken);
                                         if (slot != null && slot.SlotStatus == ParkingStatuses.SlotReserved)
                                         {
                                             slot.SlotStatus = ParkingStatuses.SlotAvailable;
-                                            _logger.LogInformation($"Đã tự động giải phóng ô đỗ {slot.SlotName} (ID: {slot.SlotId}) từ giao dịch VNPay hết hạn {invoice.TransactionCode}.");
+                                            _logger.LogInformation(
+                                                "Released slot {SlotName} (ID: {SlotId}) from expired transaction {TransactionCode}.",
+                                                slot.SlotName,
+                                                slot.SlotId,
+                                                invoice.TransactionCode);
                                         }
                                     }
                                 }
@@ -124,10 +133,9 @@ namespace ParkingBuilding.API.BackgroundServices
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Lỗi xảy ra trong vòng quét của MembershipCardExpirationProcessor.");
+                    _logger.LogError(ex, "Error occurred in MembershipCardExpirationProcessor.");
                 }
 
-                // Chạy định kỳ 1 phút/lần
                 await Task.Delay(TimeSpan.FromMinutes(1), stoppingToken);
             }
         }

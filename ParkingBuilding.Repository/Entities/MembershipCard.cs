@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace ParkingBuilding.Repository.Entities;
@@ -13,7 +13,7 @@ public partial class MembershipCard
 
     public int TicketId { get; set; }
 
-    public int? SlotId { get; set; }
+
 
     public DateTime StartTime { get; set; }
 
@@ -25,7 +25,7 @@ public partial class MembershipCard
 
     public virtual ICollection<MembershipVehicle> MembershipVehicles { get; set; } = new List<MembershipVehicle>();
 
-    public virtual ParkingSlot? Slot { get; set; }
+    public virtual ICollection<MembershipSlot> MembershipSlots { get; set; } = new List<MembershipSlot>();
 
     public virtual Ticket Ticket { get; set; } = null!;
 

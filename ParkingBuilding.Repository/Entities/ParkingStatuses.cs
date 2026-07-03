@@ -28,5 +28,7 @@ namespace ParkingBuilding.Repository.Entities
         public const string MonthlyCardActive = "Active";       // Thẻ hoạt động bình thường
         public const string MonthlyCardExpired = "Expired";     // Thẻ đã hết hạn
         public const string MonthlyCardSuspended = "Suspended"; // Thẻ bị tạm khóa
+        public const string MonthlyCardPendingPayment = "PendingPayment"; // Chờ thanh toán
+        public const string MonthlyCardCancelled = "Cancelled"; // Người dùng hủy thẻ
     }
 }
