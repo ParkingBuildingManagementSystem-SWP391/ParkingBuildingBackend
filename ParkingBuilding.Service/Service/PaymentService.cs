@@ -564,8 +564,33 @@ namespace ParkingBuilding.Service.Service
             var invoice = await _invoiceRepo.GetFirstOrDefaultAsync(i => i.InvoiceId == invoiceId, i => i.Session);
             if (invoice == null)
             {
-                _logger.LogWarning("Truy vấn trạng thái thanh toán thất bại: Không tìm thấy hóa đơn có ID {InvoiceId}.", invoiceId);
-                return null;
+                var cardTxn = await _context.MembershipCardTransactions
+                    .Include(t => t.MembershipCard)
+                    .FirstOrDefaultAsync(t => t.MembershipTransactionId == invoiceId);
+                
+                if (cardTxn == null)
+                {
+                    _logger.LogWarning("Truy vấn trạng thái thanh toán thất bại: Không tìm thấy hóa đơn hoặc giao dịch thẻ thành viên có ID {InvoiceId}.", invoiceId);
+                    return null;
+                }
+
+                if (currentUserRole == "Registered_Driver" && cardTxn.MembershipCard.UserId != currentUserId)
+                {
+                    _logger.LogWarning("CẢNH BÁO BẢO MẬT: Người dùng {UserId} (Vai trò: {Role}) cố tình truy cập trái phép thông tin giao dịch thẻ {TxnId} của người khác.",
+                        currentUserId, currentUserRole, invoiceId);
+
+                    throw new UnauthorizedAccessException("Bạn không có quyền xem thông tin hóa đơn này!");
+                }
+
+                _logger.LogInformation("Người dùng {UserId} đã truy vấn thành công trạng thái giao dịch thẻ {TxnId}. Trạng thái hiện tại: {Status}.",
+                    currentUserId, invoiceId, cardTxn.TransactionStatus);
+
+                if (cardTxn.TransactionStatus == "Success")
+                {
+                    return "SUCCESS_MONTHLY";
+                }
+
+                return cardTxn.TransactionStatus.ToUpper() == "CANCEL" ? "FAILED" : cardTxn.TransactionStatus.ToUpper();
             }
 
             if (currentUserRole == "Registered_Driver" && invoice.Session != null && invoice.Session.UserId != currentUserId)

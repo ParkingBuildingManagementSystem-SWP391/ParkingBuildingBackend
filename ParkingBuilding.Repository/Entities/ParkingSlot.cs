@@ -21,6 +21,8 @@ public partial class ParkingSlot
 
     public virtual ICollection<MembershipCard> MembershipCards { get; set; } = new List<MembershipCard>();
 
+    public virtual ICollection<MembershipSlot> MembershipSlots { get; set; } = new List<MembershipSlot>();
+
     public virtual ICollection<ParkingSession> ParkingSessions { get; set; } = new List<ParkingSession>();
 
     public virtual VehiclesType Type { get; set; } = null!;
