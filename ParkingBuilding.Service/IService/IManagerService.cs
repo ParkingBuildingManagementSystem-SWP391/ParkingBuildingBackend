@@ -14,6 +14,7 @@ namespace ParkingBuilding.Service.IService
         Task<UpdateMembershipTierPriceResponse?> UpdateMembershipTierPricingAsync(UpdateMembershipTierPriceRequest request);
         Task<List<ManagerMembershipCardResponseDto>> GetMembershipCardsAsync(string? status, string? search);
         Task<ManagerCancelMembershipCardResultDto> CancelMembershipCardByManagerAsync(int cardId);
-
+        Task<bool> LockParkingSlotAsync(int slotId);
+        Task<bool> UnlockParkingSlotAsync(int slotId);
     }
 }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -12,8 +12,7 @@ namespace ParkingBuilding.Repository.Entities
         public const string SlotAvailable = "Available"; // Ô trống sẵn sàng
         public const string SlotReserved = "Reserved";   // Khách đã đặt trên mạng
         public const string SlotOccupied = "Occupied";   // Xe đã đỗ thực tế
-
-        // Trạng thái lượt đỗ (ParkingSession.SessionStatus)
+        public const string SlotLocked = "Locked";       // Ô đỗ xe bị khóa / bảo trì
         public const string SessionReserved = "Reserved";     // Chờ xe đến check-in
         public const string SessionInProgress = "InProgress"; // Xe đang trong bãi
         public const string SessionCompleted = "Completed";   // Xe đã thanh toán và ra

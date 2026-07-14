@@ -269,5 +269,51 @@ namespace ParkingBuilding.API.Controllers
                 return StatusCode(500, new { isSuccess = false, message = "Internal server error." });
             }
         }
+
+        /// <summary>
+        /// Khóa ô đỗ xe (Chỉ áp dụng cho Manager).
+        /// </summary>
+        [HttpPut("slots/{slotId}/lock")]
+        public async Task<IActionResult> LockSlot(int slotId)
+        {
+            _logger.LogInformation("Manager requested to lock slot {SlotId}", slotId);
+            try
+            {
+                var isSuccess = await _managerService.LockParkingSlotAsync(slotId);
+                if (!isSuccess)
+                {
+                    return BadRequest("Không thể khóa ô đỗ xe này (Có thể ô đỗ không ở trạng thái trống hoặc không tồn tại).");
+                }
+                return Ok(new { isSuccess = true, message = "Khóa ô đỗ xe thành công!" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi khóa ô đỗ xe {SlotId}", slotId);
+                return StatusCode(500, "Lỗi máy chủ khi khóa ô đỗ xe.");
+            }
+        }
+
+        /// <summary>
+        /// Mở khóa ô đỗ xe (Chỉ áp dụng cho Manager).
+        /// </summary>
+        [HttpPut("slots/{slotId}/unlock")]
+        public async Task<IActionResult> UnlockSlot(int slotId)
+        {
+            _logger.LogInformation("Manager requested to unlock slot {SlotId}", slotId);
+            try
+            {
+                var isSuccess = await _managerService.UnlockParkingSlotAsync(slotId);
+                if (!isSuccess)
+                {
+                    return BadRequest("Không thể mở khóa ô đỗ xe này (Có thể ô đỗ không ở trạng thái khóa hoặc không tồn tại).");
+                }
+                return Ok(new { isSuccess = true, message = "Mở khóa ô đỗ xe thành công!" });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Lỗi khi mở khóa ô đỗ xe {SlotId}", slotId);
+                return StatusCode(500, "Lỗi máy chủ khi mở khóa ô đỗ xe.");
+            }
+        }
     }
 }
