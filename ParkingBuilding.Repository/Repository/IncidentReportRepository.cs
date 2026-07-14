@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 
 
 using Microsoft.EntityFrameworkCore;
@@ -20,7 +20,8 @@ namespace ParkingBuilding.Repository.Repository
         public async Task<List<IncidentReport>> GetIncidentsWithFiltersAsync(
             string? status,
             string? issueType,
-            string? licenseVehicle)
+            string? licenseVehicle,
+            string? severity)
         {
             var query = _context.IncidentReports
                 .Include(i => i.Session)
@@ -36,6 +37,23 @@ namespace ParkingBuilding.Repository.Repository
             if (!string.IsNullOrWhiteSpace(issueType))
             {
                 query = query.Where(i => i.IssueType == issueType);
+            }
+            else if (!string.IsNullOrWhiteSpace(severity))
+            {
+                if (severity.Equals("Critical", StringComparison.OrdinalIgnoreCase))
+                {
+                    query = query.Where(i => i.IssueType == "Lost Ticket" || i.IssueType == "Vehicle Damage");
+                }
+                else if (severity.Equals("Warning", StringComparison.OrdinalIgnoreCase))
+                {
+                    query = query.Where(i => i.IssueType == "Equipment Malfunction");
+                }
+                else if (severity.Equals("Info", StringComparison.OrdinalIgnoreCase))
+                {
+                    query = query.Where(i => i.IssueType != "Lost Ticket" 
+                                         && i.IssueType != "Vehicle Damage" 
+                                         && i.IssueType != "Equipment Malfunction");
+                }
             }
 
             if (!string.IsNullOrWhiteSpace(licenseVehicle))

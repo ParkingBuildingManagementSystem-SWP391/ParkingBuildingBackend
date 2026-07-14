@@ -25,9 +25,10 @@ namespace ParkingBuilding.API.Controllers
         public async Task<IActionResult> GetIncidents(
             [FromQuery] string? status, 
             [FromQuery] string? issueType, 
-            [FromQuery] string? licenseVehicle)
+            [FromQuery] string? licenseVehicle,
+            [FromQuery] string? severity)
         {
-            var result = await _incidentService.GetIncidentsAsync(status, issueType, licenseVehicle);
+            var result = await _incidentService.GetIncidentsAsync(status, issueType, licenseVehicle, severity);
             return Ok(result);
         }
 

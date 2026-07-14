@@ -71,9 +71,9 @@ namespace ParkingBuilding.Service.Service
             return MapToResponseDto(createdIncident!);
         }
 
-        public async Task<List<IncidentReportResponseDto>> GetIncidentsAsync(string? status, string? issueType, string? licenseVehicle)
+        public async Task<List<IncidentReportResponseDto>> GetIncidentsAsync(string? status, string? issueType, string? licenseVehicle, string? severity)
         {
-            var incidents = await _incidentRepo.GetIncidentsWithFiltersAsync(status, issueType, licenseVehicle);
+            var incidents = await _incidentRepo.GetIncidentsWithFiltersAsync(status, issueType, licenseVehicle, severity);
             return incidents.Select(MapToResponseDto).ToList();
         }
 
@@ -124,6 +124,13 @@ namespace ParkingBuilding.Service.Service
 
         private IncidentReportResponseDto MapToResponseDto(IncidentReport i)
         {
+            var severity = i.IssueType switch
+            {
+                "Lost Ticket" or "Vehicle Damage" => "Critical",
+                "Equipment Malfunction" => "Warning",
+                _ => "Info"
+            };
+
             return new IncidentReportResponseDto
             {
                 IncidentId = i.IncidentId,
@@ -140,7 +147,8 @@ namespace ParkingBuilding.Service.Service
                 ReportedId = i.ReportedId,
                 ReportedUsername = i.Reported?.Username ?? "N/A",
                 ResolvedId = i.ResolvedId,
-                ResolvedUsername = i.Resolved?.Username
+                ResolvedUsername = i.Resolved?.Username,
+                Severity = severity
             };
         }
     }

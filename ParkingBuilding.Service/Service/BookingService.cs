@@ -45,14 +45,7 @@ namespace ParkingBuilding.Service.Service
                 string cleanedVehiclePlate;
                 if (request.TypeId == 1) // Xe đạp
                 {
-                    if (string.IsNullOrEmpty(request.LicenseVehicle) || request.LicenseVehicle == "string" || !request.LicenseVehicle.StartsWith("BIKE_"))
-                    {
-                        cleanedVehiclePlate = $"BIKE_{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}";
-                    }
-                    else
-                    {
-                        cleanedVehiclePlate = request.LicenseVehicle.Trim().ToUpper();
-                    }
+                    cleanedVehiclePlate = $"BIKE_{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}";
                 }
                 else
                 {
