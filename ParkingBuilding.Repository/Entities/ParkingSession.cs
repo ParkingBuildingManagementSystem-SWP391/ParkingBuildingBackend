@@ -39,6 +39,8 @@ public partial class ParkingSession
 
     public virtual ParkingSlot Slot { get; set; } = null!;
 
+    public virtual ICollection<StaffActivityLog> StaffActivityLogs { get; set; } = new List<StaffActivityLog>();
+
     public virtual Ticket? Ticket { get; set; }
 
     public virtual VehiclesType Type { get; set; } = null!;
