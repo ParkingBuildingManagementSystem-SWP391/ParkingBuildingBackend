@@ -82,7 +82,12 @@ namespace ParkingBuilding.API.Controllers
         {
             try
             {
-                var response = await _checkInService.CheckInVehicleAsync(request);
+                var staffIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(staffIdClaim))
+                    return Unauthorized(new { isSuccess = false, message = "Không tìm thấy thông tin Staff thực hiện." });
+
+                int currentStaffId = int.Parse(staffIdClaim);
+                var response = await _checkInService.CheckInVehicleAsync(request, currentStaffId);
 
                 if (response.IsSuccess)
                 {
@@ -114,7 +119,12 @@ namespace ParkingBuilding.API.Controllers
         {
             try
             {
-                var result = await _checkInService.WalkInCheckInAsync(request);
+                var staffIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(staffIdClaim))
+                    return Unauthorized(new { isSuccess = false, message = "Không tìm thấy thông tin Staff thực hiện." });
+
+                int currentStaffId = int.Parse(staffIdClaim);
+                var result = await _checkInService.WalkInCheckInAsync(request, currentStaffId);
 
                 if (result.Status == "Error" || result.Status == "Full")
                 {
@@ -374,7 +384,12 @@ namespace ParkingBuilding.API.Controllers
         {
             try
             {
-                var response = await _checkInService.ScanQrCheckInAsync(ticketCode, detectedPlate);
+                var staffIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+                if (string.IsNullOrEmpty(staffIdClaim))
+                    return Unauthorized(new { isSuccess = false, message = "Không tìm thấy thông tin Staff thực hiện." });
+
+                int currentStaffId = int.Parse(staffIdClaim);
+                var response = await _checkInService.ScanQrCheckInAsync(ticketCode, detectedPlate, currentStaffId);
                 if (!response.IsSuccess)
                     return BadRequest(response);
 

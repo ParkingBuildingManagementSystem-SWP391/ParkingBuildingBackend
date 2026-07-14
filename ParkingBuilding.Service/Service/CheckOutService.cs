@@ -21,6 +21,7 @@ namespace ParkingBuilding.Service.Service
         private readonly IImageStorageService _imageStorageService; 
         private readonly IAiRecognitionService _aiRecognitionService;
         private readonly IWalletService _walletService;
+        private readonly IStaffLogService _staffLogService;
 
         public CheckOutService(
             IParkingRepository parkingRepository,
@@ -30,7 +31,8 @@ namespace ParkingBuilding.Service.Service
             IVnPayService vnPayService,
             IImageStorageService imageStorageService, 
             IAiRecognitionService aiRecognitionService,
-            IWalletService walletService)
+            IWalletService walletService,
+            IStaffLogService staffLogService)
         {
             _parkingRepository = parkingRepository;
             _context = context;
@@ -40,9 +42,50 @@ namespace ParkingBuilding.Service.Service
             _imageStorageService = imageStorageService; 
             _aiRecognitionService = aiRecognitionService;
             _walletService = walletService;
+            _staffLogService = staffLogService;
         }
 
         public async Task<CheckoutResponse> CheckoutVehicleAsync(CheckoutRequest request, int currentStaffId)
+        {
+            var activeShift = await _staffLogService.GetActiveShiftAsync(currentStaffId);
+            if (activeShift == null)
+            {
+                throw new InvalidOperationException("Bạn chưa mở ca làm việc. Vui lòng mở ca trực trước khi thao tác.");
+            }
+
+            var response = await CheckoutVehicleInternalAsync(request, currentStaffId);
+
+            if (response != null && response.IsSuccess)
+            {
+                string paymentMethod = string.IsNullOrWhiteSpace(request.PaymentMethod)
+                    ? "CASH"
+                    : request.PaymentMethod.Trim().ToUpper();
+
+                if (response.IsPaid && paymentMethod == "CASH")
+                {
+                    await _staffLogService.UpdateShiftRevenueAsync(activeShift.ShiftId, response.TotalAmount);
+                }
+
+                bool isOverride = response.CheckInLicensePlate != response.CheckOutLicensePlate;
+                string actionType = isOverride ? "PLATE_OVERRIDE" : "CHECK_OUT";
+
+                string description = isOverride
+                    ? $"Nhân viên sửa biển số xe ra từ AI nhận diện: '{response.CheckInLicensePlate}' thành '{response.CheckOutLicensePlate}'. Đã check-out thành công. Số tiền: {response.TotalAmount:N0} đ, Hình thức: {paymentMethod}."
+                    : $"Check-out thành công cho xe {response.CheckOutLicensePlate}. Số tiền: {response.TotalAmount:N0} đ, Hình thức: {paymentMethod}.";
+
+                await _staffLogService.LogActivityAsync(
+                    currentStaffId,
+                    actionType,
+                    description,
+                    response.CheckOutLicensePlate,
+                    sessionId: null
+                );
+            }
+
+            return response;
+        }
+
+        private async Task<CheckoutResponse> CheckoutVehicleInternalAsync(CheckoutRequest request, int currentStaffId)
         {
             if (request == null)
             {

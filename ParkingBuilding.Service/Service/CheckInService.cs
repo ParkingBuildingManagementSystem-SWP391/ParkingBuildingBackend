@@ -17,23 +17,32 @@ namespace ParkingBuilding.Service.Service
         private readonly IImageStorageService _imageStorageService;
         private readonly IAiRecognitionService _aiRecognitionService;
         private readonly ParkingManagementDbContext _context;
+        private readonly IStaffLogService _staffLogService;
 
         public CheckInService(
             IParkingRepository parkingRepository,
             ILogger<CheckInService> logger,
             IImageStorageService imageStorageService,
             IAiRecognitionService aiRecognitionService,
-            ParkingManagementDbContext context)
+            ParkingManagementDbContext context,
+            IStaffLogService staffLogService)
         {
             _parkingRepository = parkingRepository;
             _logger = logger;
             _imageStorageService = imageStorageService;
             _aiRecognitionService = aiRecognitionService;
             _context = context;
+            _staffLogService = staffLogService;
         }
 
-        public async Task<ScanCheckInResponse> CheckInVehicleAsync(CheckInRequest request)
+        public async Task<ScanCheckInResponse> CheckInVehicleAsync(CheckInRequest request, int currentStaffId)
         {
+            var activeShift = await _staffLogService.GetActiveShiftAsync(currentStaffId);
+            if (activeShift == null)
+            {
+                throw new InvalidOperationException("Bạn chưa mở ca làm việc. Vui lòng mở ca trực trước khi thao tác.");
+            }
+
             if (request == null)
             {
                 _logger.LogWarning("Check-in thất bại: Dữ liệu Request rỗng (null).");
@@ -211,6 +220,14 @@ namespace ParkingBuilding.Service.Service
                         _logger.LogInformation("Tự động chuyển check-in vãng lai: Xe '{Plate}' vào bãi. Ô đỗ: {SlotName}.",
                             newWalkInSession.LicenseVehicle, slotForWalkIn.SlotName);
 
+                        await _staffLogService.LogActivityAsync(
+                            currentStaffId,
+                            "CHECK_IN",
+                            $"Thẻ tháng đã có xe trong bãi. Tự động chuyển sang check-in vãng lai cho xe {newWalkInSession.LicenseVehicle} tại ô {slotForWalkIn.SlotName}.",
+                            newWalkInSession.LicenseVehicle,
+                            newWalkInSession.SessionId
+                        );
+
                         return new ScanCheckInResponse
                         {
                             IsSuccess = true,
@@ -269,6 +286,14 @@ namespace ParkingBuilding.Service.Service
 
                     _logger.LogInformation("Check-in THẺ THÀNH VIÊN thành công: Xe '{Plate}' vào bãi. Ô đỗ cố định: {SlotName}.",
                         newSession.LicenseVehicle, slot.SlotName);
+
+                    await _staffLogService.LogActivityAsync(
+                        currentStaffId,
+                        "CHECK_IN",
+                        $"Check-in thẻ thành viên thành công cho xe {newSession.LicenseVehicle} tại ô đỗ cố định {slot.SlotName}.",
+                        newSession.LicenseVehicle,
+                        newSession.SessionId
+                    );
 
                     return new ScanCheckInResponse
                     {
@@ -350,6 +375,14 @@ namespace ParkingBuilding.Service.Service
             await _parkingRepository.UpdateSessionAndSlotAsync(session, session.Slot!);
             _logger.LogInformation("Check-in THÀNH CÔNG: Xe '{LicensePlate}' đã vào bãi. Ô đỗ phân phối: {SlotName}. SessionId: {SessionId}.",
                 cleanLicense ?? session.LicenseVehicle, session.Slot?.SlotName ?? "N/A", session.SessionId);
+
+            await _staffLogService.LogActivityAsync(
+                currentStaffId,
+                "CHECK_IN",
+                $"Check-in đặt trước thành công cho xe {session.LicenseVehicle} tại vị trí {session.Slot?.SlotName ?? "N/A"}.",
+                session.LicenseVehicle,
+                session.SessionId
+            );
             
             return new ScanCheckInResponse
             {
@@ -370,8 +403,14 @@ namespace ParkingBuilding.Service.Service
             };
         }
 
-        public async Task<WalkInResponse> WalkInCheckInAsync(WalkInRequest request)
+        public async Task<WalkInResponse> WalkInCheckInAsync(WalkInRequest request, int currentStaffId)
         {
+            var activeShift = await _staffLogService.GetActiveShiftAsync(currentStaffId);
+            if (activeShift == null)
+            {
+                throw new InvalidOperationException("Bạn chưa mở ca làm việc. Vui lòng mở ca trực trước khi thao tác.");
+            }
+
             if (request == null)
             {
                 return new WalkInResponse { Status = "Error", TicketCode = "Yêu cầu dữ liệu không hợp lệ!" };
@@ -479,6 +518,14 @@ namespace ParkingBuilding.Service.Service
                 };
             }
 
+            await _staffLogService.LogActivityAsync(
+                currentStaffId,
+                "CHECK_IN",
+                $"Check-in vãng lai (walk-in) thành công cho xe {newSession.LicenseVehicle} tại ô {slot.SlotName}. Vé vãng lai: {ticket.TicketCode}.",
+                newSession.LicenseVehicle,
+                newSession.SessionId
+            );
+
             return new WalkInResponse
             {
                 SessionId = newSession.SessionId,
@@ -491,8 +538,14 @@ namespace ParkingBuilding.Service.Service
             };
         }
 
-        public async Task<ScanCheckInResponse> ScanQrCheckInAsync(string ticketCode, string? detectedPlate)
+        public async Task<ScanCheckInResponse> ScanQrCheckInAsync(string ticketCode, string? detectedPlate, int currentStaffId)
         {
+            var activeShift = await _staffLogService.GetActiveShiftAsync(currentStaffId);
+            if (activeShift == null)
+            {
+                throw new InvalidOperationException("Bạn chưa mở ca làm việc. Vui lòng mở ca trực trước khi thao tác.");
+            }
+
             if (QrCodeParserHelper.TryParseQr(ticketCode, out var parsedTicket, out var parsedPlate, out var parsedSessionId, out var parsedSlot))
             {
                 ticketCode = parsedTicket!;
