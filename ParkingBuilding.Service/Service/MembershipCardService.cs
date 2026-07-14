@@ -86,9 +86,21 @@ namespace ParkingBuilding.Service.Service
                 throw new ArgumentException("Thời hạn thuê của gói thành viên không hợp lệ (chỉ được phép là 1, 6 hoặc 12 tháng).");
             }
 
-            if (dto.LicenseVehicles == null || dto.LicenseVehicles.Count == 0)
+            if (tier.TypeId == 1)
             {
-                throw new ArgumentException("Vui lòng cung cấp ít nhất một biển số xe.");
+                dto.LicenseVehicles = new List<string>();
+                int maxVehicles = tier.MaxVehicles > 0 ? tier.MaxVehicles : 1;
+                for (int i = 0; i < maxVehicles; i++)
+                {
+                    dto.LicenseVehicles.Add($"BIKE_{Guid.NewGuid().ToString().Substring(0, 8).ToUpper()}");
+                }
+            }
+            else
+            {
+                if (dto.LicenseVehicles == null || dto.LicenseVehicles.Count == 0)
+                {
+                    throw new ArgumentException("Vui lòng cung cấp ít nhất một biển số xe.");
+                }
             }
 
             if (tier.MaxVehicles == 1)
