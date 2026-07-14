@@ -41,6 +41,10 @@ public partial class ParkingManagementDbContext : DbContext
 
     public virtual DbSet<WalletTransaction> WalletTransactions { get; set; }
 
+    public virtual DbSet<StaffShift> StaffShifts { get; set; }
+
+    public virtual DbSet<StaffActivityLog> StaffActivityLogs { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<Floor>(entity =>
@@ -353,6 +357,50 @@ public partial class ParkingManagementDbContext : DbContext
                 .IsUnicode(false);
 
             entity.HasOne(d => d.Wallet).WithMany(p => p.WalletTransactions).HasForeignKey(d => d.WalletId);
+        });
+
+        modelBuilder.Entity<StaffShift>(entity =>
+        {
+            entity.HasKey(e => e.ShiftId);
+
+            entity.Property(e => e.StartTime).HasColumnType("datetime");
+            entity.Property(e => e.EndTime).HasColumnType("datetime");
+            entity.Property(e => e.SystemCash).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.ActualCash).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.Difference).HasColumnType("decimal(18, 2)");
+            entity.Property(e => e.Status).HasMaxLength(50).IsUnicode(false);
+            entity.Property(e => e.Notes).HasMaxLength(500);
+
+            entity.HasOne(d => d.Staff)
+                .WithMany(p => p.StaffShifts)
+                .HasForeignKey(d => d.StaffId)
+                .OnDelete(DeleteBehavior.ClientSetNull);
+        });
+
+        modelBuilder.Entity<StaffActivityLog>(entity =>
+        {
+            entity.HasKey(e => e.LogId);
+
+            entity.Property(e => e.ActionType).HasMaxLength(50).IsUnicode(false);
+            entity.Property(e => e.Timestamp)
+                .HasDefaultValueSql("(getdate())")
+                .HasColumnType("datetime");
+            entity.Property(e => e.LicensePlate).HasMaxLength(50).IsUnicode(false);
+            entity.Property(e => e.IpAddress).HasMaxLength(50).IsUnicode(false);
+
+            entity.HasOne(d => d.Staff)
+                .WithMany(p => p.StaffActivityLogs)
+                .HasForeignKey(d => d.StaffId)
+                .OnDelete(DeleteBehavior.ClientSetNull);
+
+            entity.HasOne(d => d.Shift)
+                .WithMany(p => p.StaffActivityLogs)
+                .HasForeignKey(d => d.ShiftId)
+                .HasConstraintName("FK_StaffActivityLogs_StaffShifts");
+
+            entity.HasOne(d => d.Session)
+                .WithMany()
+                .HasForeignKey(d => d.SessionId);
         });
 
         OnModelCreatingPartial(modelBuilder);

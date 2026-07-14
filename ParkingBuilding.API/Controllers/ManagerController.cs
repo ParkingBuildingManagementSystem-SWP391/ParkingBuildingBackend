@@ -16,11 +16,13 @@ namespace ParkingBuilding.API.Controllers
     {
         private readonly IManagerService _managerService;
         private readonly ILogger<ManagerController> _logger;
+        private readonly IStaffLogService _staffLogService;
 
-        public ManagerController(IManagerService managerService, ILogger<ManagerController> logger)
+        public ManagerController(IManagerService managerService, ILogger<ManagerController> logger, IStaffLogService staffLogService)
         {
             _managerService = managerService;
             _logger = logger;
+            _staffLogService = staffLogService;
         }
 
         /// <summary>
@@ -228,6 +230,42 @@ namespace ParkingBuilding.API.Controllers
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Error occurred while cancelling membership card {CardId}.", cardId);
+                return StatusCode(500, new { isSuccess = false, message = "Internal server error." });
+            }
+        }
+
+        /// <summary>
+        /// Lấy danh sách ca trực của nhân viên để đối soát tiền mặt.
+        /// </summary>
+        [HttpGet("shifts")]
+        public async Task<IActionResult> GetStaffShifts([FromQuery] DateTime? startDate, [FromQuery] DateTime? endDate, [FromQuery] string? status)
+        {
+            try
+            {
+                var shifts = await _staffLogService.GetShiftsForManagerAsync(startDate, endDate, status);
+                return Ok(new { isSuccess = true, data = shifts });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred while fetching staff shifts for manager.");
+                return StatusCode(500, new { isSuccess = false, message = "Internal server error." });
+            }
+        }
+
+        /// <summary>
+        /// Lấy nhật ký hoạt động chi tiết của toàn bộ nhân viên cổng.
+        /// </summary>
+        [HttpGet("staff-activities")]
+        public async Task<IActionResult> GetStaffActivities([FromQuery] int? staffId, [FromQuery] string? actionType, [FromQuery] DateTime? startDate, [FromQuery] DateTime? endDate)
+        {
+            try
+            {
+                var logs = await _staffLogService.GetActivityLogsForManagerAsync(staffId, actionType, startDate, endDate);
+                return Ok(new { isSuccess = true, data = logs });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error occurred while fetching staff activity logs for manager.");
                 return StatusCode(500, new { isSuccess = false, message = "Internal server error." });
             }
         }

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 
 namespace ParkingBuilding.Repository.Entities;
@@ -28,6 +28,10 @@ public partial class User
     public virtual ICollection<MembershipCard> MembershipCards { get; set; } = new List<MembershipCard>();
 
     public virtual ICollection<ParkingSession> ParkingSessions { get; set; } = new List<ParkingSession>();
+
+    public virtual ICollection<StaffShift> StaffShifts { get; set; } = new List<StaffShift>();
+
+    public virtual ICollection<StaffActivityLog> StaffActivityLogs { get; set; } = new List<StaffActivityLog>();
 
     public virtual Role Role { get; set; } = null!;
 
