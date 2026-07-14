@@ -584,5 +584,37 @@ namespace ParkingBuilding.Service.Service
                 throw;
             }
         }
+
+        public async Task<bool> LockParkingSlotAsync(int slotId)
+        {
+            var slot = await _context.ParkingSlots.FirstOrDefaultAsync(s => s.SlotId == slotId && !s.IsDeleted);
+            if (slot == null) return false;
+
+            if (slot.SlotStatus != ParkingStatuses.SlotAvailable)
+            {
+                return false;
+            }
+
+            slot.SlotStatus = ParkingStatuses.SlotLocked;
+            _context.ParkingSlots.Update(slot);
+            await _context.SaveChangesAsync();
+            return true;
+        }
+
+        public async Task<bool> UnlockParkingSlotAsync(int slotId)
+        {
+            var slot = await _context.ParkingSlots.FirstOrDefaultAsync(s => s.SlotId == slotId && !s.IsDeleted);
+            if (slot == null) return false;
+
+            if (slot.SlotStatus != ParkingStatuses.SlotLocked)
+            {
+                return false;
+            }
+
+            slot.SlotStatus = ParkingStatuses.SlotAvailable;
+            _context.ParkingSlots.Update(slot);
+            await _context.SaveChangesAsync();
+            return true;
+        }
     }
 }
