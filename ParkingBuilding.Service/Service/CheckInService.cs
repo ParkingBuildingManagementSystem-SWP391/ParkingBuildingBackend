@@ -150,8 +150,17 @@ namespace ParkingBuilding.Service.Service
                     // >>> KỊCH BẢN CHECK-IN BẰNG THẺ THÀNH VIÊN <<<
 
                     // 1. Kiểm tra biển số xe đi vào có thuộc danh sách biển số đã đăng ký và đang hoạt động không
-                    if (membershipCard.Tier.TypeId != 1 && cleanLicense != null)
+                    if (membershipCard.Tier.TypeId != 1)
                     {
+                        if (string.IsNullOrWhiteSpace(cleanLicense))
+                        {
+                            return new ScanCheckInResponse
+                            {
+                                IsSuccess = false,
+                                Message = "Thẻ thành viên này yêu cầu phải có biển số xe khi check-in."
+                            };
+                        }
+
                         var isRegisteredPlate = membershipCard.MembershipVehicles
                             .Any(v => v.LicenseVehicle.Trim().ToUpper() == cleanLicense.Trim().ToUpper() && v.IsActive);
 
