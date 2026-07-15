@@ -82,6 +82,7 @@ public partial class ParkingManagementDbContext : DbContext
 
             entity.HasOne(d => d.Resolved).WithMany(p => p.IncidentReportResolveds)
                 .HasForeignKey(d => d.ResolvedId)
+                .IsRequired(false) // CHỈNH SỬA: Cho phép SessionId Nullable trong Entity Framework
                 .HasConstraintName("FK__IncidentR__Resol__619B8048");
 
             entity.HasOne(d => d.Session).WithMany(p => p.IncidentReports)

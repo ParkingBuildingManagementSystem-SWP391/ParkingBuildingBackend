@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.EntityFrameworkCore.Storage;
 using ParkingBuilding.Repository.Entities;
 using ParkingBuilding.Repository.IRepository;
 using System.Threading.Tasks;
@@ -17,12 +17,14 @@ namespace ParkingBuilding.Repository.Repository
             Sessions = new SessionRepository(_context);
             Invoices = new InvoiceRepository(_context);
             Users = new UserRepository(_context);
+            Notifications = new NotificationRepository(_context);
         }
 
         public ISlotRepository Slots { get; }
         public ISessionRepository Sessions { get; }
         public IInvoiceRepository Invoices { get; }
         public IUserRepository Users { get; }
+        public INotificationRepository Notifications { get; }
 
         public async Task<bool> SaveChangesAsync()
         {

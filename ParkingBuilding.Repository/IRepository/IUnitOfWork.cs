@@ -1,4 +1,4 @@
-﻿using ParkingBuilding.Repository.Entities;
+using ParkingBuilding.Repository.Entities;
 using System;
 using System.Threading.Tasks;
 
@@ -10,6 +10,7 @@ namespace ParkingBuilding.Repository.IRepository
         ISessionRepository Sessions { get; }
         IInvoiceRepository Invoices { get; }
         IUserRepository Users { get; }
+        INotificationRepository Notifications { get; }
 
         Task<bool> SaveChangesAsync();
         Task BeginTransactionAsync();
