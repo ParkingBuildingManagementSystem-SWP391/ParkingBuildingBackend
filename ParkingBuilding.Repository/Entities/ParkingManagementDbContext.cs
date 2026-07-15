@@ -27,6 +27,8 @@ public partial class ParkingManagementDbContext : DbContext
 
     public virtual DbSet<MembershipVehicle> MembershipVehicles { get; set; }
 
+    public virtual DbSet<Notification> Notifications { get; set; }
+
     public virtual DbSet<ParkingSession> ParkingSessions { get; set; }
 
     public virtual DbSet<ParkingSlot> ParkingSlots { get; set; }
@@ -80,6 +82,7 @@ public partial class ParkingManagementDbContext : DbContext
 
             entity.HasOne(d => d.Resolved).WithMany(p => p.IncidentReportResolveds)
                 .HasForeignKey(d => d.ResolvedId)
+                .IsRequired(false) // CHỈNH SỬA: Cho phép SessionId Nullable trong Entity Framework
                 .HasConstraintName("FK__IncidentR__Resol__619B8048");
 
             entity.HasOne(d => d.Session).WithMany(p => p.IncidentReports)
@@ -224,6 +227,23 @@ public partial class ParkingManagementDbContext : DbContext
                 .HasForeignKey(d => d.MembershipCardId)
                 .OnDelete(DeleteBehavior.ClientSetNull)
                 .HasConstraintName("FK_MembershipVehicles_MembershipCards");
+        });
+
+        modelBuilder.Entity<Notification>(entity =>
+        {
+            entity.HasKey(e => e.NotificationId).HasName("PK__Notifica__20CF2E12DC8B8610");
+
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("(getdate())")
+                .HasColumnType("datetime");
+            entity.Property(e => e.NotificationType)
+                .HasMaxLength(50)
+                .IsUnicode(false);
+            entity.Property(e => e.Title).HasMaxLength(255);
+
+            entity.HasOne(d => d.User).WithMany(p => p.Notifications)
+                .HasForeignKey(d => d.UserId)
+                .HasConstraintName("FK_Notifications_Users");
         });
 
         modelBuilder.Entity<ParkingSession>(entity =>

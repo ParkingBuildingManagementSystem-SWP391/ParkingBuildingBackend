@@ -12,6 +12,8 @@ using ParkingBuilding.Service.Service;
 
 using System.Text;
 using ParkingBuilding.Service.Helpers;
+using ParkingBuilding.API.Hubs;
+using ParkingBuilding.API.Services;
 
 namespace ParkingBuilding.API
 {
@@ -102,6 +104,11 @@ namespace ParkingBuilding.API
             // Đăng ký UnitOfWork
             builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
+            // Đăng ký dịch vụ Real-time SignalR & Notification
+            builder.Services.AddSignalR();
+            builder.Services.AddScoped<INotificationRepository, NotificationRepository>();
+            builder.Services.AddScoped<INotificationService, NotificationService>();
+
             // Đăng ký cấu hình Cloudinary
             builder.Services.Configure<CloudinarySettings>(builder.Configuration.GetSection("CloudinarySettings"));
 
@@ -138,6 +145,21 @@ namespace ParkingBuilding.API
                      ValidAudience = builder.Configuration["JwtSettings:Audience"],
                      IssuerSigningKey = new SymmetricSecurityKey(key),
                      ClockSkew = TimeSpan.Zero 
+                 };
+
+                 options.Events = new JwtBearerEvents
+                 {
+                     OnMessageReceived = context =>
+                     {
+                         var accessToken = context.Request.Query["access_token"];
+                         var path = context.HttpContext.Request.Path;
+                         if (!string.IsNullOrEmpty(accessToken) && 
+                             path.StartsWithSegments("/hubs/driver-notifications"))
+                         {
+                             context.Token = accessToken;
+                         }
+                         return Task.CompletedTask;
+                     }
                  };
              });
 
@@ -187,6 +209,7 @@ namespace ParkingBuilding.API
             app.UseAuthentication();
             app.UseAuthorization();
 
+            app.MapHub<DriverNotificationHub>("/hubs/driver-notifications");
             app.MapControllers();
 
             app.Run();
