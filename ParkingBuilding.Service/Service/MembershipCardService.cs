@@ -638,6 +638,7 @@ namespace ParkingBuilding.Service.Service
                 .Include(c => c.MembershipVehicles)
                 .Include(c => c.MembershipSlots)
                     .ThenInclude(ms => ms.Slot)
+                .Include(c => c.MembershipCardTransactions)
                 .Where(c => c.UserId == userId && c.Status == "Active" && !c.IsDeleted)
                 .OrderByDescending(c => c.EndTime)
                 .Select(c => new {
@@ -648,7 +649,33 @@ namespace ParkingBuilding.Service.Service
                     Tier = new { c.Tier.TierId, c.Tier.TierName, c.Tier.Price, c.Tier.DurationMonths },
                     TicketCode = c.Ticket != null ? c.Ticket.TicketCode : null,
                     Vehicles = c.MembershipVehicles.Where(v => v.IsActive).Select(v => v.LicenseVehicle).ToList(),
-                    Slots = c.MembershipSlots.Select(ms => new { ms.SlotId, ms.Slot.SlotName }).ToList()
+                    Slots = c.MembershipSlots.Select(ms => new { ms.SlotId, ms.Slot.SlotName }).ToList(),
+                    
+                    // Lấy thông tin thanh toán từ bảng giao dịch mới (MembershipCardTransactions)
+                    PaymentMethod = c.MembershipCardTransactions
+                        .OrderByDescending(t => t.TransactionAt)
+                        .Select(t => t.PaymentMethod)
+                        .FirstOrDefault() ?? "Unknown",
+                    UnitPrice = c.MembershipCardTransactions
+                        .OrderByDescending(t => t.TransactionAt)
+                        .Select(t => t.UnitPrice)
+                        .FirstOrDefault(),
+                    TransactionCode = c.MembershipCardTransactions
+                        .OrderByDescending(t => t.TransactionAt)
+                        .Select(t => t.TransactionCode)
+                        .FirstOrDefault(),
+                    TransactionAt = c.MembershipCardTransactions
+                        .OrderByDescending(t => t.TransactionAt)
+                        .Select(t => t.TransactionAt)
+                        .FirstOrDefault(),
+                    TransactionType = c.MembershipCardTransactions
+                        .OrderByDescending(t => t.TransactionAt)
+                        .Select(t => t.TransactionType)
+                        .FirstOrDefault() ?? "Unknown",
+                    TransactionStatus = c.MembershipCardTransactions
+                        .OrderByDescending(t => t.TransactionAt)
+                        .Select(t => t.TransactionStatus)
+                        .FirstOrDefault() ?? "Unknown"
                 })
                 .ToListAsync();
 
