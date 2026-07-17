@@ -21,11 +21,16 @@ namespace ParkingBuilding.Service.Service
     {
         private readonly IManagerRepository _managerRepository;
         private readonly ParkingManagementDbContext _context;
-        public ManagerService(IManagerRepository managerRepository, ParkingManagementDbContext context)
+        private readonly INotificationService _notificationService;
+
+        public ManagerService(
+            IManagerRepository managerRepository, 
+            ParkingManagementDbContext context,
+            INotificationService notificationService)
         {
             _managerRepository = managerRepository;
             _context = context;
-
+            _notificationService = notificationService;
         }
 
         public async Task<DashboardSummaryResponse> GetDashboardSummaryAsync()
@@ -420,6 +425,15 @@ namespace ParkingBuilding.Service.Service
             vehicleType.SubsequentHourRate = subsequentHourRate;
 
             await _context.SaveChangesAsync();
+
+            // Phát thông báo SignalR thời gian thực tới tất cả Driver (nhóm "All_Drivers")
+            await _notificationService.SendToGroupAsync(
+                "All_Drivers",
+                "Cập nhật biểu phí đỗ xe",
+                $"Biểu phí đỗ xe cho loại xe {vehicleType.TypeName} đã được cập nhật áp dụng từ thời điểm này.",
+                NotificationTypes.BookingPriceUpdate
+            );
+
             return true;
         }
 
@@ -435,6 +449,14 @@ namespace ParkingBuilding.Service.Service
 
             tier.Price = request.Price;
             await _context.SaveChangesAsync();
+
+            // Phát thông báo SignalR thời gian thực tới tất cả Driver (nhóm "All_Drivers")
+            await _notificationService.SendToGroupAsync(
+                "All_Drivers",
+                "Cập nhật giá thẻ thành viên",
+                $"Giá cước gói thành viên loại xe {tier.Type?.TypeName} ({tier.DurationMonths} tháng) vừa được đổi sang {tier.Price:N0} VNĐ.",
+                NotificationTypes.MembershipPriceUpdate
+            );
 
             return new UpdateMembershipTierPriceResponse
             {
