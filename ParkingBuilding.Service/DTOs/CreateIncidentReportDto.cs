@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -8,7 +8,7 @@ namespace ParkingBuilding.Service.DTOs
 {
     public class CreateIncidentReportDto
     {
-        public string LicenseVehicle { get; set; } = null!;
+        public string? LicenseVehicle { get; set; }
         public string IssueType { get; set; } = null!;
         public string? Description { get; set; }
         public string? ImageProofUrl { get; set; }

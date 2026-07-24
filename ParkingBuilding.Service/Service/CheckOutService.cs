@@ -96,7 +96,6 @@ namespace ParkingBuilding.Service.Service
             string paymentMethod = string.IsNullOrWhiteSpace(request.PaymentMethod)
                 ? "CASH"
                 : request.PaymentMethod.Trim().ToUpper();
-            bool isAutoPayment = paymentMethod == "AUTO";
             bool isWalletPayment = paymentMethod == "WALLET";
             bool isVnPayPayment = paymentMethod == "VNPAY";
 
@@ -258,7 +257,7 @@ namespace ParkingBuilding.Service.Service
                             var ticketIncident = new IncidentReport
                             {
                                 SessionId = session.SessionId,
-                                IssueType = "TicketMismatch",
+                                IssueType = IncidentTypes.TicketMismatch,
                                 Description = $"CẢNH BÁO AN NINH CHẶN CHECK-OUT: Mã vé quét/nhập ({cleanTicketCode}) không trùng khớp với mã vé chính thức ({actualTicketCode}) của phiên đỗ.",
                                 ReportedId = currentStaffId,
                                 Status = "Pending",
@@ -310,7 +309,7 @@ namespace ParkingBuilding.Service.Service
                         var plateIncident = new IncidentReport
                         {
                             SessionId = session.SessionId,
-                            IssueType = "PlateMismatch",
+                            IssueType = IncidentTypes.PlateMismatch,
                             Description = $"CẢNH BÁO AN NINH CHẶN CHECK-OUT: Nghi ngờ tráo xe gian lận! Biển số lúc ra ({cleanCheckoutPlate}) không khớp với biển số lúc vào ({checkInPlate}) tại SessionId {session.SessionId}.",
                             ReportedId = currentStaffId,
                             Status = "Pending",
@@ -346,13 +345,6 @@ namespace ParkingBuilding.Service.Service
                 }
 
                 _logger.LogInformation("Đối khớp biển số thành công cho Session {SessionId}.", session.SessionId);
-
-                if (isAutoPayment)
-                {
-                    paymentMethod = session.UserId.HasValue ? "WALLET" : "CASH";
-                    isWalletPayment = paymentMethod == "WALLET";
-                    isVnPayPayment = false;
-                }
 
                 var staff = await _parkingRepository.GetStaffByIdAsync(currentStaffId);
                 string staffName = staff?.Username ?? "Nhân viên hệ thống";
