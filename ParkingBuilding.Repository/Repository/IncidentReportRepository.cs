@@ -42,17 +42,22 @@ namespace ParkingBuilding.Repository.Repository
             {
                 if (severity.Equals("Critical", StringComparison.OrdinalIgnoreCase))
                 {
-                    query = query.Where(i => i.IssueType == "Lost Ticket" || i.IssueType == "Vehicle Damage");
+                    query = query.Where(i => i.IssueType == IncidentTypes.LostTicket
+                                          || i.IssueType == IncidentTypes.VehicleDamage
+                                          || i.IssueType == IncidentTypes.TicketMismatch
+                                          || i.IssueType == IncidentTypes.PlateMismatch);
                 }
                 else if (severity.Equals("Warning", StringComparison.OrdinalIgnoreCase))
                 {
-                    query = query.Where(i => i.IssueType == "Equipment Malfunction");
+                    query = query.Where(i => i.IssueType == IncidentTypes.EquipmentMalfunction);
                 }
                 else if (severity.Equals("Info", StringComparison.OrdinalIgnoreCase))
                 {
-                    query = query.Where(i => i.IssueType != "Lost Ticket" 
-                                         && i.IssueType != "Vehicle Damage" 
-                                         && i.IssueType != "Equipment Malfunction");
+                    query = query.Where(i => i.IssueType != IncidentTypes.LostTicket 
+                                         && i.IssueType != IncidentTypes.VehicleDamage 
+                                         && i.IssueType != IncidentTypes.TicketMismatch
+                                         && i.IssueType != IncidentTypes.PlateMismatch
+                                         && i.IssueType != IncidentTypes.EquipmentMalfunction);
                 }
             }
 

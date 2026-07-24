@@ -89,5 +89,20 @@ namespace ParkingBuilding.API.Controllers
 
             return Ok(new { message = "Đã cập nhật trạng thái giải quyết sự cố thành công." });
         }
+
+        // 5. Xem danh sách sự cố do chính tài khoản đang đăng nhập báo cáo
+        [Authorize(Roles = "Staff,Registered_Driver")]
+        [HttpGet("my-incidents")]
+        public async Task<IActionResult> GetMyIncidents()
+        {
+            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out int userId))
+            {
+                return Unauthorized(new { message = "Token không chứa ID tài khoản hợp lệ." });
+            }
+
+            var result = await _incidentService.GetMyIncidentsAsync(userId);
+            return Ok(result);
+        }
     }
 }

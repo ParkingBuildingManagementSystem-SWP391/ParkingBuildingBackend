@@ -30,4 +30,13 @@ namespace ParkingBuilding.Repository.Entities
         public const string MonthlyCardPendingPayment = "PendingPayment"; // Chờ thanh toán
         public const string MonthlyCardCancelled = "Cancelled"; // Người dùng hủy thẻ
     }
+
+    public static class IncidentTypes
+    {
+        public const string LostTicket = "Lost Ticket";
+        public const string VehicleDamage = "Vehicle Damage";
+        public const string EquipmentMalfunction = "Equipment Malfunction";
+        public const string TicketMismatch = "TicketMismatch";
+        public const string PlateMismatch = "PlateMismatch";
+    }
 }

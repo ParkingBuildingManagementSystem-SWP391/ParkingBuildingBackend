@@ -32,5 +32,7 @@ namespace ParkingBuilding.Service.IService
         public const string ShiftParkingPriceUpdate = "ShiftParkingPriceUpdate";
         public const string MembershipPriceUpdate = "MembershipPriceUpdate";
         public const string WalletTransaction = "WalletTransaction";
+        public const string IncidentResolved = "IncidentResolved";
+        public const string IncidentCreated = "IncidentCreated";
     }
 }

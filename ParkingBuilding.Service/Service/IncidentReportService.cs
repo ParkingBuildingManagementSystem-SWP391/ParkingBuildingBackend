@@ -15,47 +15,66 @@ namespace ParkingBuilding.Service.Service
         private readonly IIncidentReportRepository _incidentRepo;
         private readonly IUnitOfWork _unitOfWork;
         private readonly ParkingManagementDbContext _context;
+        private readonly INotificationService _notificationService;
 
         public IncidentReportService(
             IIncidentReportRepository incidentRepo,
             IUnitOfWork unitOfWork,
-            ParkingManagementDbContext context)
+            ParkingManagementDbContext context,
+            INotificationService notificationService)
         {
             _incidentRepo = incidentRepo;
             _unitOfWork = unitOfWork;
             _context = context;
+            _notificationService = notificationService;
         }
 
         public async Task<IncidentReportResponseDto> CreateIncidentAsync(CreateIncidentReportDto dto, int reportedUserId)
         {
-            if (string.IsNullOrWhiteSpace(dto.LicenseVehicle))
-            {
-                throw new ArgumentException("License plate is required.");
-            }
-
-            var normalizedLicense = dto.LicenseVehicle.Trim().ToUpper();
-            var session = await _context.ParkingSessions
-                .Where(s => s.LicenseVehicle.Trim().ToUpper() == normalizedLicense
-                         && s.SessionStatus.Trim() == ParkingStatuses.SessionInProgress
-                         && !s.IsDeleted)
-                .OrderByDescending(s => s.CheckInTime)
-                .ThenByDescending(s => s.SessionId)
-                .FirstOrDefaultAsync();
-
-            if (session == null)
-            {
-                throw new ArgumentException("No active parking session was found for this license plate.");
-            }
-
             var user = await _context.Users.Include(u => u.Role).FirstOrDefaultAsync(u => u.UserId == reportedUserId);
-            if (user != null && user.Role?.RoleName == "Registered_Driver" && session.UserId != reportedUserId)
+
+            // Staff members cannot submit staff conduct complaints
+            if (user != null && user.Role?.RoleName == "Staff" && 
+                (dto.IssueType.Equals("Staff Conduct", StringComparison.OrdinalIgnoreCase) || 
+                 dto.IssueType.Equals("Thái độ nhân viên", StringComparison.OrdinalIgnoreCase)))
             {
-                throw new UnauthorizedAccessException("You do not have permission to report an incident for another driver's parking session.");
+                throw new ArgumentException("Staff members cannot submit staff conduct complaints.");
+            }
+
+            bool isEquipmentIncident = dto.IssueType.Equals(IncidentTypes.EquipmentMalfunction, StringComparison.OrdinalIgnoreCase);
+            ParkingSession? session = null;
+
+            if (!isEquipmentIncident || !string.IsNullOrWhiteSpace(dto.LicenseVehicle))
+            {
+                if (string.IsNullOrWhiteSpace(dto.LicenseVehicle))
+                {
+                    throw new ArgumentException("License plate is required for vehicle or ticket related incidents.");
+                }
+
+                var normalizedLicense = dto.LicenseVehicle.Trim().ToUpper();
+                session = await _context.ParkingSessions
+                    .Where(s => s.LicenseVehicle.Trim().ToUpper() == normalizedLicense
+                             && (s.SessionStatus.Trim() == ParkingStatuses.SessionInProgress 
+                              || s.SessionStatus.Trim() == ParkingStatuses.SessionCompleted)
+                             && !s.IsDeleted)
+                    .OrderByDescending(s => s.CheckInTime)
+                    .ThenByDescending(s => s.SessionId)
+                    .FirstOrDefaultAsync();
+
+                if (session == null && !isEquipmentIncident)
+                {
+                    throw new ArgumentException("No active or recently completed parking session was found for this license plate.");
+                }
+
+                if (user != null && user.Role?.RoleName == "Registered_Driver" && session != null && session.UserId != reportedUserId)
+                {
+                    throw new UnauthorizedAccessException("You do not have permission to report an incident for another driver's parking session.");
+                }
             }
 
             var incident = new IncidentReport
             {
-                SessionId = session.SessionId,
+                SessionId = session?.SessionId,
                 IssueType = dto.IssueType,
                 Description = dto.Description,
                 ImageProofUrl = dto.ImageProofUrl,
@@ -84,6 +103,19 @@ namespace ParkingBuilding.Service.Service
             return MapToResponseDto(incident);
         }
 
+        public async Task<List<IncidentReportResponseDto>> GetMyIncidentsAsync(int userId)
+        {
+            var incidents = await _context.IncidentReports
+                .Include(i => i.Session)
+                .Include(i => i.Reported)
+                .Include(i => i.Resolved)
+                .Where(i => i.ReportedId == userId)
+                .OrderByDescending(i => i.IncidentId)
+                .ToListAsync();
+
+            return incidents.Select(MapToResponseDto).ToList();
+        }
+
         public async Task<bool> ResolveIncidentAsync(int incidentId, ResolveIncidentReportDto dto, int resolvedUserId)
         {
             var incident = await _incidentRepo.GetByIdAsync(incidentId);
@@ -98,7 +130,7 @@ namespace ParkingBuilding.Service.Service
             incident.ResolutionNotes = dto.ResolutionNotes;
             incident.FineAmount = 0;
 
-            if (incident.IssueType.Equals("Lost Ticket", StringComparison.OrdinalIgnoreCase) && incident.SessionId.HasValue)
+            if (incident.IssueType.Equals(IncidentTypes.LostTicket, StringComparison.OrdinalIgnoreCase) && incident.SessionId.HasValue)
             {
                 var session = await _unitOfWork.Sessions.GetByIdAsync(incident.SessionId.Value);
                 if (session != null && session.SessionStatus == ParkingStatuses.SessionInProgress)
@@ -119,15 +151,32 @@ namespace ParkingBuilding.Service.Service
                 }
             }
 
-            return await _unitOfWork.SaveChangesAsync();
+            var isSaved = await _unitOfWork.SaveChangesAsync();
+            if (isSaved)
+            {
+                try
+                {
+                    var resolver = await _context.Users.FirstOrDefaultAsync(u => u.UserId == resolvedUserId);
+                    string resolverName = resolver?.Username ?? "Quản lý";
+                    string title = $"Sự cố #{incident.IncidentId} đã được giải quyết";
+                    string content = $"Sự cố '{incident.IssueType}' do bạn báo cáo đã được giải quyết bởi {resolverName}. Ghi chú: {dto.ResolutionNotes}";
+                    await _notificationService.SendToUserAsync(incident.ReportedId, title, content, NotificationTypes.IncidentResolved);
+                }
+                catch
+                {
+                    // Ignore notification exceptions so transaction result is not affected
+                }
+            }
+
+            return isSaved;
         }
 
         private IncidentReportResponseDto MapToResponseDto(IncidentReport i)
         {
             var severity = i.IssueType switch
             {
-                "Lost Ticket" or "Vehicle Damage" => "Critical",
-                "Equipment Malfunction" => "Warning",
+                IncidentTypes.LostTicket or IncidentTypes.VehicleDamage or IncidentTypes.TicketMismatch or IncidentTypes.PlateMismatch => "Critical",
+                IncidentTypes.EquipmentMalfunction => "Warning",
                 _ => "Info"
             };
 
