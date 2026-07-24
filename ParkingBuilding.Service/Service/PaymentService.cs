@@ -516,6 +516,16 @@ namespace ParkingBuilding.Service.Service
                     _context.ParkingSlots.Update(slot);
                 }
 
+                var activeShift = await _context.StaffShifts
+                    .FirstOrDefaultAsync(s => s.StaffId == currentStaffId && s.Status == "Active");
+
+                if (activeShift != null)
+                {
+                    activeShift.SystemCash += totalSessionAmount;
+                    activeShift.TotalTransactions += 1;
+                    _context.StaffShifts.Update(activeShift);
+                }
+
                 _context.Invoices.Update(invoice);
                 _context.ParkingSessions.Update(session);
                 await _context.SaveChangesAsync();
