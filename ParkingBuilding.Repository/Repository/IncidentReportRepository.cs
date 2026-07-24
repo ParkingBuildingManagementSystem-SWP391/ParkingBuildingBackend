@@ -31,7 +31,8 @@ namespace ParkingBuilding.Repository.Repository
 
             if (!string.IsNullOrWhiteSpace(status))
             {
-                query = query.Where(i => i.Status == status);
+                var targetStatus = status.Equals("Open", StringComparison.OrdinalIgnoreCase) ? "Pending" : status;
+                query = query.Where(i => i.Status == targetStatus);
             }
 
             if (!string.IsNullOrWhiteSpace(issueType))
