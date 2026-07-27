@@ -33,12 +33,75 @@ namespace ParkingBuilding.Service.Service
         {
             var user = await _context.Users.Include(u => u.Role).FirstOrDefaultAsync(u => u.UserId == reportedUserId);
 
-            // Staff members cannot submit staff conduct complaints
-            if (user != null && user.Role?.RoleName == "Staff" && 
-                (dto.IssueType.Equals("Staff Conduct", StringComparison.OrdinalIgnoreCase) || 
-                 dto.IssueType.Equals("Thái độ nhân viên", StringComparison.OrdinalIgnoreCase)))
+            string? normalizedIssue = null;
+            var input = dto.IssueType?.Trim();
+
+            if (string.IsNullOrEmpty(input))
             {
-                throw new ArgumentException("Staff members cannot submit staff conduct complaints.");
+                throw new ArgumentException("Loại sự cố là bắt buộc.");
+            }
+
+            if (input.Equals("Lost Ticket", StringComparison.OrdinalIgnoreCase) || input.Equals("Mất thẻ xe", StringComparison.OrdinalIgnoreCase))
+                normalizedIssue = IncidentTypes.LostTicket;
+            else if (input.Equals("Vehicle Damage", StringComparison.OrdinalIgnoreCase) || input.Equals("Hỏng xe", StringComparison.OrdinalIgnoreCase))
+                normalizedIssue = IncidentTypes.VehicleDamage;
+            else if (input.Equals("Lost Property", StringComparison.OrdinalIgnoreCase) || input.Equals("Mất đồ", StringComparison.OrdinalIgnoreCase))
+                normalizedIssue = IncidentTypes.LostProperty;
+            else if (input.Equals("Staff Attitude", StringComparison.OrdinalIgnoreCase) || input.Equals("Thái độ nhân viên", StringComparison.OrdinalIgnoreCase) || input.Equals("Thái đồ nhân viên", StringComparison.OrdinalIgnoreCase) || input.Equals("Staff Conduct", StringComparison.OrdinalIgnoreCase))
+                normalizedIssue = IncidentTypes.StaffAttitude;
+            else if (input.Equals("Other", StringComparison.OrdinalIgnoreCase) || input.Equals("Khác", StringComparison.OrdinalIgnoreCase))
+                normalizedIssue = IncidentTypes.Other;
+            else if (input.Equals("Equipment Malfunction", StringComparison.OrdinalIgnoreCase) || input.Equals("Lỗi thiết bị", StringComparison.OrdinalIgnoreCase))
+                normalizedIssue = IncidentTypes.EquipmentMalfunction;
+            else if (input.Equals("Vehicle Collision", StringComparison.OrdinalIgnoreCase) || input.Equals("Va chạm xe", StringComparison.OrdinalIgnoreCase))
+                normalizedIssue = IncidentTypes.VehicleCollision;
+
+            if (normalizedIssue == null)
+            {
+                throw new ArgumentException($"Loại sự cố '{dto.IssueType}' không hợp lệ hoặc không được hỗ trợ.");
+            }
+
+            dto.IssueType = normalizedIssue;
+
+            if (user == null)
+            {
+                throw new UnauthorizedAccessException("Tài khoản của bạn không tồn tại hoặc không hợp lệ.");
+            }
+
+            var roleName = user.Role?.RoleName;
+            if (roleName == "Registered_Driver")
+            {
+                var allowedDriverTypes = new[] 
+                { 
+                    IncidentTypes.LostTicket, 
+                    IncidentTypes.VehicleDamage, 
+                    IncidentTypes.LostProperty, 
+                    IncidentTypes.StaffAttitude, 
+                    IncidentTypes.Other 
+                };
+                if (!allowedDriverTypes.Contains(normalizedIssue))
+                {
+                    throw new ArgumentException("Tài xế không có quyền chọn loại sự cố này.");
+                }
+            }
+            else if (roleName == "Staff")
+            {
+                var allowedStaffTypes = new[] 
+                { 
+                    IncidentTypes.EquipmentMalfunction, 
+                    IncidentTypes.LostTicket, 
+                    IncidentTypes.VehicleCollision, 
+                    IncidentTypes.LostProperty, 
+                    IncidentTypes.Other 
+                };
+                if (!allowedStaffTypes.Contains(normalizedIssue))
+                {
+                    throw new ArgumentException("Nhân viên không có quyền chọn loại sự cố này.");
+                }
+            }
+            else
+            {
+                throw new UnauthorizedAccessException("Bạn không có quyền báo cáo sự cố.");
             }
 
             bool isEquipmentIncident = dto.IssueType.Equals(IncidentTypes.EquipmentMalfunction, StringComparison.OrdinalIgnoreCase);
@@ -175,8 +238,8 @@ namespace ParkingBuilding.Service.Service
         {
             var severity = i.IssueType switch
             {
-                IncidentTypes.LostTicket or IncidentTypes.VehicleDamage or IncidentTypes.TicketMismatch or IncidentTypes.PlateMismatch => "Critical",
-                IncidentTypes.EquipmentMalfunction => "Warning",
+                IncidentTypes.LostTicket or IncidentTypes.VehicleDamage or IncidentTypes.TicketMismatch or IncidentTypes.PlateMismatch or IncidentTypes.VehicleCollision => "Critical",
+                IncidentTypes.EquipmentMalfunction or IncidentTypes.LostProperty => "Warning",
                 _ => "Info"
             };
 

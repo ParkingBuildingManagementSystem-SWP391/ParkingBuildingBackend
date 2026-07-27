@@ -46,19 +46,23 @@ namespace ParkingBuilding.Repository.Repository
                     query = query.Where(i => i.IssueType == IncidentTypes.LostTicket
                                           || i.IssueType == IncidentTypes.VehicleDamage
                                           || i.IssueType == IncidentTypes.TicketMismatch
-                                          || i.IssueType == IncidentTypes.PlateMismatch);
+                                          || i.IssueType == IncidentTypes.PlateMismatch
+                                          || i.IssueType == IncidentTypes.VehicleCollision);
                 }
                 else if (severity.Equals("Warning", StringComparison.OrdinalIgnoreCase))
                 {
-                    query = query.Where(i => i.IssueType == IncidentTypes.EquipmentMalfunction);
+                    query = query.Where(i => i.IssueType == IncidentTypes.EquipmentMalfunction
+                                          || i.IssueType == IncidentTypes.LostProperty);
                 }
                 else if (severity.Equals("Info", StringComparison.OrdinalIgnoreCase))
                 {
                     query = query.Where(i => i.IssueType != IncidentTypes.LostTicket 
-                                         && i.IssueType != IncidentTypes.VehicleDamage 
-                                         && i.IssueType != IncidentTypes.TicketMismatch
-                                         && i.IssueType != IncidentTypes.PlateMismatch
-                                         && i.IssueType != IncidentTypes.EquipmentMalfunction);
+                                          && i.IssueType != IncidentTypes.VehicleDamage 
+                                          && i.IssueType != IncidentTypes.TicketMismatch
+                                          && i.IssueType != IncidentTypes.PlateMismatch
+                                          && i.IssueType != IncidentTypes.EquipmentMalfunction
+                                          && i.IssueType != IncidentTypes.VehicleCollision
+                                          && i.IssueType != IncidentTypes.LostProperty);
                 }
             }
 

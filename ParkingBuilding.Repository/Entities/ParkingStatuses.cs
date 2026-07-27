@@ -38,5 +38,11 @@ namespace ParkingBuilding.Repository.Entities
         public const string EquipmentMalfunction = "Equipment Malfunction";
         public const string TicketMismatch = "TicketMismatch";
         public const string PlateMismatch = "PlateMismatch";
+
+        // New Incident Types
+        public const string LostProperty = "Lost Property";
+        public const string StaffAttitude = "Staff Attitude";
+        public const string VehicleCollision = "Vehicle Collision";
+        public const string Other = "Other";
     }
 }
