@@ -211,11 +211,19 @@ namespace ParkingBuilding.Service.Service
 
                     if (sessions.Count > 0)
                     {
-                        var normCheckout = cleanCheckoutPlate!.Replace("-", "").Replace(".", "").Replace(" ", "").ToUpper();
-                        session = sessions.FirstOrDefault(s => s.LicenseVehicle != null && s.LicenseVehicle.Replace("-", "").Replace(".", "").Replace(" ", "").ToUpper() == normCheckout);
-                        if (session == null)
+                        var bikeSession = sessions.FirstOrDefault(s => s.TypeId == 1);
+                        if (bikeSession != null)
                         {
-                            session = sessions.FirstOrDefault();
+                            session = bikeSession;
+                        }
+                        else
+                        {
+                            var normCheckout = cleanCheckoutPlate!.Replace("-", "").Replace(".", "").Replace(" ", "").ToUpper();
+                            session = sessions.FirstOrDefault(s => s.LicenseVehicle != null && s.LicenseVehicle.Replace("-", "").Replace(".", "").Replace(" ", "").ToUpper() == normCheckout);
+                            if (session == null)
+                            {
+                                session = sessions.FirstOrDefault();
+                            }
                         }
                     }
                 }
@@ -1343,14 +1351,22 @@ namespace ParkingBuilding.Service.Service
 
                 if (sessions.Count > 0)
                 {
-                    if (!string.IsNullOrWhiteSpace(detectedPlate) && detectedPlate.Trim().ToLower() != "string")
+                    var bikeSession = sessions.FirstOrDefault(s => s.TypeId == 1);
+                    if (bikeSession != null)
                     {
-                        var normDetected = detectedPlate.Trim().Replace("-", "").Replace(".", "").Replace(" ", "").ToUpper();
-                        session = sessions.FirstOrDefault(s => s.LicenseVehicle.Trim().Replace("-", "").Replace(".", "").Replace(" ", "").ToUpper() == normDetected);
+                        session = bikeSession;
                     }
-                    if (session == null)
+                    else
                     {
-                        session = sessions.FirstOrDefault();
+                        if (!string.IsNullOrWhiteSpace(detectedPlate) && detectedPlate.Trim().ToLower() != "string")
+                        {
+                            var normDetected = detectedPlate.Trim().Replace("-", "").Replace(".", "").Replace(" ", "").ToUpper();
+                            session = sessions.FirstOrDefault(s => s.LicenseVehicle.Trim().Replace("-", "").Replace(".", "").Replace(" ", "").ToUpper() == normDetected);
+                        }
+                        if (session == null)
+                        {
+                            session = sessions.FirstOrDefault();
+                        }
                     }
                 }
 
