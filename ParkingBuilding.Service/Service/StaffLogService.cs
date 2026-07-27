@@ -53,6 +53,26 @@ namespace ParkingBuilding.Service.Service
             };
         }
 
+        private async Task<(decimal cashAmount, int transactionCount)> CalculateShiftRevenueAsync(int staffId, DateTime startTime, DateTime? endTime)
+        {
+            var query = _context.Invoices
+                .Where(i => i.StaffId == staffId 
+                         && i.PaymentMethod == "CASH" 
+                         && i.PaymentStatus == "SUCCESS"
+                         && i.PaymentTime != null
+                         && i.PaymentTime >= startTime);
+
+            if (endTime.HasValue)
+            {
+                query = query.Where(i => i.PaymentTime <= endTime.Value);
+            }
+
+            decimal cashAmount = await query.SumAsync(i => i.TotalAmount);
+            int transactionCount = await query.CountAsync();
+
+            return (cashAmount, transactionCount);
+        }
+
         public async Task<EndShiftResponse> EndShiftAsync(int staffId, EndShiftRequest request)
         {
             var shift = await _context.StaffShifts
@@ -62,6 +82,10 @@ namespace ParkingBuilding.Service.Service
             {
                 throw new InvalidOperationException("Không tìm thấy ca trực đang hoạt động nào của bạn.");
             }
+
+            var revenue = await CalculateShiftRevenueAsync(staffId, shift.StartTime, null);
+            shift.SystemCash = revenue.cashAmount;
+            shift.TotalTransactions = revenue.transactionCount;
 
             shift.EndTime = DateTime.UtcNow;
             shift.ActualCash = request.ActualCash;
@@ -117,6 +141,10 @@ namespace ParkingBuilding.Service.Service
 
             if (shift == null) return null;
 
+            var revenue = await CalculateShiftRevenueAsync(staffId, shift.StartTime, null);
+            shift.SystemCash = revenue.cashAmount;
+            shift.TotalTransactions = revenue.transactionCount;
+
             return new StaffShiftDto
             {
                 ShiftId = shift.ShiftId,
@@ -168,20 +196,34 @@ namespace ParkingBuilding.Service.Service
                 .OrderByDescending(s => s.StartTime)
                 .ToListAsync();
 
-            return shifts.Select(s => new StaffShiftDto
+            var dtos = new List<StaffShiftDto>();
+            foreach (var s in shifts)
             {
-                ShiftId = s.ShiftId,
-                StaffId = s.StaffId,
-                StaffUsername = s.Staff?.Username ?? "N/A",
-                StartTime = s.StartTime,
-                EndTime = s.EndTime,
-                SystemCash = s.SystemCash,
-                ActualCash = s.ActualCash,
-                Difference = s.Difference,
-                TotalTransactions = s.TotalTransactions,
-                Status = s.Status,
-                Notes = s.Notes
-            }).ToList();
+                decimal systemCash = s.SystemCash;
+                int totalTransactions = s.TotalTransactions;
+                if (s.Status == "Active")
+                {
+                    var calculated = await CalculateShiftRevenueAsync(s.StaffId, s.StartTime, null);
+                    systemCash = calculated.cashAmount;
+                    totalTransactions = calculated.transactionCount;
+                }
+
+                dtos.Add(new StaffShiftDto
+                {
+                    ShiftId = s.ShiftId,
+                    StaffId = s.StaffId,
+                    StaffUsername = s.Staff?.Username ?? "N/A",
+                    StartTime = s.StartTime,
+                    EndTime = s.EndTime,
+                    SystemCash = systemCash,
+                    ActualCash = s.ActualCash,
+                    Difference = s.Difference,
+                    TotalTransactions = totalTransactions,
+                    Status = s.Status,
+                    Notes = s.Notes
+                });
+            }
+            return dtos;
         }
 
         public async Task<List<StaffActivityLogDto>> GetActivityLogsForManagerAsync(int? staffId, string? actionType, DateTime? startDate, DateTime? endDate)
