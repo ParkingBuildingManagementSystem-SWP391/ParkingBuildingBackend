@@ -7,6 +7,7 @@ namespace ParkingBuilding.Service.DTOs
         public int ShiftId { get; set; }
         public int StaffId { get; set; }
         public DateTime StartTime { get; set; }
+        public decimal SystemCash { get; set; }
         public string Status { get; set; } = null!;
     }
 
