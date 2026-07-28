@@ -49,6 +49,7 @@ namespace ParkingBuilding.Service.Service
                 ShiftId = shift.ShiftId,
                 StaffId = shift.StaffId,
                 StartTime = shift.StartTime,
+                SystemCash = shift.SystemCash,
                 Status = shift.Status
             };
         }
