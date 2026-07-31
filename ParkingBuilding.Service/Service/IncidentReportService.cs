@@ -202,57 +202,16 @@ namespace ParkingBuilding.Service.Service
             {
                 var session = await _context.ParkingSessions
                     .Include(s => s.Ticket)
-                    .Include(s => s.Type)
-                    .Include(s => s.Invoice)
                     .FirstOrDefaultAsync(s => s.SessionId == incident.SessionId.Value);
 
-                if (session != null && session.SessionStatus == ParkingStatuses.SessionInProgress)
+                if (session != null)
                 {
-                    session.SessionStatus = ParkingStatuses.SessionCompleted;
-                    session.CheckOutTime = DateTime.UtcNow;
-
+                    // Khóa thẻ cũ để ngăn ngừa kẻ gian dùng lại thẻ này
                     if (session.Ticket != null)
                     {
                         session.Ticket.TicketStatus = "Blocked";
                     }
-
-                    var slot = await _unitOfWork.Slots.GetByIdAsync(session.SlotId);
-                    if (slot != null)
-                    {
-                        slot.SlotStatus = ParkingStatuses.SlotAvailable;
-                    }
-
-                    // Tự động tính tiền đỗ xe theo giờ + Tiền phạt mất thẻ để chốt Tổng hóa đơn
-                    decimal fine = incident.FineAmount ?? 0;
-                    decimal parkingFee = 0;
-                    if (session.CheckInTime.HasValue && session.Type != null)
-                    {
-                        parkingFee = ParkingPricingCalculator.CalculateFee(session.CheckInTime.Value, session.CheckOutTime.Value, session.Type);
-                    }
-                    decimal totalAmount = parkingFee + fine;
-
-                    var invoice = session.Invoice;
-                    if (invoice == null)
-                    {
-                        invoice = new Invoice
-                        {
-                            SessionId = session.SessionId,
-                            TotalAmount = totalAmount,
-                            PaymentMethod = "CASH",
-                            PaymentStatus = "SUCCESS",
-                            PaymentTime = DateTime.Now,
-                            CreatedDate = DateTime.Now,
-                            StaffId = resolvedUserId
-                        };
-                        await _context.Invoices.AddAsync(invoice);
-                    }
-                    else
-                    {
-                        invoice.TotalAmount = totalAmount;
-                        invoice.PaymentStatus = "SUCCESS";
-                        invoice.PaymentTime = DateTime.Now;
-                        _context.Invoices.Update(invoice);
-                    }
+                    // Giữ phiên đỗ xe ở trạng thái SessionInProgress để xe tiến hành Check-out tại cổng ra
                 }
             }
 
