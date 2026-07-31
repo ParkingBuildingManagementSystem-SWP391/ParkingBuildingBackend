@@ -21,12 +21,33 @@ namespace ParkingBuilding.Service.Service
         public async Task<StartShiftResponse> StartShiftAsync(int staffId)
         {
             // Kiểm tra xem nhân viên đã có ca trực nào đang hoạt động chưa
-            var existingActiveShift = await _context.StaffShifts
-                .FirstOrDefaultAsync(s => s.StaffId == staffId && s.Status == "Active");
+            var existingActiveShifts = await _context.StaffShifts
+                .Where(s => s.StaffId == staffId && s.Status == "Active")
+                .OrderByDescending(s => s.StartTime)
+                .ToListAsync();
 
-            if (existingActiveShift != null)
+            if (existingActiveShifts.Any())
             {
-                throw new InvalidOperationException("Bạn hiện đang có ca trực chưa đóng. Vui lòng đóng ca trực hiện tại trước.");
+                var now = DateTime.UtcNow;
+                // Tự động đóng các ca quá hạn (> 24 giờ) bị treo
+                foreach (var oldShift in existingActiveShifts)
+                {
+                    if ((now - oldShift.StartTime).TotalHours >= 24)
+                    {
+                        oldShift.Status = "Closed";
+                        oldShift.EndTime = oldShift.StartTime.AddHours(24);
+                        oldShift.Notes = (oldShift.Notes ?? "") + " [Tự động đóng do quá 24h]";
+                        _context.StaffShifts.Update(oldShift);
+                    }
+                }
+                await _context.SaveChangesAsync();
+
+                // Kiểm tra lại xem có ca Active nào thực sự còn hiệu lực không
+                var stillActive = existingActiveShifts.FirstOrDefault(s => s.Status == "Active");
+                if (stillActive != null)
+                {
+                    throw new InvalidOperationException("Bạn hiện đang có ca trực chưa đóng. Vui lòng đóng ca trực hiện tại trước khi mở ca mới.");
+                }
             }
 
             var shift = new StaffShift
@@ -56,19 +77,26 @@ namespace ParkingBuilding.Service.Service
 
         private async Task<(decimal cashAmount, int transactionCount)> CalculateShiftRevenueAsync(int staffId, DateTime startTime, DateTime? endTime)
         {
+            var utcStart = startTime.Kind != DateTimeKind.Utc
+                ? DateTime.SpecifyKind(startTime, DateTimeKind.Utc)
+                : startTime;
+
             var query = _context.Invoices
                 .Where(i => i.StaffId == staffId 
                          && i.PaymentMethod == "CASH" 
                          && i.PaymentStatus == "SUCCESS"
                          && i.PaymentTime != null
-                         && i.PaymentTime >= startTime);
+                         && i.PaymentTime >= utcStart);
 
             if (endTime.HasValue)
             {
-                query = query.Where(i => i.PaymentTime <= endTime.Value);
+                var utcEnd = endTime.Value.Kind != DateTimeKind.Utc
+                    ? DateTime.SpecifyKind(endTime.Value, DateTimeKind.Utc)
+                    : endTime.Value;
+                query = query.Where(i => i.PaymentTime <= utcEnd);
             }
 
-            decimal cashAmount = await query.SumAsync(i => i.TotalAmount);
+            decimal cashAmount = await query.SumAsync(i => (decimal?)i.TotalAmount) ?? 0m;
             int transactionCount = await query.CountAsync();
 
             return (cashAmount, transactionCount);
@@ -77,7 +105,9 @@ namespace ParkingBuilding.Service.Service
         public async Task<EndShiftResponse> EndShiftAsync(int staffId, EndShiftRequest request)
         {
             var shift = await _context.StaffShifts
-                .FirstOrDefaultAsync(s => s.StaffId == staffId && s.Status == "Active");
+                .Where(s => s.StaffId == staffId && s.Status == "Active")
+                .OrderByDescending(s => s.StartTime)
+                .FirstOrDefaultAsync();
 
             if (shift == null)
             {
@@ -116,7 +146,9 @@ namespace ParkingBuilding.Service.Service
         {
             // Tìm ca trực đang hoạt động của nhân viên để gán vào nhật ký (nếu có)
             var activeShift = await _context.StaffShifts
-                .FirstOrDefaultAsync(s => s.StaffId == staffId && s.Status == "Active");
+                .Where(s => s.StaffId == staffId && s.Status == "Active")
+                .OrderByDescending(s => s.StartTime)
+                .FirstOrDefaultAsync();
 
             var log = new StaffActivityLog
             {
@@ -138,7 +170,9 @@ namespace ParkingBuilding.Service.Service
         {
             var shift = await _context.StaffShifts
                 .Include(s => s.Staff)
-                .FirstOrDefaultAsync(s => s.StaffId == staffId && s.Status == "Active");
+                .Where(s => s.StaffId == staffId && s.Status == "Active")
+                .OrderByDescending(s => s.StartTime)
+                .FirstOrDefaultAsync();
 
             if (shift == null) return null;
 
