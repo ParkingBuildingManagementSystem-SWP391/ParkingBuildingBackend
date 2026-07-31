@@ -10,6 +10,12 @@ using System.Threading.Tasks;
 
 namespace ParkingBuilding.Service.Service
 {
+    /// <summary>
+    /// SERVICE LAYER: Xử lý nghiệp vụ Check-in xe vào bãi đỗ.
+    /// - CHỨC NĂNG CHÍNH: Phân tích mã vé/QR, xác thực ca trực nhân viên, đối soát biển số, tự động gán vị trí đỗ và khởi tạo phiên đỗ xe mới (InProgress).
+    /// - ĐẦU VÀO (Input): Nhận DTO `CheckInRequest` hoặc `WalkInRequest` truyền từ `ParkingController`.
+    /// - ĐẦU RA (Output): Trả về `ScanCheckInResponse` hoặc `WalkInResponse` (kèm mã vé, tên vị trí đỗ, trạng thái) cho `ParkingController`.
+    /// </summary>
     public class CheckInService : ICheckInService
     {
         private readonly IParkingRepository _parkingRepository;
@@ -420,6 +426,12 @@ namespace ParkingBuilding.Service.Service
             };
         }
 
+        /// <summary>
+        /// HÀM: Check-in cho khách vãng lai (không đặt trước).
+        /// - CHỨC NĂNG: Khóa DB chống tranh chấp (Pessimistic Lock), tự động tìm và gán 1 ô đỗ còn trống, tạo mã vé vãng lai mới (`WK_...`) và lưu phiên đỗ.
+        /// - ĐẦU VÀO: `WalkInRequest request` (Loại xe, Biển số/Ảnh), `int currentStaffId` (ID nhân viên ca trực).
+        /// - ĐẦU RA: `WalkInResponse` (Mã vé vãng lai `WK_...`, Tên ô đỗ `SlotName`, Trạng thái đỗ).
+        /// </summary>
         public async Task<WalkInResponse> WalkInCheckInAsync(WalkInRequest request, int currentStaffId)
         {
             var activeShift = await _staffLogService.GetActiveShiftAsync(currentStaffId);
@@ -555,6 +567,12 @@ namespace ParkingBuilding.Service.Service
             };
         }
 
+        /// <summary>
+        /// HÀM: Quét mã QR tại cổng Check-in.
+        /// - CHỨC NĂNG: Giải mã chuỗi `ticketCode` từ máy quét QR, trích xuất biển số/TicketCode và tiến hành Check-in tự động.
+        /// - ĐẦU VÀO: `string ticketCode` (Chuỗi QR/vé), `string? detectedPlate` (Biển số AI nhận diện), `int currentStaffId` (ID nhân viên ca trực).
+        /// - ĐẦU RA: `ScanCheckInResponse` (Kết quả Check-in, thông tin vị trí đỗ, tài xế).
+        /// </summary>
         public async Task<ScanCheckInResponse> ScanQrCheckInAsync(string ticketCode, string? detectedPlate, int currentStaffId)
         {
             var activeShift = await _staffLogService.GetActiveShiftAsync(currentStaffId);
