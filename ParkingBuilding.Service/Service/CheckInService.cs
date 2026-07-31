@@ -635,6 +635,14 @@ namespace ParkingBuilding.Service.Service
 
             var slot = availableMs.Slot!;
 
+            var sessionTicket = new Ticket
+            {
+                TicketCode = membershipCard.Ticket.TicketCode,
+                TicketStatus = ParkingStatuses.TicketActive
+            };
+            await _context.Tickets.AddAsync(sessionTicket);
+            await _context.SaveChangesAsync();
+
             var newSession = new ParkingSession
             {
                 UserId = membershipCard.UserId,
@@ -644,7 +652,7 @@ namespace ParkingBuilding.Service.Service
                 CheckInTime = DateTime.UtcNow,
                 CheckInImageUrl = checkInImageUrl,
                 SessionStatus = ParkingStatuses.SessionInProgress,
-                TicketId = membershipCard.TicketId,
+                TicketId = sessionTicket.TicketId,
                 IsDeleted = false
             };
 
