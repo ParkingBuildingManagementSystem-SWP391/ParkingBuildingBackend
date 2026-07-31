@@ -88,8 +88,12 @@ namespace ParkingBuilding.Service.Service
                 : null;
 
             bool isBicycle = IsBicycle(membershipCard, session);
+            // Xe đạp booking: dùng session.LicenseVehicle (BIKE_{GUID} lưu trong DB khi đặt chỗ) để check conflict.
+            // Không dùng BIKE_BOOKING_{ticket} vì format đó không trùng với giá trị thật trong DB.
             string? cleanLicense = isBicycle
-                ? (membershipCard != null ? $"BIKE_MEMBERSHIP_{cleanTicketCode}" : $"BIKE_BOOKING_{cleanTicketCode}")
+                ? (membershipCard != null
+                    ? $"BIKE_MEMBERSHIP_{cleanTicketCode}"
+                    : (session?.LicenseVehicle?.Trim().ToUpper() ?? $"BIKE_BOOKING_{cleanTicketCode}"))
                 : ResolvePlate(request.LicenseVehicle, throwOnInvalidFormat: true);
 
             var conflict = await GetActiveParkingConflictAsync(cleanLicense);
@@ -270,8 +274,11 @@ namespace ParkingBuilding.Service.Service
                 : null;
 
             bool isBicycle = IsBicycle(membershipCard, session);
+            // Xe đạp booking: dùng session.LicenseVehicle (BIKE_{GUID} lưu trong DB) để check conflict.
             string? cleanLicense = isBicycle
-                ? (membershipCard != null ? $"BIKE_MEMBERSHIP_{cleanTicketCode}" : $"BIKE_BOOKING_{cleanTicketCode}")
+                ? (membershipCard != null
+                    ? $"BIKE_MEMBERSHIP_{cleanTicketCode}"
+                    : (session?.LicenseVehicle?.Trim().ToUpper() ?? $"BIKE_BOOKING_{cleanTicketCode}"))
                 : ResolvePlate(detectedPlate, throwOnInvalidFormat: false);
 
             var conflict = await GetActiveParkingConflictAsync(cleanLicense);

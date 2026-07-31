@@ -116,47 +116,76 @@ namespace ParkingBuilding.Service.Service.Helpers
             return dt;
         }
 
-        // Tính số phút đỗ xe trong Ca Ngày (6h - 18h)
+        // Tính số phút đỗ xe trong Ca Ngày (6h - 18h) bằng cách tính giao của interval
+        // (hiệu năng O(số ngày), thay thế vòng lặp phút cũ)
         private static double GetMinutesInDayShift(DateTime start, DateTime end)
         {
             start = NormalizeToUtc(start);
-            end = NormalizeToUtc(end);
+            end   = NormalizeToUtc(end);
 
             var tz = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
             DateTime localStart = TimeZoneInfo.ConvertTimeFromUtc(start, tz);
-            DateTime localEnd = TimeZoneInfo.ConvertTimeFromUtc(end, tz);
+            DateTime localEnd   = TimeZoneInfo.ConvertTimeFromUtc(end, tz);
 
             double minutesInDay = 0;
-            for (DateTime t = localStart; t < localEnd; t = t.AddMinutes(1))
+            DateTime currentDay = localStart.Date;
+
+            while (currentDay <= localEnd.Date)
             {
-                int hour = t.Hour;
-                if (hour >= DayShiftStart && hour < NightShiftStart)
-                {
-                    minutesInDay++;
-                }
+                // Ca ngày trong ngày hiện tại: [06:00, 18:00)
+                DateTime shiftStart = currentDay.AddHours(DayShiftStart);
+                DateTime shiftEnd   = currentDay.AddHours(NightShiftStart);
+
+                // Phần giao của [localStart, localEnd) và [shiftStart, shiftEnd)
+                DateTime overlapStart = localStart > shiftStart ? localStart : shiftStart;
+                DateTime overlapEnd   = localEnd   < shiftEnd   ? localEnd   : shiftEnd;
+
+                if (overlapEnd > overlapStart)
+                    minutesInDay += (overlapEnd - overlapStart).TotalMinutes;
+
+                currentDay = currentDay.AddDays(1);
             }
+
             return minutesInDay;
         }
 
-        // Tính số phút đỗ xe trong Ca Đêm (18h - 6h hôm sau)
+        // Tính số phút đỗ xe trong Ca Đêm (18h - 6h hôm sau = [00:00,06:00) + [18:00,24:00))
+        // (hiệu năng O(số ngày), thay thế vòng lặp phút cũ)
         private static double GetMinutesInNightShift(DateTime start, DateTime end)
         {
             start = NormalizeToUtc(start);
-            end = NormalizeToUtc(end);
+            end   = NormalizeToUtc(end);
 
             var tz = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
             DateTime localStart = TimeZoneInfo.ConvertTimeFromUtc(start, tz);
-            DateTime localEnd = TimeZoneInfo.ConvertTimeFromUtc(end, tz);
+            DateTime localEnd   = TimeZoneInfo.ConvertTimeFromUtc(end, tz);
 
             double minutesInNight = 0;
-            for (DateTime t = localStart; t < localEnd; t = t.AddMinutes(1))
+            DateTime currentDay = localStart.Date;
+
+            while (currentDay <= localEnd.Date)
             {
-                int hour = t.Hour;
-                if (hour >= NightShiftStart || hour < DayShiftStart)
-                {
-                    minutesInNight++;
-                }
+                // Segment 1 trong ngày hiện tại: nửa đêm sớm [00:00, 06:00)
+                DateTime seg1Start = currentDay;
+                DateTime seg1End   = currentDay.AddHours(DayShiftStart);
+
+                DateTime ov1Start = localStart > seg1Start ? localStart : seg1Start;
+                DateTime ov1End   = localEnd   < seg1End   ? localEnd   : seg1End;
+                if (ov1End > ov1Start)
+                    minutesInNight += (ov1End - ov1Start).TotalMinutes;
+
+                // Segment 2 trong ngày hiện tại: buổi tối [18:00, 24:00)
+                DateTime seg2Start = currentDay.AddHours(NightShiftStart);
+                DateTime seg2End   = currentDay.AddDays(1);
+
+                DateTime ov2Start = localStart > seg2Start ? localStart : seg2Start;
+                DateTime ov2End   = localEnd   < seg2End   ? localEnd   : seg2End;
+                if (ov2End > ov2Start)
+                    minutesInNight += (ov2End - ov2Start).TotalMinutes;
+
+                currentDay = currentDay.AddDays(1);
             }
+
             return minutesInNight;
         }
 
