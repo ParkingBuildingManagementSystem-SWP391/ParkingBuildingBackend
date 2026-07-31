@@ -147,47 +147,22 @@ namespace ParkingBuilding.Service.Service
                 string? cleanTicketCode = (string.IsNullOrEmpty(request.TicketCode) || request.TicketCode.Trim().ToLower() == "string")
                 ? null : request.TicketCode.Trim();
 
-            if (string.IsNullOrWhiteSpace(request.CheckoutLicensePlate) || request.CheckoutLicensePlate.Trim().ToLower() == "string")
+            string? cleanCheckoutPlate = null;
+            if (!string.IsNullOrWhiteSpace(request.CheckoutLicensePlate) && request.CheckoutLicensePlate.Trim().ToLower() != "string")
             {
-                bool isBicycle = false;
-                if (request.SessionId.HasValue && request.SessionId.Value > 0)
+                string rawPlate = request.CheckoutLicensePlate.Trim().ToUpper();
+                if (rawPlate.StartsWith("BIKE_"))
                 {
-                    var tempSession = await _context.ParkingSessions.FindAsync(request.SessionId.Value);
-                    if (tempSession != null && tempSession.TypeId == 1) isBicycle = true;
+                    cleanCheckoutPlate = rawPlate;
                 }
-                else if (!string.IsNullOrEmpty(cleanTicketCode))
+                else if (LicensePlateHelper.IsValidLicensePlate(rawPlate, out string cleanedCheckoutPlate))
                 {
-                    var tempSession = await _context.ParkingSessions
-                        .Include(s => s.Ticket)
-                        .FirstOrDefaultAsync(s => s.Ticket != null 
-                                             && s.Ticket.TicketCode.Trim() == cleanTicketCode.Trim() 
-                                             && s.SessionStatus == ParkingStatuses.SessionInProgress 
-                                             && !s.IsDeleted);
-                    if (tempSession != null && tempSession.TypeId == 1) isBicycle = true;
-                }
-
-                if (isBicycle)
-                {
-                    request.CheckoutLicensePlate = $"BIKE_OUT_{Guid.NewGuid().ToString().Substring(0, 5).ToUpper()}";
+                    cleanCheckoutPlate = cleanedCheckoutPlate;
                 }
                 else
                 {
-                    throw new ArgumentException("Yêu cầu nhập biển số xe thực tế lúc ra bãi để kiểm tra an ninh đối khớp.");
+                    cleanCheckoutPlate = rawPlate;
                 }
-            }
-            
-            string cleanCheckoutPlate = "";
-            if (request.CheckoutLicensePlate.StartsWith("BIKE_"))
-            {
-                cleanCheckoutPlate = request.CheckoutLicensePlate.Trim().ToUpper();
-            }
-            else
-            {
-                if (!LicensePlateHelper.IsValidLicensePlate(request.CheckoutLicensePlate, out string cleanedCheckoutPlate))
-                {
-                    throw new ArgumentException(LicensePlateHelper.GetErrorMessage());               
-                }
-                cleanCheckoutPlate = cleanedCheckoutPlate;
             }
 
             _logger.LogInformation("Bắt đầu xử lý check-out: Vé={TicketCode}, Biển số={Plate}, SessionId={SessionId}, Phương thức thanh toán={Method}",
@@ -221,7 +196,7 @@ namespace ParkingBuilding.Service.Service
                         }
                         else
                         {
-                            var normCheckout = cleanCheckoutPlate!.Replace("-", "").Replace(".", "").Replace(" ", "").ToUpper();
+                            var normCheckout = (cleanCheckoutPlate ?? "").Replace("-", "").Replace(".", "").Replace(" ", "").ToUpper();
                             session = sessions.FirstOrDefault(s => s.LicenseVehicle != null && s.LicenseVehicle.Replace("-", "").Replace(".", "").Replace(" ", "").ToUpper() == normCheckout);
                             if (session == null)
                             {
@@ -236,13 +211,13 @@ namespace ParkingBuilding.Service.Service
                     session = await _parkingRepository.GetActiveSessionByIdAsync(request.SessionId.Value);
                 }
 
-                if (session == null && cleanCheckoutPlate != null)
+                if (session == null && !string.IsNullOrEmpty(cleanCheckoutPlate))
                 {
                     session = await _parkingRepository.GetActiveSessionByLicensePlateAsync(cleanCheckoutPlate);
                 }
 
                 // Fallback dành cho dữ liệu đã lỡ Resolve Mất thẻ trước đây:
-                if (session == null && cleanCheckoutPlate != null)
+                if (session == null && !string.IsNullOrEmpty(cleanCheckoutPlate))
                 {
                     var normCheckout = cleanCheckoutPlate.Replace("-", "").Replace(".", "").Replace(" ", "").ToUpper();
                     session = await _context.ParkingSessions
@@ -266,17 +241,36 @@ namespace ParkingBuilding.Service.Service
                     throw new Exception("Không tìm thấy phiên đỗ xe đang hoạt động phù hợp với thông tin cung cấp.");
                 }
 
-                if (session.TypeId == 1 && !cleanCheckoutPlate.StartsWith("BIKE_"))
+                if (session.TypeId == 1)
                 {
-                    _logger.LogWarning("Check-out thất bại: Nhập biển số xe cơ giới '{Plate}' cho phiên đỗ Xe đạp (SessionId {SessionId}).",
-                        cleanCheckoutPlate, session.SessionId);
-                    throw new Exception($"HỆ THỐNG CHẶN: Phiên đỗ này là Xe đạp. Không chấp nhận biển số xe cơ giới ({cleanCheckoutPlate}) khi check-out xe đạp!");
-                }
+                    if (string.IsNullOrEmpty(cleanCheckoutPlate) || !cleanCheckoutPlate.StartsWith("BIKE_"))
+                    {
+                        cleanCheckoutPlate = !string.IsNullOrEmpty(session.LicenseVehicle)
+                            ? session.LicenseVehicle.Trim().ToUpper()
+                            : $"BIKE_OUT_{Guid.NewGuid().ToString().Substring(0, 5).ToUpper()}";
 
-                if (session.TypeId != 1 && string.IsNullOrEmpty(checkOutImageUrl))
+                        _logger.LogInformation("Phiên đỗ Xe đạp (SessionId {SessionId}): Tự động chuẩn hóa biển số check-out thành '{Plate}'.",
+                            session.SessionId, cleanCheckoutPlate);
+                    }
+                }
+                else
                 {
-                    _logger.LogWarning("Check-out thất bại: Thiếu ảnh chụp xe tại cổng ra đối với SessionId {SessionId}.", session.SessionId);
-                    throw new Exception("CẢNH BÁO AN NINH: Bắt buộc phải chụp/cung cấp ảnh xe tại cổng ra đối với xe máy và ô tô để đảm bảo an ninh 2 lớp!");
+                    if (string.IsNullOrEmpty(cleanCheckoutPlate))
+                    {
+                        throw new ArgumentException("Yêu cầu nhập biển số xe thực tế lúc ra bãi đối với xe máy và ô tô để kiểm tra an ninh đối khớp.");
+                    }
+
+                    if (!LicensePlateHelper.IsValidLicensePlate(cleanCheckoutPlate, out string validatedPlate))
+                    {
+                        throw new ArgumentException(LicensePlateHelper.GetErrorMessage());
+                    }
+                    cleanCheckoutPlate = validatedPlate;
+
+                    if (string.IsNullOrEmpty(checkOutImageUrl))
+                    {
+                        _logger.LogWarning("Check-out thất bại: Thiếu ảnh chụp xe tại cổng ra đối với SessionId {SessionId}.", session.SessionId);
+                        throw new Exception("CẢNH BÁO AN NINH: Bắt buộc phải chụp/cung cấp ảnh xe tại cổng ra đối với xe máy và ô tô để đảm bảo an ninh 2 lớp!");
+                    }
                 }
 
                 if (!string.IsNullOrEmpty(cleanTicketCode))
