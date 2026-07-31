@@ -281,15 +281,16 @@ namespace ParkingBuilding.Service.Service
                         _logger.LogWarning("CẢNH BÁO AN NINH: Mã vé không khớp! Mã vé truyền vào '{InputTicket}' không khớp với mã vé chính thức '{ActualTicket}' tại SessionId {SessionId}.",
                             cleanTicketCode, actualTicketCode, session.SessionId);
 
-                        await dbTransaction.RollbackAsync();
-
+                        // Luôn lưu IncidentReport để quản lý theo dõi
                         try
                         {
                             var ticketIncident = new IncidentReport
                             {
                                 SessionId = session.SessionId,
                                 IssueType = IncidentTypes.TicketMismatch,
-                                Description = $"CẢNH BÁO AN NINH CHẶN CHECK-OUT: Mã vé quét/nhập ({cleanTicketCode}) không trùng khớp với mã vé chính thức ({actualTicketCode}) của phiên đỗ.",
+                                Description = request.OverrideSecurityCheck
+                                    ? $"[NHÂN VIÊN BỎ QUA CẢNH BÁO] Mã vé quét/nhập ({cleanTicketCode}) không trùng khớp với mã vé chính thức ({actualTicketCode}). Nhân viên đã xác nhận bỏ qua và cho xe ra."
+                                    : $"CẢNH BÁO AN NINH CHẶN CHECK-OUT: Mã vé quét/nhập ({cleanTicketCode}) không trùng khớp với mã vé chính thức ({actualTicketCode}) của phiên đỗ.",
                                 ReportedId = currentStaffId,
                                 Status = "Pending",
                                 CreatedAt = DateTime.UtcNow,
@@ -303,24 +304,34 @@ namespace ParkingBuilding.Service.Service
                             _logger.LogError("Lỗi khi tự động lưu Báo cáo sự cố (TicketMismatch): {Msg}", exIncident.Message);
                         }
 
-                        return new CheckoutResponse
+                        // Nếu nhân viên chưa xác nhận bỏ qua → chặn và trả về cảnh báo
+                        if (!request.OverrideSecurityCheck)
                         {
-                            IsSuccess = false,
-                            Message = $"HỆ THỐNG CHẶN: Mã vé ({cleanTicketCode}) không trùng khớp với mã vé chính thức của phương tiện ({actualTicketCode})!",
-                            TicketCode = actualTicketCode,
-                            SlotName = session.Slot?.SlotName ?? "N/A",
-                            CheckInLicensePlate = session.LicenseVehicle ?? "",
-                            CheckOutLicensePlate = cleanCheckoutPlate ?? "",
-                            IsLicensePlateMatched = false,
-                            CheckInImageUrl = session.CheckInImageUrl,
-                            CheckOutImageUrl = checkOutImageUrl,
-                            CheckInTime = session.CheckInTime ?? DateTime.UtcNow,
-                            CheckOutTime = DateTime.UtcNow,
-                            DurationHours = 0,
-                            TotalAmount = 0,
-                            InvoiceId = 0,
-                            IsPaid = false
-                        };
+                            await dbTransaction.RollbackAsync();
+                            return new CheckoutResponse
+                            {
+                                IsSuccess = false,
+                                IsSecurityAlert = true,
+                                Message = $"HỆ THỐNG CHẶN: Mã vé ({cleanTicketCode}) không trùng khớp với mã vé chính thức của phương tiện ({actualTicketCode})!",
+                                TicketCode = actualTicketCode,
+                                SlotName = session.Slot?.SlotName ?? "N/A",
+                                CheckInLicensePlate = session.LicenseVehicle ?? "",
+                                CheckOutLicensePlate = cleanCheckoutPlate ?? "",
+                                IsLicensePlateMatched = false,
+                                CheckInImageUrl = session.CheckInImageUrl,
+                                CheckOutImageUrl = checkOutImageUrl,
+                                CheckInTime = session.CheckInTime ?? DateTime.UtcNow,
+                                CheckOutTime = DateTime.UtcNow,
+                                DurationHours = 0,
+                                TotalAmount = 0,
+                                InvoiceId = 0,
+                                IsPaid = false
+                            };
+                        }
+
+                        // OverrideSecurityCheck == true → tiếp tục checkout bình thường
+                        _logger.LogWarning("[SECURITY OVERRIDE] Nhân viên {StaffId} bỏ qua cảnh báo Ticket Mismatch tại SessionId {SessionId}. Tiếp tục check-out.",
+                            currentStaffId, session.SessionId);
                     }
                 }
                 else if (session.TypeId != 1) // Nếu không quét Mã vé và không phải Xe đạp
@@ -367,15 +378,16 @@ namespace ParkingBuilding.Service.Service
                     _logger.LogWarning("CẢNH BÁO AN NINH: Nghi ngờ tráo xe! Xe ra '{OutPlate}' không khớp xe vào '{InPlate}' tại SessionId {SessionId}.",
                         cleanCheckoutPlate, checkInPlate, session.SessionId);
 
-                    await dbTransaction.RollbackAsync();
-
+                    // Luôn lưu IncidentReport để quản lý theo dõi
                     try
                     {
                         var plateIncident = new IncidentReport
                         {
                             SessionId = session.SessionId,
                             IssueType = IncidentTypes.PlateMismatch,
-                            Description = $"CẢNH BÁO AN NINH CHẶN CHECK-OUT: Nghi ngờ tráo xe gian lận! Biển số lúc ra ({cleanCheckoutPlate}) không khớp với biển số lúc vào ({checkInPlate}) tại SessionId {session.SessionId}.",
+                            Description = request.OverrideSecurityCheck
+                                ? $"[NHÂN VIÊN BỎ QUA CẢNH BÁO] Biển số lúc ra ({cleanCheckoutPlate}) không khớp với biển số lúc vào ({checkInPlate}) tại SessionId {session.SessionId}. Nhân viên đã xác nhận bỏ qua và cho xe ra."
+                                : $"CẢNH BÁO AN NINH CHẶN CHECK-OUT: Nghi ngờ tráo xe gian lận! Biển số lúc ra ({cleanCheckoutPlate}) không khớp với biển số lúc vào ({checkInPlate}) tại SessionId {session.SessionId}.",
                             ReportedId = currentStaffId,
                             Status = "Pending",
                             CreatedAt = DateTime.UtcNow,
@@ -389,24 +401,34 @@ namespace ParkingBuilding.Service.Service
                         _logger.LogError("Lỗi khi tự động lưu Báo cáo sự cố (PlateMismatch): {Msg}", exIncident.Message);
                     }
 
-                    return new CheckoutResponse
+                    // Nếu nhân viên chưa xác nhận bỏ qua → chặn và trả về cảnh báo
+                    if (!request.OverrideSecurityCheck)
                     {
-                        IsSuccess = false,
-                        Message = $"HỆ THỐNG CHẶN: Biển số lúc ra ({cleanCheckoutPlate}) không khớp lúc vào ({checkInPlate})! Nghi ngờ tráo xe gian lận.",
-                        TicketCode = session.Ticket?.TicketCode ?? "N/A",
-                        SlotName = session.Slot?.SlotName ?? "N/A",
-                        CheckInLicensePlate = checkInPlate,
-                        CheckOutLicensePlate = cleanCheckoutPlate ?? "",
-                        IsLicensePlateMatched = false,
-                        CheckInImageUrl = session.CheckInImageUrl,
-                        CheckOutImageUrl = checkOutImageUrl,
-                        CheckInTime = session.CheckInTime ?? DateTime.UtcNow,
-                        CheckOutTime = DateTime.UtcNow,
-                        DurationHours = 0,
-                        TotalAmount = 0,
-                        InvoiceId = 0,
-                        IsPaid = false
-                    };
+                        await dbTransaction.RollbackAsync();
+                        return new CheckoutResponse
+                        {
+                            IsSuccess = false,
+                            IsSecurityAlert = true,
+                            Message = $"HỆ THỐNG CHẶN: Biển số lúc ra ({cleanCheckoutPlate}) không khớp lúc vào ({checkInPlate})! Nghi ngờ tráo xe gian lận.",
+                            TicketCode = session.Ticket?.TicketCode ?? "N/A",
+                            SlotName = session.Slot?.SlotName ?? "N/A",
+                            CheckInLicensePlate = checkInPlate,
+                            CheckOutLicensePlate = cleanCheckoutPlate ?? "",
+                            IsLicensePlateMatched = false,
+                            CheckInImageUrl = session.CheckInImageUrl,
+                            CheckOutImageUrl = checkOutImageUrl,
+                            CheckInTime = session.CheckInTime ?? DateTime.UtcNow,
+                            CheckOutTime = DateTime.UtcNow,
+                            DurationHours = 0,
+                            TotalAmount = 0,
+                            InvoiceId = 0,
+                            IsPaid = false
+                        };
+                    }
+
+                    // OverrideSecurityCheck == true → tiếp tục checkout bình thường
+                    _logger.LogWarning("[SECURITY OVERRIDE] Nhân viên {StaffId} bỏ qua cảnh báo Plate Mismatch tại SessionId {SessionId}. Biển vào: '{InPlate}', Biển ra: '{OutPlate}'. Tiếp tục check-out.",
+                        currentStaffId, session.SessionId, checkInPlate, cleanCheckoutPlate);
                 }
 
                 _logger.LogInformation("Đối khớp biển số thành công cho Session {SessionId}.", session.SessionId);

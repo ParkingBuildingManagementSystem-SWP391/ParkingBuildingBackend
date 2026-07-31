@@ -35,5 +35,12 @@ namespace ParkingBuilding.Service.DTOs
 
         public string? PaymentUrl { get; set; }
 
+        /// <summary>
+        /// True = Hệ thống đang cảnh báo bảo mật (biển số / mã vé không khớp).
+        /// Frontend hiển thị nút "Bỏ qua cảnh báo" và gọi lại API với OverrideSecurityCheck = true.
+        /// False = Lỗi nghiệp vụ thật sự (không thể bypass).
+        /// </summary>
+        public bool IsSecurityAlert { get; set; } = false;
+
     }
 }
