@@ -89,7 +89,7 @@ namespace ParkingBuilding.Service.Service
 
             bool isBicycle = IsBicycle(membershipCard, session);
             string? cleanLicense = isBicycle
-                ? $"BIKE_MEMBERSHIP_{cleanTicketCode}"
+                ? (membershipCard != null ? $"BIKE_MEMBERSHIP_{cleanTicketCode}" : $"BIKE_BOOKING_{cleanTicketCode}")
                 : ResolvePlate(request.LicenseVehicle, throwOnInvalidFormat: true);
 
             var conflict = await GetActiveParkingConflictAsync(cleanLicense);
@@ -271,7 +271,7 @@ namespace ParkingBuilding.Service.Service
 
             bool isBicycle = IsBicycle(membershipCard, session);
             string? cleanLicense = isBicycle
-                ? $"BIKE_MEMBERSHIP_{cleanTicketCode}"
+                ? (membershipCard != null ? $"BIKE_MEMBERSHIP_{cleanTicketCode}" : $"BIKE_BOOKING_{cleanTicketCode}")
                 : ResolvePlate(detectedPlate, throwOnInvalidFormat: false);
 
             var conflict = await GetActiveParkingConflictAsync(cleanLicense);
@@ -526,9 +526,10 @@ namespace ParkingBuilding.Service.Service
                 // đã kiểm tra điều này TRƯỚC KHI vào nhánh thẻ thành viên rồi (tránh kiểm tra trùng lặp 2 lần).
             }
 
-            // 2. Nếu chủ thẻ đã có một xe khác đang đỗ trong bãi -> tự động chuyển xe này sang chế độ vãng lai có tính phí
+            // 2. Nếu chủ thẻ đã có một xe khác cùng loại đang đỗ trong bãi -> tự động chuyển xe này sang chế độ vãng lai có tính phí
             var activeMemberSession = await _context.ParkingSessions
                 .FirstOrDefaultAsync(s => s.UserId == membershipCard.UserId
+                                      && s.TypeId == membershipCard.Tier.TypeId
                                       && s.SessionStatus == ParkingStatuses.SessionInProgress
                                       && !s.IsDeleted);
 
