@@ -492,7 +492,7 @@ namespace ParkingBuilding.Service.Service
             string sourceTag)
         {
             // 1. Với xe không phải xe đạp, biển số phải nằm trong danh sách đã đăng ký và đang hoạt động của thẻ
-            if (membershipCard.Tier.TypeId != 1)
+            if (membershipCard.Tier.TypeId != 1 && !(cleanLicense != null && cleanLicense.StartsWith("BIKE_")))
             {
                 if (string.IsNullOrWhiteSpace(cleanLicense))
                 {
@@ -618,8 +618,8 @@ namespace ParkingBuilding.Service.Service
         {
             var availableMs = membershipCard.MembershipSlots
                 .FirstOrDefault(ms => ms.Slot != null
-                                   && (ms.Slot.SlotStatus == ParkingStatuses.SlotReserved
-                                       || ms.Slot.SlotStatus == ParkingStatuses.SlotAvailable)
+                                   && (ms.Slot.SlotStatus.Trim() == ParkingStatuses.SlotReserved
+                                       || ms.Slot.SlotStatus.Trim() == ParkingStatuses.SlotAvailable)
                                    && !ms.Slot.IsDeleted);
 
             if (availableMs == null)
@@ -726,7 +726,7 @@ namespace ParkingBuilding.Service.Service
 
             if (session.Slot != null)
             {
-                if (session.Slot.SlotStatus == ParkingStatuses.SlotOccupied)
+                if (session.Slot.SlotStatus.Trim() == ParkingStatuses.SlotOccupied)
                 {
                     _logger.LogError("Check-in thất bại: Vị trí đỗ {SlotName} đã bị xe khác chiếm dụng cho Session {SessionId}.",
                         session.Slot.SlotName, session.SessionId);
