@@ -112,12 +112,15 @@ namespace ParkingBuilding.Service.Service
             {
                 if (string.IsNullOrWhiteSpace(dto.LicenseVehicle))
                 {
-                    throw new ArgumentException("License plate is required for vehicle or ticket related incidents.");
+                    throw new ArgumentException("Biển số xe hoặc mã vé là bắt buộc đối với sự cố liên quan đến xe/vé.");
                 }
 
-                var normalizedLicense = dto.LicenseVehicle.Trim().ToUpper();
+                var inputKey = dto.LicenseVehicle.Trim().ToUpper();
                 session = await _context.ParkingSessions
-                    .Where(s => s.LicenseVehicle.Trim().ToUpper() == normalizedLicense
+                    .Include(s => s.Ticket)
+                    .Where(s => (s.LicenseVehicle.Trim().ToUpper() == inputKey
+                              || s.LicenseVehicle.Trim().ToUpper().Contains(inputKey)
+                              || (s.Ticket != null && s.Ticket.TicketCode.Trim().ToUpper() == inputKey))
                              && (s.SessionStatus.Trim() == ParkingStatuses.SessionInProgress 
                               || s.SessionStatus.Trim() == ParkingStatuses.SessionCompleted)
                              && !s.IsDeleted)
@@ -127,12 +130,12 @@ namespace ParkingBuilding.Service.Service
 
                 if (session == null && !isEquipmentIncident)
                 {
-                    throw new ArgumentException("No active or recently completed parking session was found for this license plate.");
+                    throw new ArgumentException("Không tìm thấy lượt gửi xe đang hoạt động hoặc gần đây khớp với biển số xe hoặc mã vé này.");
                 }
 
                 if (user != null && user.Role?.RoleName == "Registered_Driver" && session != null && session.UserId != reportedUserId)
                 {
-                    throw new UnauthorizedAccessException("You do not have permission to report an incident for another driver's parking session.");
+                    throw new UnauthorizedAccessException("Bạn không có quyền báo cáo sự cố cho lượt gửi xe của tài xế khác.");
                 }
             }
 
