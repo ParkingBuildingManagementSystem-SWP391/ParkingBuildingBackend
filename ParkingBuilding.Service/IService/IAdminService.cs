@@ -1,4 +1,4 @@
-﻿using ParkingBuilding.Service.DTOs;
+using ParkingBuilding.Service.DTOs;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -14,6 +14,8 @@ namespace ParkingBuilding.Service.IService
         Task<bool> updateUserAsync(UpdateUserRequestDto request);
 
         Task<UserResponseDto> CreateUserAsync(CreateUserRequestDto request);
+
+        Task<bool> DeleteUserAsync(int userId);
 
         // 1. API 1: Nghiệp vụ lấy toàn bộ phiên đỗ
         Task<List<ParkingSessionResponeDto>> GetAllParkingSessionsAsync();

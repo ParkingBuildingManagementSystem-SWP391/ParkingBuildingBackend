@@ -114,6 +114,20 @@ namespace ParkingBuilding.Service.Service
             });
         }
 
+        public async Task<bool> DeleteUserAsync(int userId)
+        {
+            var user = await _unitOfWork.Users.GetByIdAsync(userId);
+            if (user == null || user.IsDeleted)
+            {
+                throw new KeyNotFoundException($"Không tìm thấy tài khoản có ID {userId} hoặc tài khoản đã bị vô hiệu hóa.");
+            }
+
+            // Xóa mềm (Soft Delete) - Cập nhật trạng thái IsDeleted = true
+            // KHÔNG xóa cứng (Remove) để bảo vệ toàn vẹn lịch sử phiên đỗ, hóa đơn và sự cố trong CSDL
+            user.IsDeleted = true;
+            return await _unitOfWork.SaveChangesAsync();
+        }
+
         public async Task<List<ParkingSessionResponeDto>> GetAllParkingSessionsAsync()
         {
             _logger.LogInformation("Executing GetAllParkingSessionsAsync in Service.");
