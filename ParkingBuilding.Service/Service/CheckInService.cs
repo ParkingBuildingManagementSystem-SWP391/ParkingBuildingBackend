@@ -41,13 +41,12 @@ namespace ParkingBuilding.Service.Service
             _staffLogService = staffLogService;
         }
 
+        // ================================================================
+        // API #1: CHECK-IN CHÍNH (bằng mã vé/QR nhập tay hoặc quét được)
+        // ================================================================
         public async Task<ScanCheckInResponse> CheckInVehicleAsync(CheckInRequest request, int currentStaffId)
         {
-            var activeShift = await _staffLogService.GetActiveShiftAsync(currentStaffId);
-            if (activeShift == null)
-            {
-                throw new InvalidOperationException("Bạn chưa mở ca làm việc. Vui lòng mở ca trực trước khi thao tác.");
-            }
+            await EnsureActiveShiftAsync(currentStaffId);
 
             if (request == null)
             {
@@ -55,7 +54,8 @@ namespace ParkingBuilding.Service.Service
                 return new ScanCheckInResponse { IsSuccess = false, Message = "Dữ liệu Request rỗng (null)." };
             }
 
-            if (QrCodeParserHelper.TryParseQr(request.TicketCode, out var parsedTicket, out var parsedPlate, out var parsedSessionId, out var parsedSlot))
+            // Nếu mã quét được là một chuỗi QR có cấu trúc "TICKET:...|PLATE:...", tách lấy đúng phần cần dùng
+            if (QrCodeParserHelper.TryParseQr(request.TicketCode, out var parsedTicket, out var parsedPlate, out _, out _))
             {
                 request.TicketCode = parsedTicket;
                 if (string.IsNullOrEmpty(request.LicenseVehicle) || request.LicenseVehicle.Trim().ToLower() == "string")
@@ -64,381 +64,54 @@ namespace ParkingBuilding.Service.Service
                 }
             }
 
-            _logger.LogInformation("Bắt đầu xử lý check-in cho xe biển số: {LicensePlate}, Vé/Mã QR: {TicketCode}",
+            // Xử lý ảnh (nếu có): ưu tiên URL đã có sẵn, nếu không thì nhờ AI đọc biển số rồi upload lưu trữ
+            string? checkInImageUrl = await ResolveCheckInImageAsync(request);
+
+            _logger.LogInformation("Bắt đầu xử lý check-in cho xe biển số: {LicensePlate}, Vé: {TicketCode}",
                 request.LicenseVehicle, request.TicketCode);
 
-            string? checkInImageUrl = null;
-            if (!string.IsNullOrEmpty(request.ImageUrl))
-            {
-                // Lấy trực tiếp URL ảnh đã qua xác nhận ở Frontend
-                checkInImageUrl = request.ImageUrl;
-            }
-            else if (request.ImageFile != null && request.ImageFile.Length > 0)
-            {
-                // Trường hợp chạy tự động, không có xác nhận thủ công từ FE
-                try
-                {
-                    // 1. Gửi trực tiếp file ảnh sang AI
-                    string detectedPlate = await _aiRecognitionService.PredictLicensePlateFromFileAsync(request.ImageFile);
-                    request.LicenseVehicle = detectedPlate;
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning("AI Nhận diện cổng vào lỗi: {Msg}. Tiếp tục dùng biển số nhập tay nếu có.", ex.Message);
-                }
-
-                // 2. Sau đó mới upload Cloudinary
-                checkInImageUrl = await _imageStorageService.UploadImageAsync(request.ImageFile, "parking_checkin");
-            }
-                _logger.LogInformation("Bắt đầu xử lý check-in cho xe biển số: {LicensePlate}, Vé: {TicketCode}",
-                request.LicenseVehicle, request.TicketCode);
-            string? cleanTicketCode = string.IsNullOrWhiteSpace(request.TicketCode) ? null : request.TicketCode.Trim();
-
-            if (string.IsNullOrWhiteSpace(cleanTicketCode))
+            string? cleanTicketCode = NormalizeTicketCode(request.TicketCode);
+            if (cleanTicketCode == null)
             {
                 _logger.LogWarning("Check-in thất bại: Thiếu mã vé (Ticket Code) hoặc mã QR.");
-                return new ScanCheckInResponse 
-                { 
-                    IsSuccess = false, 
-                    Message = "Vui lòng nhập mã vé (Ticket Code) hoặc quét mã QR để tiếp tục check-in." 
+                return new ScanCheckInResponse
+                {
+                    IsSuccess = false,
+                    Message = "Vui lòng nhập mã vé (Ticket Code) hoặc quét mã QR để tiếp tục check-in."
                 };
             }
 
-            var vnTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
-            var localNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vnTimeZone);
+            DateTime localNow = GetVietnamNow();
+            MembershipCard? membershipCard = await FindActiveMembershipCardAsync(cleanTicketCode, localNow);
+            ParkingSession? session = membershipCard == null
+                ? await FindReservedSessionByTicketAsync(cleanTicketCode)
+                : null;
 
-            // Kiểm tra xem TicketCode quét vào có thuộc một thẻ thành viên ACTIVE và còn hạn hay không
-            var membershipCard = await _context.MembershipCards
-                .Include(mc => mc.Ticket)
-                .Include(mc => mc.Tier)
-                .Include(mc => mc.User)
-                .Include(mc => mc.MembershipSlots)
-                    .ThenInclude(ms => ms.Slot)
-                .Include(mc => mc.MembershipVehicles)
-                .FirstOrDefaultAsync(mc => mc.Ticket.TicketCode.Trim() == cleanTicketCode.Trim()
-                                     && mc.Status == ParkingStatuses.MonthlyCardActive
-                                     && !mc.IsDeleted
-                                     && mc.EndTime >= localNow);
+            bool isBicycle = IsBicycle(membershipCard, session);
+            string? cleanLicense = isBicycle
+                ? $"BIKE_MEMBERSHIP_{cleanTicketCode}"
+                : ResolvePlate(request.LicenseVehicle, throwOnInvalidFormat: true);
 
-            ParkingSession? session = null;
-            if (membershipCard == null)
+            var conflict = await GetActiveParkingConflictAsync(cleanLicense);
+            if (conflict != null)
             {
-                if (int.TryParse(cleanTicketCode, out int ticketId))
-                {
-                    session = await _parkingRepository.GetReservedSessionByTicketIdAsync(ticketId);
-                }
-                else
-                {
-                    session = await _parkingRepository.GetReservedSessionByTicketCodeAsync(cleanTicketCode);
-                }
-            }
-
-            bool isBicycle = (membershipCard != null && membershipCard.Tier.TypeId == 1) || (session != null && session.TypeId == 1);
-
-            string? cleanLicense = null;
-            if (isBicycle)
-            {
-                cleanLicense = $"BIKE_MEMBERSHIP_{cleanTicketCode}";
-            }
-            else if (!string.IsNullOrWhiteSpace(request.LicenseVehicle) && request.LicenseVehicle.Trim().ToLower() != "string")
-            {
-                if (request.LicenseVehicle.StartsWith("BIKE_"))
-                {
-                    cleanLicense = request.LicenseVehicle.Trim().ToUpper();
-                }
-                else
-                {
-                    if (!LicensePlateHelper.IsValidLicensePlate(request.LicenseVehicle, out string validatedPlate))
-                    {
-                        throw new ArgumentException(LicensePlateHelper.GetErrorMessage());
-                    }
-                    cleanLicense = validatedPlate;
-                }
-            }
-
-            if (cleanLicense != null)
-            {
-                var alreadyInParking = await _parkingRepository.GetActiveSessionByLicensePlateAsync(cleanLicense);
-                if (alreadyInParking != null)
-                {
-                    _logger.LogWarning("Check-in thất bại: Xe biển số '{LicensePlate}' đã có một phiên đỗ xe đang hoạt động trong bãi (SessionId: {SessionId}).",
-                        cleanLicense, alreadyInParking.SessionId);
-                    return new ScanCheckInResponse 
-                    { 
-                        IsSuccess = false, 
-                        Message = $"Xe biển số '{cleanLicense}' đã có một phiên đỗ xe đang hoạt động trong bãi." 
-                    };
-                }
+                return conflict;
             }
 
             if (membershipCard != null)
             {
-                // >>> KỊCH BẢN CHECK-IN BẰNG THẺ THÀNH VIÊN <<<
-
-                // 1. Kiểm tra biển số xe đi vào có thuộc danh sách biển số đã đăng ký và đang hoạt động không
-                if (membershipCard.Tier.TypeId != 1)
-                {
-                    if (string.IsNullOrWhiteSpace(cleanLicense))
-                    {
-                        return new ScanCheckInResponse
-                        {
-                            IsSuccess = false,
-                            Message = "Thẻ thành viên này yêu cầu phải có biển số xe khi check-in."
-                        };
-                    }
-
-                    var isRegisteredPlate = membershipCard.MembershipVehicles
-                        .Any(v => v.LicenseVehicle.Trim().ToUpper() == cleanLicense.Trim().ToUpper() && v.IsActive);
-
-                    if (!isRegisteredPlate)
-                    {
-                        return new ScanCheckInResponse
-                        {
-                            IsSuccess = false,
-                            Message = $"Xe biển số '{cleanLicense}' không được đăng ký hoặc không hoạt động trong gói thẻ thành viên này."
-                        };
-                    }
-
-                    // Kiểm tra xem biển số xe đã có một lượt đỗ hoạt động chưa
-                    var alreadyInParking = await _parkingRepository.GetActiveSessionByLicensePlateAsync(cleanLicense);
-                    if (alreadyInParking != null)
-                    {
-                        return new ScanCheckInResponse
-                        {
-                            IsSuccess = false,
-                            Message = $"Xe biển số '{cleanLicense}' đã có một phiên đỗ xe đang hoạt động trong bãi."
-                        };
-                    }
-                }
-
-                // 2. Kiểm tra xem thẻ thành viên này đã có một xe khác đang đỗ trong bãi hay chưa
-                var activeMemberSession = await _context.ParkingSessions
-                    .FirstOrDefaultAsync(s => s.UserId == membershipCard.UserId
-                                          && s.SessionStatus == ParkingStatuses.SessionInProgress
-                                          && !s.IsDeleted);
-
-                if (activeMemberSession != null)
-                {
-                    // TỰ ĐỘNG CHUYỂN SANG CHECK-IN VÃNG LAI CHO XE THỨ HAI
-                    var slotForWalkIn = await _context.ParkingSlots
-                        .FromSqlInterpolated($"SELECT TOP 1 * FROM ParkingSlots WITH (UPDLOCK, ROWLOCK) WHERE SlotStatus = {ParkingStatuses.SlotAvailable} AND TypeId = {membershipCard.Tier.TypeId} AND IsDeleted = 0 ORDER BY SlotName ASC")
-                        .FirstOrDefaultAsync();
-
-                    if (slotForWalkIn == null)
-                    {
-                        return new ScanCheckInResponse
-                        {
-                            IsSuccess = false,
-                            Message = "Thành thật xin lỗi, bãi xe hiện tại đã hết chỗ trống cho loại xe này!"
-                        };
-                    }
-
-                    slotForWalkIn.SlotStatus = ParkingStatuses.SlotOccupied;
-                    _context.ParkingSlots.Update(slotForWalkIn);
-
-                    var newWalkInSession = new ParkingSession
-                    {
-                        UserId = null, // Set to null for paid session
-                        SlotId = slotForWalkIn.SlotId,
-                        LicenseVehicle = cleanLicense ?? $"MBC_VEHICLE_{Guid.NewGuid().ToString().Substring(0, 5).ToUpper()}",
-                        TypeId = membershipCard.Tier.TypeId,
-                        CheckInTime = DateTime.UtcNow,
-                        CheckInImageUrl = checkInImageUrl,
-                        SessionStatus = ParkingStatuses.SessionInProgress,
-                        TicketId = membershipCard.TicketId,
-                        IsDeleted = false
-                    };
-
-                    await _context.ParkingSessions.AddAsync(newWalkInSession);
-                    await _context.SaveChangesAsync();
-
-                    _logger.LogInformation("Tự động chuyển check-in vãng lai: Xe '{Plate}' vào bãi. Ô đỗ: {SlotName}.",
-                        newWalkInSession.LicenseVehicle, slotForWalkIn.SlotName);
-
-                    await _staffLogService.LogActivityAsync(
-                        currentStaffId,
-                        "CHECK_IN",
-                        $"Thẻ tháng đã có xe trong bãi. Tự động chuyển sang check-in vãng lai cho xe {newWalkInSession.LicenseVehicle} tại ô {slotForWalkIn.SlotName}.",
-                        newWalkInSession.LicenseVehicle,
-                        newWalkInSession.SessionId
-                    );
-
-                    return new ScanCheckInResponse
-                    {
-                        IsSuccess = true,
-                        Message = $"Thẻ thành viên đã có xe trong bãi. Tự động chuyển sang check-in vãng lai. Vui lòng đỗ vào ô: {slotForWalkIn.SlotName}.",
-                        SessionId = newWalkInSession.SessionId,
-                        LicenseVehicle = newWalkInSession.LicenseVehicle,
-                        SlotName = slotForWalkIn.SlotName,
-                        VehicleTypeName = membershipCard.Tier.TypeId == 1 ? "Xe đạp" : (membershipCard.Tier.TypeId == 2 ? "Xe máy" : "Xe hơi"),
-                        TicketCode = membershipCard.Ticket.TicketCode,
-                        RequiresPayment = true,
-                        PaymentStatus = "PENDING",
-                        DriverName = membershipCard.User?.Username,
-                        DriverPhone = membershipCard.User?.PhoneNumber,
-                        DriverEmail = membershipCard.User?.Email
-                    };
-                }
-
-                // 3. Tìm slot cố định của thẻ thành viên
-                var availableMs = membershipCard.MembershipSlots
-                    .FirstOrDefault(ms => ms.Slot != null
-                                       && (ms.Slot.SlotStatus == ParkingStatuses.SlotReserved
-                                           || ms.Slot.SlotStatus == ParkingStatuses.SlotAvailable)
-                                       && !ms.Slot.IsDeleted);
-
-                if (availableMs == null)
-                {
-                    var slotNames = string.Join(", ", membershipCard.MembershipSlots
-                        .Select(ms => ms.Slot?.SlotName ?? "?"));
-                    return new ScanCheckInResponse
-                    {
-                        IsSuccess = false,
-                        Message = $"Không tìm thấy ô đỗ rảnh. Các ô đỗ ({slotNames}) hiện đang bị chiếm."
-                    };
-                }
-
-                var slot = availableMs.Slot!;
-
-                var newSession = new ParkingSession
-                {
-                    UserId = membershipCard.UserId,
-                    SlotId = slot.SlotId,
-                    LicenseVehicle = cleanLicense ?? $"MBC_VEHICLE_{Guid.NewGuid().ToString().Substring(0, 5).ToUpper()}",
-                    TypeId = membershipCard.Tier.TypeId,
-                    CheckInTime = DateTime.UtcNow,
-                    CheckInImageUrl = checkInImageUrl,
-                    SessionStatus = ParkingStatuses.SessionInProgress,
-                    TicketId = membershipCard.TicketId,
-                    IsDeleted = false
-                };
-
-                slot.SlotStatus = ParkingStatuses.SlotOccupied;
-                _context.ParkingSlots.Update(slot);
-
-                await _context.ParkingSessions.AddAsync(newSession);
-                await _context.SaveChangesAsync();
-
-                _logger.LogInformation("Check-in THẺ THÀNH VIÊN thành công: Xe '{Plate}' vào bãi. Ô đỗ cố định: {SlotName}.",
-                    newSession.LicenseVehicle, slot.SlotName);
-
-                await _staffLogService.LogActivityAsync(
-                    currentStaffId,
-                    "CHECK_IN",
-                    $"Check-in thẻ thành viên thành công cho xe {newSession.LicenseVehicle} tại ô đỗ cố định {slot.SlotName}.",
-                    newSession.LicenseVehicle,
-                    newSession.SessionId
-                );
-
-                return new ScanCheckInResponse
-                {
-                    IsSuccess = true,
-                    Message = $"Check-in thẻ thành viên thành công! Vui lòng đỗ xe vào vị trí đỗ cố định của bạn: {slot.SlotName}.",
-                    SessionId = newSession.SessionId,
-                    LicenseVehicle = newSession.LicenseVehicle,
-                    SlotName = slot.SlotName,
-                    VehicleTypeName = membershipCard.Tier.TypeId == 1 ? "Xe đạp" : (membershipCard.Tier.TypeId == 2 ? "Xe máy" : "Xe hơi"),
-                    TicketCode = membershipCard.Ticket.TicketCode,
-                    RequiresPayment = false,
-                    PaymentStatus = "SUCCESS",
-                    DriverName = membershipCard.User?.Username,
-                    DriverPhone = membershipCard.User?.PhoneNumber,
-                    DriverEmail = membershipCard.User?.Email
-                };
+                return await ProcessMembershipCardCheckInAsync(membershipCard, cleanLicense, checkInImageUrl, currentStaffId, sourceTag: "");
             }
 
-            // Nếu không phải thẻ tháng, kiểm tra đặt chỗ (Reservation) bình thường
-            // (Đã được truy vấn trước đó để kiểm tra loại xe đạp)
-
-            if (session != null && session.TypeId != 1 && cleanLicense != null)
-            {
-                if (!string.IsNullOrEmpty(session.LicenseVehicle))
-                {
-                    if (cleanLicense.ToUpper() != session.LicenseVehicle.Trim().ToUpper())
-                    {
-                        return new ScanCheckInResponse
-                        {
-                            IsSuccess = false,
-                            Message = $"Biển số thực tế '{cleanLicense}' không khớp với biển số đã đăng ký đặt chỗ '{session.LicenseVehicle}'."
-                        };
-                    }
-                }
-            }
-
-            if (session == null)
-            {
-                _logger.LogWarning("Check-in thất bại: Không tìm thấy phiên đặt chỗ (Reservation) tương ứng với Biển số '{License}' hoặc Mã vé '{Ticket}'.",
-                    cleanLicense, cleanTicketCode);
-                return new ScanCheckInResponse 
-                { 
-                    IsSuccess = false, 
-                    Message = $"Không tìm thấy phiên đặt chỗ tương ứng với Biển số '{cleanLicense}' hoặc Mã vé '{cleanTicketCode}'." 
-                };
-            }
-
-            session.SessionStatus = ParkingStatuses.SessionInProgress;
-            session.CheckInTime = DateTime.UtcNow;
-            session.CheckInImageUrl = checkInImageUrl;
-            if (session.Slot != null)
-            {
-                if (session.Slot.SlotStatus == ParkingStatuses.SlotOccupied)
-                {
-                    _logger.LogError("Check-in thất bại: Vị trí đỗ {SlotName} đã bị xe khác chiếm dụng cho Session {SessionId}.",
-                        session.Slot.SlotName, session.SessionId);
-                    throw new Exception($"Chỗ đỗ {session.Slot.SlotName} hiện đã bị xe khác chiếm dụng. Vui lòng kiểm tra lại vị trí đỗ.");
-                }
-                session.Slot.SlotStatus = ParkingStatuses.SlotOccupied;
-            }
-
-            if (cleanTicketCode != null && session.Ticket != null)
-            {
-                session.Ticket.TicketStatus = ParkingStatuses.TicketActive;
-            }
-
-            await _parkingRepository.UpdateSessionAndSlotAsync(session, session.Slot!);
-            _logger.LogInformation("Check-in THÀNH CÔNG: Xe '{LicensePlate}' đã vào bãi. Ô đỗ phân phối: {SlotName}. SessionId: {SessionId}.",
-                cleanLicense ?? session.LicenseVehicle, session.Slot?.SlotName ?? "N/A", session.SessionId);
-
-            await _staffLogService.LogActivityAsync(
-                currentStaffId,
-                "CHECK_IN",
-                $"Check-in đặt trước thành công cho xe {session.LicenseVehicle} tại vị trí {session.Slot?.SlotName ?? "N/A"}.",
-                session.LicenseVehicle,
-                session.SessionId
-            );
-            
-            return new ScanCheckInResponse
-            {
-                IsSuccess = true,
-                Message = "Check-in thành công! Mời xe tiến qua thanh chắn vào bãi.",
-                SessionId = session.SessionId,
-                LicenseVehicle = session.LicenseVehicle,
-                SlotName = session.Slot?.SlotName ?? "N/A",
-                VehicleTypeName = session.Type?.TypeName ?? "N/A",
-                ExpectedCheckInTime = session.ExpectedCheckInTime,
-                BookingTime = session.BookingTime,
-                DriverName = session.User?.Username ?? "N/A",
-                DriverPhone = session.User?.PhoneNumber ?? "N/A",
-                DriverEmail = session.User?.Email ?? "N/A",
-                TicketCode = session.Ticket?.TicketCode ?? cleanTicketCode ?? "",
-                RequiresPayment = session.Invoice != null && session.Invoice.PaymentStatus == "PENDING",
-                PaymentStatus = session.Invoice?.PaymentStatus ?? "NoPayment"
-            };
+            return await ProcessBookingCheckInAsync(session, cleanLicense, cleanTicketCode, checkInImageUrl, currentStaffId);
         }
 
-        /// <summary>
-        /// HÀM: Check-in cho khách vãng lai (không đặt trước).
-        /// - CHỨC NĂNG: Khóa DB chống tranh chấp (Pessimistic Lock), tự động tìm và gán 1 ô đỗ còn trống, tạo mã vé vãng lai mới (`WK_...`) và lưu phiên đỗ.
-        /// - ĐẦU VÀO: `WalkInRequest request` (Loại xe, Biển số/Ảnh), `int currentStaffId` (ID nhân viên ca trực).
-        /// - ĐẦU RA: `WalkInResponse` (Mã vé vãng lai `WK_...`, Tên ô đỗ `SlotName`, Trạng thái đỗ).
-        /// </summary>
+        // ================================================================
+        // API #2: CHECK-IN VÃNG LAI (không có mã vé/đặt chỗ trước)
+        // ================================================================
         public async Task<WalkInResponse> WalkInCheckInAsync(WalkInRequest request, int currentStaffId)
         {
-            var activeShift = await _staffLogService.GetActiveShiftAsync(currentStaffId);
-            if (activeShift == null)
-            {
-                throw new InvalidOperationException("Bạn chưa mở ca làm việc. Vui lòng mở ca trực trước khi thao tác.");
-            }
+            await EnsureActiveShiftAsync(currentStaffId);
 
             if (request == null)
             {
@@ -567,21 +240,14 @@ namespace ParkingBuilding.Service.Service
             };
         }
 
-        /// <summary>
-        /// HÀM: Quét mã QR tại cổng Check-in.
-        /// - CHỨC NĂNG: Giải mã chuỗi `ticketCode` từ máy quét QR, trích xuất biển số/TicketCode và tiến hành Check-in tự động.
-        /// - ĐẦU VÀO: `string ticketCode` (Chuỗi QR/vé), `string? detectedPlate` (Biển số AI nhận diện), `int currentStaffId` (ID nhân viên ca trực).
-        /// - ĐẦU RA: `ScanCheckInResponse` (Kết quả Check-in, thông tin vị trí đỗ, tài xế).
-        /// </summary>
+        // ================================================================
+        // API #3: QUÉT QR XÁC THỰC (bước xem trước trước khi check-in chính)
+        // ================================================================
         public async Task<ScanCheckInResponse> ScanQrCheckInAsync(string ticketCode, string? detectedPlate, int currentStaffId)
         {
-            var activeShift = await _staffLogService.GetActiveShiftAsync(currentStaffId);
-            if (activeShift == null)
-            {
-                throw new InvalidOperationException("Bạn chưa mở ca làm việc. Vui lòng mở ca trực trước khi thao tác.");
-            }
+            await EnsureActiveShiftAsync(currentStaffId);
 
-            if (QrCodeParserHelper.TryParseQr(ticketCode, out var parsedTicket, out var parsedPlate, out var parsedSessionId, out var parsedSlot))
+            if (QrCodeParserHelper.TryParseQr(ticketCode, out var parsedTicket, out var parsedPlate, out _, out _))
             {
                 ticketCode = parsedTicket!;
                 if (string.IsNullOrWhiteSpace(detectedPlate) || detectedPlate.Trim().ToLower() == "string")
@@ -590,22 +256,126 @@ namespace ParkingBuilding.Service.Service
                 }
             }
 
-            var isTicketCodeEmpty = string.IsNullOrWhiteSpace(ticketCode) ||
-                                    ticketCode.Trim().ToLower() == "null" ||
-                                    ticketCode.Trim().ToLower() == "undefined";
-
-            if (isTicketCodeEmpty)
+            string? cleanTicketCode = NormalizeTicketCode(ticketCode);
+            if (cleanTicketCode == null)
             {
                 _logger.LogWarning("Scan check-in thất bại: Thiếu mã vé hoặc mã QR.");
                 return new ScanCheckInResponse { IsSuccess = false, Message = "Vui lòng nhập mã vé (Ticket Code) hoặc quét mã QR để tiếp tục check-in." };
             }
 
-            string cleanTicketCode = ticketCode.Trim();
+            DateTime localNow = GetVietnamNow();
+            MembershipCard? membershipCard = await FindActiveMembershipCardAsync(cleanTicketCode, localNow);
+            ParkingSession? session = membershipCard == null
+                ? await FindReservedSessionByTicketAsync(cleanTicketCode)
+                : null;
 
+            bool isBicycle = IsBicycle(membershipCard, session);
+            string? cleanLicense = isBicycle
+                ? $"BIKE_MEMBERSHIP_{cleanTicketCode}"
+                : ResolvePlate(detectedPlate, throwOnInvalidFormat: false);
+
+            var conflict = await GetActiveParkingConflictAsync(cleanLicense);
+            if (conflict != null)
+            {
+                return conflict;
+            }
+
+            if (membershipCard != null)
+            {
+                // Nhánh thẻ thành viên: giống hệt check-in chính, THẬT SỰ tạo phiên đỗ và ghi vào CSDL.
+                // (Không truyền ảnh vì endpoint quét QR không nhận tham số ảnh.)
+                return await ProcessMembershipCardCheckInAsync(membershipCard, cleanLicense, checkInImageUrl: null, currentStaffId, sourceTag: " (ScanQr)");
+            }
+
+            // Nhánh đặt chỗ: CHỈ xác thực và trả về thông tin xem trước, KHÔNG ghi gì vào CSDL.
+            // Muốn chốt thật vẫn phải gọi CheckInVehicleAsync (API check-in chính).
+            return BuildBookingScanPreview(session, detectedPlate, cleanTicketCode);
+        }
+
+        // ================================================================
+        // HELPER — Dùng chung cho cả ca trực, chuẩn hoá dữ liệu đầu vào
+        // ================================================================
+
+        private async Task EnsureActiveShiftAsync(int staffId)
+        {
+            var activeShift = await _staffLogService.GetActiveShiftAsync(staffId);
+            if (activeShift == null)
+            {
+                throw new InvalidOperationException("Bạn chưa mở ca làm việc. Vui lòng mở ca trực trước khi thao tác.");
+            }
+        }
+
+        /// <summary>
+        /// Làm sạch mã vé: coi các chuỗi rỗng, chỉ có khoảng trắng, hoặc các chuỗi "null"/"undefined"
+        /// (dấu vết lỗi thường gặp từ phía Frontend) đều là KHÔNG có mã vé.
+        /// </summary>
+        private static string? NormalizeTicketCode(string? rawTicketCode)
+        {
+            if (string.IsNullOrWhiteSpace(rawTicketCode))
+            {
+                return null;
+            }
+
+            string trimmed = rawTicketCode.Trim();
+            string lower = trimmed.ToLower();
+            if (lower == "null" || lower == "undefined")
+            {
+                return null;
+            }
+
+            return trimmed;
+        }
+
+        private static DateTime GetVietnamNow()
+        {
             var vnTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
-            var localNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vnTimeZone);
+            return TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vnTimeZone);
+        }
 
-            var membershipCard = await _context.MembershipCards
+        private static string GetVehicleTypeName(int typeId) => typeId switch
+        {
+            1 => "Xe đạp",
+            2 => "Xe máy",
+            _ => "Xe hơi"
+        };
+
+        /// <summary>
+        /// Xử lý ảnh chụp cổng vào cho luồng check-in chính: nếu đã có URL ảnh sẵn thì dùng luôn;
+        /// nếu có file ảnh thật thì nhờ AI đọc biển số (ghi đè vào request.LicenseVehicle nếu đọc được)
+        /// rồi tải ảnh lên kho lưu trữ.
+        /// </summary>
+        private async Task<string?> ResolveCheckInImageAsync(CheckInRequest request)
+        {
+            if (!string.IsNullOrEmpty(request.ImageUrl))
+            {
+                return request.ImageUrl;
+            }
+
+            if (request.ImageFile == null || request.ImageFile.Length == 0)
+            {
+                return null;
+            }
+
+            try
+            {
+                string detectedPlate = await _aiRecognitionService.PredictLicensePlateFromFileAsync(request.ImageFile);
+                request.LicenseVehicle = detectedPlate;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning("AI Nhận diện cổng vào lỗi: {Msg}. Tiếp tục dùng biển số nhập tay nếu có.", ex.Message);
+            }
+
+            return await _imageStorageService.UploadImageAsync(request.ImageFile, "parking_checkin");
+        }
+
+        // ================================================================
+        // HELPER — Tra cứu Thẻ Thành Viên / Đặt Chỗ theo mã vé
+        // ================================================================
+
+        private async Task<MembershipCard?> FindActiveMembershipCardAsync(string cleanTicketCode, DateTime localNow)
+        {
+            return await _context.MembershipCards
                 .Include(mc => mc.Ticket)
                 .Include(mc => mc.Tier)
                 .Include(mc => mc.User)
@@ -616,234 +386,396 @@ namespace ParkingBuilding.Service.Service
                                      && mc.Status == ParkingStatuses.MonthlyCardActive
                                      && !mc.IsDeleted
                                      && mc.EndTime >= localNow);
+        }
 
-            ParkingSession? session = null;
-            if (membershipCard == null)
-            {
-                if (int.TryParse(cleanTicketCode, out int ticketId))
-                {
-                    session = await _parkingRepository.GetReservedSessionByTicketIdAsync(ticketId);
-                }
-                else
-                {
-                    session = await _parkingRepository.GetReservedSessionByTicketCodeAsync(cleanTicketCode);
-                }
-            }
+        /// <summary>
+        /// Tra một đặt chỗ (booking) đang "Reserved" theo mã vé đã nhập. Nếu mã vé chuyển đổi được
+        /// thành số, thử tra nhanh theo TicketId nội bộ — NHƯNG luôn xác minh lại mã vé THẬT của
+        /// session tìm được có khớp với chuỗi đã nhập hay không, để không ai có thể "dò" số ID nội
+        /// bộ và check-in nhầm vào đặt chỗ của người khác.
+        /// </summary>
+        private async Task<ParkingSession?> FindReservedSessionByTicketAsync(string cleanTicketCode)
+        {
+            ParkingSession? session;
 
-            bool isBicycle = (membershipCard != null && membershipCard.Tier.TypeId == 1) || (session != null && session.TypeId == 1);
+            if (int.TryParse(cleanTicketCode, out int ticketId))
+            {
+                session = await _parkingRepository.GetReservedSessionByTicketIdAsync(ticketId);
 
-            string? cleanLicense = null;
-            if (isBicycle)
-            {
-                cleanLicense = $"BIKE_MEMBERSHIP_{cleanTicketCode}";
-            }
-            else if (!string.IsNullOrWhiteSpace(detectedPlate) && detectedPlate.Trim().ToLower() != "string")
-            {
-                if (detectedPlate.StartsWith("BIKE_"))
+                bool ticketCodeMatches = session != null &&
+                    string.Equals(session.Ticket?.TicketCode?.Trim(), cleanTicketCode, StringComparison.OrdinalIgnoreCase);
+
+                if (!ticketCodeMatches)
                 {
-                    cleanLicense = detectedPlate.Trim().ToUpper();
-                }
-                else
-                {
-                    if (LicensePlateHelper.IsValidLicensePlate(detectedPlate, out string validatedPlate))
-                    {
-                        cleanLicense = validatedPlate;
-                    }
+                    session = null;
                 }
             }
-
-            if (cleanLicense != null)
+            else
             {
-                var alreadyInParking = await _parkingRepository.GetActiveSessionByLicensePlateAsync(cleanLicense);
-                if (alreadyInParking != null)
+                session = await _parkingRepository.GetReservedSessionByTicketCodeAsync(cleanTicketCode);
+            }
+
+            return session;
+        }
+
+        private static bool IsBicycle(MembershipCard? membershipCard, ParkingSession? session)
+        {
+            return (membershipCard != null && membershipCard.Tier.TypeId == 1)
+                || (session != null && session.TypeId == 1);
+        }
+
+        /// <summary>
+        /// Chuẩn hoá và xác thực biển số (KHÔNG áp dụng cho xe đạp — xe đạp dùng mã định danh riêng,
+        /// xử lý ở nơi gọi). Trả về null nếu không có biển số hoặc biển số rỗng/placeholder.
+        /// </summary>
+        private static string? ResolvePlate(string? rawPlate, bool throwOnInvalidFormat)
+        {
+            if (string.IsNullOrWhiteSpace(rawPlate) || rawPlate.Trim().ToLower() == "string")
+            {
+                return null;
+            }
+
+            if (rawPlate.StartsWith("BIKE_"))
+            {
+                return rawPlate.Trim().ToUpper();
+            }
+
+            if (LicensePlateHelper.IsValidLicensePlate(rawPlate, out string validatedPlate))
+            {
+                return validatedPlate;
+            }
+
+            if (throwOnInvalidFormat)
+            {
+                throw new ArgumentException(LicensePlateHelper.GetErrorMessage());
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Chặn xe đã có một phiên đỗ đang hoạt động (SessionStatus = InProgress) khớp biển số —
+        /// dùng chung cho cả check-in chính lẫn quét QR xác thực.
+        /// </summary>
+        private async Task<ScanCheckInResponse?> GetActiveParkingConflictAsync(string? cleanLicense)
+        {
+            if (cleanLicense == null)
+            {
+                return null;
+            }
+
+            var alreadyInParking = await _parkingRepository.GetActiveSessionByLicensePlateAsync(cleanLicense);
+            if (alreadyInParking == null)
+            {
+                return null;
+            }
+
+            _logger.LogWarning("Check-in thất bại: Xe biển số '{LicensePlate}' đã có một phiên đỗ xe đang hoạt động trong bãi (SessionId: {SessionId}).",
+                cleanLicense, alreadyInParking.SessionId);
+
+            return new ScanCheckInResponse
+            {
+                IsSuccess = false,
+                Message = $"Xe biển số '{cleanLicense}' đã có một phiên đỗ xe đang hoạt động trong bãi."
+            };
+        }
+
+        // ================================================================
+        // HELPER — Nhánh Thẻ Thành Viên (dùng chung cho Check-In chính & Quét QR)
+        // ================================================================
+
+        private async Task<ScanCheckInResponse> ProcessMembershipCardCheckInAsync(
+            MembershipCard membershipCard,
+            string? cleanLicense,
+            string? checkInImageUrl,
+            int currentStaffId,
+            string sourceTag)
+        {
+            // 1. Với xe không phải xe đạp, biển số phải nằm trong danh sách đã đăng ký và đang hoạt động của thẻ
+            if (membershipCard.Tier.TypeId != 1)
+            {
+                if (string.IsNullOrWhiteSpace(cleanLicense))
                 {
                     return new ScanCheckInResponse
                     {
                         IsSuccess = false,
-                        Message = $"Xe biển số '{cleanLicense}' đã có một phiên đỗ xe đang hoạt động trong bãi."
-                    };
-                }
-            }
-
-            if (membershipCard != null)
-            {
-                // >>> KỊCH BẢN CHECK-IN BẰNG THẺ THÀNH VIÊN <<<
-
-                // 1. Kiểm tra biển số xe đi vào có thuộc danh sách biển số đã đăng ký và đang hoạt động không
-                if (membershipCard.Tier.TypeId != 1)
-                {
-                    if (string.IsNullOrWhiteSpace(cleanLicense))
-                    {
-                        return new ScanCheckInResponse
-                        {
-                            IsSuccess = false,
-                            Message = "Thẻ thành viên này yêu cầu phải có biển số xe khi check-in."
-                        };
-                    }
-
-                    var isRegisteredPlate = membershipCard.MembershipVehicles
-                        .Any(v => v.LicenseVehicle.Trim().ToUpper() == cleanLicense.Trim().ToUpper() && v.IsActive);
-
-                    if (!isRegisteredPlate)
-                    {
-                        return new ScanCheckInResponse
-                        {
-                            IsSuccess = false,
-                            Message = $"Xe biển số '{cleanLicense}' không được đăng ký hoặc không hoạt động trong thẻ thành viên này.",
-                            SessionId = 0,
-                            LicenseVehicle = cleanLicense ?? "",
-                            SlotName = "N/A",
-                            VehicleTypeName = membershipCard.Tier.TypeId == 1 ? "Xe đạp" : (membershipCard.Tier.TypeId == 2 ? "Xe máy" : "Xe hơi"),
-                            DriverName = membershipCard.User?.Username ?? "N/A",
-                            DriverPhone = membershipCard.User?.PhoneNumber ?? "N/A",
-                            DriverEmail = membershipCard.User?.Email ?? "N/A",
-                            TicketCode = membershipCard.Ticket.TicketCode,
-                            RequiresPayment = false,
-                            PaymentStatus = "SUCCESS"
-                        };
-                    }
-                }
-
-                // 2. Kiểm tra xem thẻ thành viên này có đang được xe khác dùng trong bãi hay không
-                var activeSession = await _context.ParkingSessions
-                    .Include(s => s.Slot)
-                    .FirstOrDefaultAsync(s => s.UserId == membershipCard.UserId
-                                         && s.SessionStatus == ParkingStatuses.SessionInProgress
-                                         && !s.IsDeleted);
-
-                if (activeSession != null)
-                {
-                    // TỰ ĐỘNG CHUYỂN SANG CHECK-IN VÃNG LAI CHO XE THỨ HAI
-                    var slotForWalkIn = await _context.ParkingSlots
-                        .FromSqlInterpolated($"SELECT TOP 1 * FROM ParkingSlots WITH (UPDLOCK, ROWLOCK) WHERE SlotStatus = {ParkingStatuses.SlotAvailable} AND TypeId = {membershipCard.Tier.TypeId} AND IsDeleted = 0 ORDER BY SlotName ASC")
-                        .FirstOrDefaultAsync();
-
-                    if (slotForWalkIn == null)
-                    {
-                        return new ScanCheckInResponse
-                        {
-                            IsSuccess = false,
-                            Message = "Thành thật xin lỗi, bãi xe hiện tại đã hết chỗ trống cho loại xe này!"
-                        };
-                    }
-
-                    slotForWalkIn.SlotStatus = ParkingStatuses.SlotOccupied;
-                    _context.ParkingSlots.Update(slotForWalkIn);
-
-                    var newWalkInSession = new ParkingSession
-                    {
-                        UserId = null, // Set to null for paid session
-                        SlotId = slotForWalkIn.SlotId,
-                        LicenseVehicle = cleanLicense ?? $"MBC_VEHICLE_{Guid.NewGuid().ToString().Substring(0, 5).ToUpper()}",
-                        TypeId = membershipCard.Tier.TypeId,
-                        CheckInTime = DateTime.UtcNow,
-                        CheckInImageUrl = null,
-                        SessionStatus = ParkingStatuses.SessionInProgress,
-                        TicketId = membershipCard.TicketId,
-                        IsDeleted = false
-                    };
-
-                    await _context.ParkingSessions.AddAsync(newWalkInSession);
-                    await _context.SaveChangesAsync();
-
-                    _logger.LogInformation("Tự động chuyển check-in vãng lai (ScanQr): Xe '{Plate}' vào bãi. Ô đỗ: {SlotName}.",
-                        newWalkInSession.LicenseVehicle, slotForWalkIn.SlotName);
-
-                    await _staffLogService.LogActivityAsync(
-                        currentStaffId,
-                        "CHECK_IN",
-                        $"Thẻ tháng đã có xe trong bãi (ScanQr). Tự động chuyển sang check-in vãng lai cho xe {newWalkInSession.LicenseVehicle} tại ô {slotForWalkIn.SlotName}.",
-                        newWalkInSession.LicenseVehicle,
-                        newWalkInSession.SessionId
-                    );
-
-                    return new ScanCheckInResponse
-                    {
-                        IsSuccess = true,
-                        Message = $"Thẻ thành viên đã có xe trong bãi. Tự động chuyển sang check-in vãng lai. Vui lòng đỗ vào ô: {slotForWalkIn.SlotName}.",
-                        SessionId = newWalkInSession.SessionId,
-                        LicenseVehicle = newWalkInSession.LicenseVehicle,
-                        SlotName = slotForWalkIn.SlotName,
-                        VehicleTypeName = membershipCard.Tier.TypeId == 1 ? "Xe đạp" : (membershipCard.Tier.TypeId == 2 ? "Xe máy" : "Xe hơi"),
-                        TicketCode = membershipCard.Ticket.TicketCode,
-                        RequiresPayment = true,
-                        PaymentStatus = "PENDING",
-                        DriverName = membershipCard.User?.Username,
-                        DriverPhone = membershipCard.User?.PhoneNumber,
-                        DriverEmail = membershipCard.User?.Email
+                        Message = "Thẻ thành viên này yêu cầu phải có biển số xe khi check-in."
                     };
                 }
 
-                // 3. Tìm slot cố định của thẻ thành viên
-                var availableMs = membershipCard.MembershipSlots
-                    .FirstOrDefault(ms => ms.Slot != null
-                                       && (ms.Slot.SlotStatus == ParkingStatuses.SlotReserved
-                                           || ms.Slot.SlotStatus == ParkingStatuses.SlotAvailable)
-                                       && !ms.Slot.IsDeleted);
+                bool isRegisteredPlate = membershipCard.MembershipVehicles
+                    .Any(v => v.LicenseVehicle.Trim().ToUpper() == cleanLicense.Trim().ToUpper() && v.IsActive);
 
-                if (availableMs == null)
+                if (!isRegisteredPlate)
                 {
-                    var slotNames = string.Join(", ", membershipCard.MembershipSlots
-                        .Select(ms => ms.Slot?.SlotName ?? "?"));
                     return new ScanCheckInResponse
                     {
                         IsSuccess = false,
-                        Message = $"Không tìm thấy ô đỗ rảnh. Các ô đỗ ({slotNames}) hiện đang bị chiếm."
+                        Message = $"Xe biển số '{cleanLicense}' không được đăng ký hoặc không hoạt động trong gói thẻ thành viên này.",
+                        SessionId = 0,
+                        LicenseVehicle = cleanLicense,
+                        SlotName = "N/A",
+                        VehicleTypeName = GetVehicleTypeName(membershipCard.Tier.TypeId),
+                        DriverName = membershipCard.User?.Username ?? "N/A",
+                        DriverPhone = membershipCard.User?.PhoneNumber ?? "N/A",
+                        DriverEmail = membershipCard.User?.Email ?? "N/A",
+                        TicketCode = membershipCard.Ticket.TicketCode
                     };
                 }
+                // Không cần kiểm tra lại "biển số đã đỗ trong bãi chưa" ở đây nữa — GetActiveParkingConflictAsync
+                // đã kiểm tra điều này TRƯỚC KHI vào nhánh thẻ thành viên rồi (tránh kiểm tra trùng lặp 2 lần).
+            }
 
-                var slot = availableMs.Slot!;
+            // 2. Nếu chủ thẻ đã có một xe khác đang đỗ trong bãi -> tự động chuyển xe này sang chế độ vãng lai có tính phí
+            var activeMemberSession = await _context.ParkingSessions
+                .FirstOrDefaultAsync(s => s.UserId == membershipCard.UserId
+                                      && s.SessionStatus == ParkingStatuses.SessionInProgress
+                                      && !s.IsDeleted);
 
-                var newSession = new ParkingSession
-                {
-                    UserId = membershipCard.UserId,
-                    SlotId = slot.SlotId,
-                    LicenseVehicle = cleanLicense ?? $"MBC_VEHICLE_{Guid.NewGuid().ToString().Substring(0, 5).ToUpper()}",
-                    TypeId = membershipCard.Tier.TypeId,
-                    CheckInTime = DateTime.UtcNow,
-                    CheckInImageUrl = null,
-                    SessionStatus = ParkingStatuses.SessionInProgress,
-                    TicketId = membershipCard.TicketId,
-                    IsDeleted = false
-                };
+            if (activeMemberSession != null)
+            {
+                return await ConvertMembershipSecondVehicleToWalkInAsync(membershipCard, cleanLicense, checkInImageUrl, currentStaffId, sourceTag);
+            }
 
-                slot.SlotStatus = ParkingStatuses.SlotOccupied;
-                _context.ParkingSlots.Update(slot);
+            // 3. Dùng ô đỗ cố định của thẻ
+            return await AssignMembershipFixedSlotAsync(membershipCard, cleanLicense, checkInImageUrl, currentStaffId, sourceTag);
+        }
 
-                await _context.ParkingSessions.AddAsync(newSession);
-                await _context.SaveChangesAsync();
+        private async Task<ScanCheckInResponse> ConvertMembershipSecondVehicleToWalkInAsync(
+            MembershipCard membershipCard,
+            string? cleanLicense,
+            string? checkInImageUrl,
+            int currentStaffId,
+            string sourceTag)
+        {
+            var slotForWalkIn = await _context.ParkingSlots
+                .FromSqlInterpolated($"SELECT TOP 1 * FROM ParkingSlots WITH (UPDLOCK, ROWLOCK) WHERE SlotStatus = {ParkingStatuses.SlotAvailable} AND TypeId = {membershipCard.Tier.TypeId} AND IsDeleted = 0 ORDER BY SlotName ASC")
+                .FirstOrDefaultAsync();
 
-                _logger.LogInformation("Check-in THẺ THÀNH VIÊN thành công (ScanQr): Xe '{Plate}' vào bãi. Ô đỗ cố định: {SlotName}.",
-                    newSession.LicenseVehicle, slot.SlotName);
-
-                await _staffLogService.LogActivityAsync(
-                    currentStaffId,
-                    "CHECK_IN",
-                    $"Check-in thẻ thành viên thành công (ScanQr) cho xe {newSession.LicenseVehicle} tại ô đỗ cố định {slot.SlotName}.",
-                    newSession.LicenseVehicle,
-                    newSession.SessionId
-                );
-
+            if (slotForWalkIn == null)
+            {
                 return new ScanCheckInResponse
                 {
-                    IsSuccess = true,
-                    Message = $"Thẻ thành viên hợp lệ. Vui lòng đỗ xe vào vị trí đỗ cố định: {slot.SlotName}.",
-                    SessionId = newSession.SessionId,
-                    LicenseVehicle = newSession.LicenseVehicle,
-                    SlotName = slot.SlotName,
-                    VehicleTypeName = membershipCard.Tier.TypeId == 1 ? "Xe đạp" : (membershipCard.Tier.TypeId == 2 ? "Xe máy" : "Xe hơi"),
-                    TicketCode = membershipCard.Ticket.TicketCode,
-                    RequiresPayment = false,
-                    PaymentStatus = "SUCCESS",
-                    DriverName = membershipCard.User?.Username,
-                    DriverPhone = membershipCard.User?.PhoneNumber,
-                    DriverEmail = membershipCard.User?.Email
+                    IsSuccess = false,
+                    Message = "Thành thật xin lỗi, bãi xe hiện tại đã hết chỗ trống cho loại xe này!"
                 };
             }
 
-            // Luồng xử lý vé đặt trước (Reservation) bình thường
-            // (Đã được truy vấn ở trên để xác định loại xe đạp)
+            slotForWalkIn.SlotStatus = ParkingStatuses.SlotOccupied;
+            _context.ParkingSlots.Update(slotForWalkIn);
 
+            var newWalkInSession = new ParkingSession
+            {
+                UserId = null, // Set to null for paid session
+                SlotId = slotForWalkIn.SlotId,
+                LicenseVehicle = cleanLicense ?? $"MBC_VEHICLE_{Guid.NewGuid().ToString().Substring(0, 5).ToUpper()}",
+                TypeId = membershipCard.Tier.TypeId,
+                CheckInTime = DateTime.UtcNow,
+                CheckInImageUrl = checkInImageUrl,
+                SessionStatus = ParkingStatuses.SessionInProgress,
+                TicketId = membershipCard.TicketId,
+                IsDeleted = false
+            };
+
+            await _context.ParkingSessions.AddAsync(newWalkInSession);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Tự động chuyển check-in vãng lai{Source}: Xe '{Plate}' vào bãi. Ô đỗ: {SlotName}.",
+                sourceTag, newWalkInSession.LicenseVehicle, slotForWalkIn.SlotName);
+
+            await _staffLogService.LogActivityAsync(
+                currentStaffId,
+                "CHECK_IN",
+                $"Thẻ tháng đã có xe trong bãi{sourceTag}. Tự động chuyển sang check-in vãng lai cho xe {newWalkInSession.LicenseVehicle} tại ô {slotForWalkIn.SlotName}.",
+                newWalkInSession.LicenseVehicle,
+                newWalkInSession.SessionId
+            );
+
+            return new ScanCheckInResponse
+            {
+                IsSuccess = true,
+                Message = $"Thẻ thành viên đã có xe trong bãi. Tự động chuyển sang check-in vãng lai. Vui lòng đỗ vào ô: {slotForWalkIn.SlotName}.",
+                SessionId = newWalkInSession.SessionId,
+                LicenseVehicle = newWalkInSession.LicenseVehicle,
+                SlotName = slotForWalkIn.SlotName,
+                VehicleTypeName = GetVehicleTypeName(membershipCard.Tier.TypeId),
+                TicketCode = membershipCard.Ticket.TicketCode,
+                RequiresPayment = true,
+                PaymentStatus = "PENDING",
+                DriverName = membershipCard.User?.Username,
+                DriverPhone = membershipCard.User?.PhoneNumber,
+                DriverEmail = membershipCard.User?.Email
+            };
+        }
+
+        private async Task<ScanCheckInResponse> AssignMembershipFixedSlotAsync(
+            MembershipCard membershipCard,
+            string? cleanLicense,
+            string? checkInImageUrl,
+            int currentStaffId,
+            string sourceTag)
+        {
+            var availableMs = membershipCard.MembershipSlots
+                .FirstOrDefault(ms => ms.Slot != null
+                                   && (ms.Slot.SlotStatus == ParkingStatuses.SlotReserved
+                                       || ms.Slot.SlotStatus == ParkingStatuses.SlotAvailable)
+                                   && !ms.Slot.IsDeleted);
+
+            if (availableMs == null)
+            {
+                var slotNames = string.Join(", ", membershipCard.MembershipSlots
+                    .Select(ms => ms.Slot?.SlotName ?? "?"));
+                return new ScanCheckInResponse
+                {
+                    IsSuccess = false,
+                    Message = $"Không tìm thấy ô đỗ rảnh. Các ô đỗ ({slotNames}) hiện đang bị chiếm."
+                };
+            }
+
+            var slot = availableMs.Slot!;
+
+            var newSession = new ParkingSession
+            {
+                UserId = membershipCard.UserId,
+                SlotId = slot.SlotId,
+                LicenseVehicle = cleanLicense ?? $"MBC_VEHICLE_{Guid.NewGuid().ToString().Substring(0, 5).ToUpper()}",
+                TypeId = membershipCard.Tier.TypeId,
+                CheckInTime = DateTime.UtcNow,
+                CheckInImageUrl = checkInImageUrl,
+                SessionStatus = ParkingStatuses.SessionInProgress,
+                TicketId = membershipCard.TicketId,
+                IsDeleted = false
+            };
+
+            slot.SlotStatus = ParkingStatuses.SlotOccupied;
+            _context.ParkingSlots.Update(slot);
+
+            await _context.ParkingSessions.AddAsync(newSession);
+            await _context.SaveChangesAsync();
+
+            _logger.LogInformation("Check-in THẺ THÀNH VIÊN thành công{Source}: Xe '{Plate}' vào bãi. Ô đỗ cố định: {SlotName}.",
+                sourceTag, newSession.LicenseVehicle, slot.SlotName);
+
+            await _staffLogService.LogActivityAsync(
+                currentStaffId,
+                "CHECK_IN",
+                $"Check-in thẻ thành viên thành công{sourceTag} cho xe {newSession.LicenseVehicle} tại ô đỗ cố định {slot.SlotName}.",
+                newSession.LicenseVehicle,
+                newSession.SessionId
+            );
+
+            return new ScanCheckInResponse
+            {
+                IsSuccess = true,
+                Message = $"Check-in thẻ thành viên thành công! Vui lòng đỗ xe vào vị trí đỗ cố định của bạn: {slot.SlotName}.",
+                SessionId = newSession.SessionId,
+                LicenseVehicle = newSession.LicenseVehicle,
+                SlotName = slot.SlotName,
+                VehicleTypeName = GetVehicleTypeName(membershipCard.Tier.TypeId),
+                TicketCode = membershipCard.Ticket.TicketCode,
+                RequiresPayment = false,
+                PaymentStatus = "SUCCESS",
+                DriverName = membershipCard.User?.Username,
+                DriverPhone = membershipCard.User?.PhoneNumber,
+                DriverEmail = membershipCard.User?.Email
+            };
+        }
+
+        // ================================================================
+        // HELPER — Nhánh Đặt Chỗ (Booking)
+        // ================================================================
+
+        /// <summary>
+        /// Dùng bởi CheckInVehicleAsync: XÁC NHẬN THẬT, chuyển session từ "Reserved" sang "InProgress"
+        /// và ghi vào CSDL.
+        /// </summary>
+        private async Task<ScanCheckInResponse> ProcessBookingCheckInAsync(
+            ParkingSession? session,
+            string? cleanLicense,
+            string? cleanTicketCode,
+            string? checkInImageUrl,
+            int currentStaffId)
+        {
+            if (session != null && session.TypeId != 1 && cleanLicense != null && !string.IsNullOrEmpty(session.LicenseVehicle))
+            {
+                if (cleanLicense.ToUpper() != session.LicenseVehicle.Trim().ToUpper())
+                {
+                    return new ScanCheckInResponse
+                    {
+                        IsSuccess = false,
+                        Message = $"Biển số thực tế '{cleanLicense}' không khớp với biển số đã đăng ký đặt chỗ '{session.LicenseVehicle}'."
+                    };
+                }
+            }
+
+            if (session == null)
+            {
+                _logger.LogWarning("Check-in thất bại: Không tìm thấy phiên đặt chỗ (Reservation) tương ứng với Biển số '{License}' hoặc Mã vé '{Ticket}'.",
+                    cleanLicense, cleanTicketCode);
+                return new ScanCheckInResponse
+                {
+                    IsSuccess = false,
+                    Message = $"Không tìm thấy phiên đặt chỗ tương ứng với Biển số '{cleanLicense}' hoặc Mã vé '{cleanTicketCode}'."
+                };
+            }
+
+            session.SessionStatus = ParkingStatuses.SessionInProgress;
+            session.CheckInTime = DateTime.UtcNow;
+            session.CheckInImageUrl = checkInImageUrl;
+
+            if (session.Slot != null)
+            {
+                if (session.Slot.SlotStatus == ParkingStatuses.SlotOccupied)
+                {
+                    _logger.LogError("Check-in thất bại: Vị trí đỗ {SlotName} đã bị xe khác chiếm dụng cho Session {SessionId}.",
+                        session.Slot.SlotName, session.SessionId);
+                    throw new Exception($"Chỗ đỗ {session.Slot.SlotName} hiện đã bị xe khác chiếm dụng. Vui lòng kiểm tra lại vị trí đỗ.");
+                }
+                session.Slot.SlotStatus = ParkingStatuses.SlotOccupied;
+            }
+
+            if (cleanTicketCode != null && session.Ticket != null)
+            {
+                session.Ticket.TicketStatus = ParkingStatuses.TicketActive;
+            }
+
+            await _parkingRepository.UpdateSessionAndSlotAsync(session, session.Slot!);
+
+            _logger.LogInformation("Check-in THÀNH CÔNG: Xe '{LicensePlate}' đã vào bãi. Ô đỗ phân phối: {SlotName}. SessionId: {SessionId}.",
+                cleanLicense ?? session.LicenseVehicle, session.Slot?.SlotName ?? "N/A", session.SessionId);
+
+            await _staffLogService.LogActivityAsync(
+                currentStaffId,
+                "CHECK_IN",
+                $"Check-in đặt trước thành công cho xe {session.LicenseVehicle} tại vị trí {session.Slot?.SlotName ?? "N/A"}.",
+                session.LicenseVehicle,
+                session.SessionId
+            );
+
+            return new ScanCheckInResponse
+            {
+                IsSuccess = true,
+                Message = "Check-in thành công! Mời xe tiến qua thanh chắn vào bãi.",
+                SessionId = session.SessionId,
+                LicenseVehicle = session.LicenseVehicle,
+                SlotName = session.Slot?.SlotName ?? "N/A",
+                VehicleTypeName = session.Type?.TypeName ?? "N/A",
+                ExpectedCheckInTime = session.ExpectedCheckInTime,
+                BookingTime = session.BookingTime,
+                DriverName = session.User?.Username ?? "N/A",
+                DriverPhone = session.User?.PhoneNumber ?? "N/A",
+                DriverEmail = session.User?.Email ?? "N/A",
+                TicketCode = session.Ticket?.TicketCode ?? cleanTicketCode ?? "",
+                RequiresPayment = session.Invoice != null && session.Invoice.PaymentStatus == "PENDING",
+                PaymentStatus = session.Invoice?.PaymentStatus ?? "NoPayment"
+            };
+        }
+
+        /// <summary>
+        /// Dùng bởi ScanQrCheckInAsync: CHỈ xác thực và trả về thông tin xem trước, KHÔNG ghi gì vào CSDL.
+        /// </summary>
+        private static ScanCheckInResponse BuildBookingScanPreview(ParkingSession? session, string? detectedPlate, string cleanTicketCode)
+        {
             if (session == null)
             {
                 return new ScanCheckInResponse { IsSuccess = false, Message = "Không tìm thấy thông tin đặt chỗ." };
