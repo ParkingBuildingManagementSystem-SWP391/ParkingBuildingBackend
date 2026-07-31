@@ -8,7 +8,7 @@ namespace ParkingBuilding.Service.DTOs
         public int VehicleTypeId { get; set; }
         public IFormFile? ImageFile { get; set; }
 
-        // THÊM THUỘC TÍNH NÀY
-        public string? ImageUrl { get; set; }
+        // Tên phải khớp với field "checkInImageUrl" mà FE gửi.
+        public string? CheckInImageUrl { get; set; }
     }
 }

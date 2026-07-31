@@ -121,9 +121,9 @@ namespace ParkingBuilding.Service.Service
 
             string? checkOutImageUrl = null;
 
-            if (!string.IsNullOrEmpty(request.ImageUrl))
+            if (!string.IsNullOrEmpty(request.CheckOutImageUrl))
             {
-                checkOutImageUrl = request.ImageUrl;
+                checkOutImageUrl = request.CheckOutImageUrl;
             }
             else if (request.ImageFile != null && request.ImageFile.Length > 0)
             {
@@ -253,7 +253,126 @@ namespace ParkingBuilding.Service.Service
                             session.SessionId, cleanCheckoutPlate);
                     }
                 }
-                else
+
+                // ====================================================================================
+                // KỊCH BẢN 0: XE ĐĂNG KÝ THẺ THÀNH VIÊN CÒN HIỆU LỰC.
+                // Được xử lý TRƯỚC các bước an ninh dành cho khách vãng lai (bắt buộc ảnh, đối khớp vé...)
+                // vì thẻ thành viên có bộ điều kiện xác thực riêng: có ảnh chụp xe tại cổng ra + biển số
+                // khớp với biển số đã đăng ký trên thẻ + thẻ còn hiệu lực -> tự động hoàn tất 0đ,
+                // KHÔNG bắt buộc thanh toán tiền mặt/VNPay/Ví.
+                // ====================================================================================
+                var vnTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
+                var localNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vnTimeZone);
+
+                var membershipCard = session.UserId.HasValue
+                    ? await _context.MembershipCards
+                        .Include(mc => mc.MembershipSlots).ThenInclude(ms => ms.Slot)
+                        .Include(mc => mc.MembershipVehicles)
+                        .Include(mc => mc.Tier)
+                        .FirstOrDefaultAsync(mc => mc.UserId == session.UserId
+                                             && mc.Tier.TypeId == session.TypeId
+                                             && mc.Status == ParkingStatuses.MonthlyCardActive
+                                             && !mc.IsDeleted
+                                             && mc.EndTime >= localNow)
+                    : null;
+
+                if (membershipCard != null)
+                {
+                    bool plateMatchesRegistered = session.TypeId == 1
+                        || (!string.IsNullOrEmpty(cleanCheckoutPlate)
+                            && membershipCard.MembershipVehicles.Any(v => v.IsActive
+                                && v.LicenseVehicle.Trim().ToUpper() == cleanCheckoutPlate.Trim().ToUpper()));
+
+                    if (!plateMatchesRegistered)
+                    {
+                        _logger.LogWarning("Thẻ thành viên (UserId {UserId}) hợp lệ nhưng biển số check-out '{Plate}' không khớp biển số đã đăng ký trên thẻ. Xử lý như khách vãng lai thông thường (yêu cầu thanh toán).",
+                            session.UserId, cleanCheckoutPlate);
+                        membershipCard = null;
+                    }
+                    else if (string.IsNullOrEmpty(checkOutImageUrl))
+                    {
+                        _logger.LogWarning("Check-out thẻ thành viên thất bại: Thiếu ảnh chụp xe tại cổng ra đối với SessionId {SessionId}.", session.SessionId);
+                        await dbTransaction.RollbackAsync();
+                        return new CheckoutResponse
+                        {
+                            IsSuccess = false,
+                            Message = "Vui lòng chụp/cung cấp ảnh xe tại cổng ra để xác thực và hoàn tất check-out miễn phí cho thẻ thành viên.",
+                            TicketCode = session.Ticket?.TicketCode ?? "N/A",
+                            SlotName = session.Slot?.SlotName ?? "N/A",
+                            CheckInLicensePlate = session.LicenseVehicle ?? "",
+                            CheckOutLicensePlate = cleanCheckoutPlate ?? "",
+                            IsLicensePlateMatched = true,
+                            CheckInImageUrl = session.CheckInImageUrl,
+                            CheckOutImageUrl = checkOutImageUrl,
+                            CheckInTime = session.CheckInTime ?? DateTime.UtcNow,
+                            CheckOutTime = DateTime.UtcNow,
+                            DurationHours = 0,
+                            TotalAmount = 0,
+                            InvoiceId = session.Invoice?.InvoiceId ?? 0,
+                            IsPaid = false
+                        };
+                    }
+                    else
+                    {
+                        session.CheckOutImageUrl = checkOutImageUrl;
+                        session.CheckOutTime = DateTime.UtcNow;
+                        session.SessionStatus = ParkingStatuses.SessionCompleted;
+                        _context.ParkingSessions.Update(session);
+
+                        var mcInvoice = session.Invoice;
+                        if (mcInvoice == null)
+                        {
+                            mcInvoice = new Invoice
+                            {
+                                SessionId = session.SessionId,
+                                TotalAmount = 0,
+                                PaymentMethod = "MEMBERSHIP_CARD",
+                                PaymentStatus = "SUCCESS",
+                                PaymentTime = DateTime.UtcNow,
+                                CreatedDate = DateTime.UtcNow,
+                                StaffId = currentStaffId
+                            };
+                            await _context.Invoices.AddAsync(mcInvoice);
+                        }
+                        else
+                        {
+                            mcInvoice.TotalAmount = 0;
+                            mcInvoice.PaymentMethod = "MEMBERSHIP_CARD";
+                            mcInvoice.PaymentStatus = "SUCCESS";
+                            mcInvoice.PaymentTime = DateTime.UtcNow;
+                            mcInvoice.StaffId = currentStaffId;
+                            _context.Invoices.Update(mcInvoice);
+                        }
+
+                        var mcSlot = session.Slot ?? await _parkingRepository.GetSlotByIdAsync(session.SlotId);
+                        if (mcSlot != null)
+                        {
+                            // Khóa ô đỗ xe cố định: giữ Reserved cho thành viên, không giải phóng về Available.
+                            mcSlot.SlotStatus = ParkingStatuses.SlotReserved;
+                            _context.ParkingSlots.Update(mcSlot);
+                        }
+
+                        await _context.SaveChangesAsync();
+                        await dbTransaction.CommitAsync();
+
+                        DateTime mcCheckInTime = session.CheckInTime ?? DateTime.UtcNow;
+                        if (mcCheckInTime.Kind == DateTimeKind.Unspecified)
+                            mcCheckInTime = DateTime.SpecifyKind(mcCheckInTime, DateTimeKind.Utc);
+
+                        var mcStaff = await _parkingRepository.GetStaffByIdAsync(currentStaffId);
+
+                        _logger.LogInformation("Check-out THÀNH CÔNG (Thẻ thành viên, miễn phí): Xe '{Plate}' ra bãi. SessionId: {SessionId}.",
+                            cleanCheckoutPlate, session.SessionId);
+
+                        return BuildCheckoutResponse(session, cleanCheckoutPlate, checkOutImageUrl, mcCheckInTime, session.CheckOutTime.Value, 0,
+                            totalAmount: 0, parkingFee: 0, fineAmount: 0, isLostTicket: false,
+                            staffName: mcStaff?.Username ?? "Nhân viên hệ thống",
+                            isSuccess: true, isPaid: true,
+                            message: $"Xe thuộc diện thẻ thành viên hoạt động. Cho phép xe {session.LicenseVehicle} ra khỏi bãi (Phí đỗ: 0 VNĐ).");
+                    }
+                }
+
+                if (session.TypeId != 1)
                 {
                     if (string.IsNullOrEmpty(cleanCheckoutPlate))
                     {
@@ -465,70 +584,6 @@ namespace ParkingBuilding.Service.Service
                 }
 
                 decimal totalAmount = parkingFee + fineAmount;
-
-                var vnTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
-                var localNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vnTimeZone);
-
-                // ====================================================================================
-                // KỊCH BẢN 0: XE ĐĂNG KÝ THẺ THÀNH VIÊN CÒN HIỆU LỰC (Nhận dạng qua TicketId của phiên đỗ)
-                // ====================================================================================
-                var membershipCard = (session.UserId.HasValue)
-                    ? await _context.MembershipCards
-                        .Include(mc => mc.MembershipSlots)
-                            .ThenInclude(ms => ms.Slot)
-                        .Include(mc => mc.Tier)
-                        .FirstOrDefaultAsync(mc => mc.UserId == session.UserId
-                                             && mc.Tier.TypeId == session.TypeId
-                                             && mc.Status == ParkingStatuses.MonthlyCardActive
-                                             && !mc.IsDeleted
-                                             && mc.EndTime >= localNow)
-                    : null;
-
-                if (membershipCard != null)
-                {
-                    session.CheckOutImageUrl = checkOutImageUrl;
-                    session.CheckOutTime = checkOutTime;
-                    session.SessionStatus = ParkingStatuses.SessionCompleted;
-                    _context.ParkingSessions.Update(session);
-
-                    var invoice = session.Invoice;
-                    if (invoice == null)
-                    {
-                        invoice = new Invoice
-                        {
-                            SessionId = session.SessionId,
-                            TotalAmount = 0,
-                            PaymentMethod = "MEMBERSHIP_CARD",
-                            PaymentStatus = "SUCCESS",
-                            PaymentTime = DateTime.UtcNow,
-                            CreatedDate = DateTime.UtcNow,
-                            StaffId = currentStaffId
-                        };
-                        await _context.Invoices.AddAsync(invoice);
-                    }
-                    else
-                    {
-                        invoice.TotalAmount = 0;
-                        invoice.PaymentMethod = "MEMBERSHIP_CARD";
-                        invoice.PaymentStatus = "SUCCESS";
-                        invoice.PaymentTime = DateTime.UtcNow;
-                        invoice.StaffId = currentStaffId;
-                        _context.Invoices.Update(invoice);
-                    }
-
-                    var slot = session.Slot ?? await _parkingRepository.GetSlotByIdAsync(session.SlotId);
-                    if (slot != null)
-                    {
-                        // KHÓA Ô ĐỖ XE CỐ ĐỊNH: Set slot status thành Reserved chứ không giải phóng về Available!
-                        slot.SlotStatus = ParkingStatuses.SlotReserved;
-                        _context.ParkingSlots.Update(slot);
-                    }
-
-                    await _context.SaveChangesAsync();
-                    await dbTransaction.CommitAsync();
-
-                    return BuildCheckoutResponse(session, cleanCheckoutPlate, checkOutImageUrl, checkInTime, checkOutTime, durationHours, totalAmount: 0, parkingFee: 0, fineAmount: fineAmount, isLostTicket: isLostTicket, staffName: staffName, isSuccess: true, isPaid: true, message: $"Xe thuộc diện thẻ thành viên hoạt động. Cho phép xe {session.LicenseVehicle} ra khỏi bãi (Phí đỗ: 0 VNĐ).");
-                }
 
                 session.CheckOutImageUrl = checkOutImageUrl;
                 session.CheckOutTime = checkOutTime;

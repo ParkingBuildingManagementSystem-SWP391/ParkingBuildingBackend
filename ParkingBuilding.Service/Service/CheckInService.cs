@@ -123,9 +123,9 @@ namespace ParkingBuilding.Service.Service
             }
 
             string? checkInImageUrl = null;
-            if (!string.IsNullOrEmpty(request.ImageUrl))
+            if (!string.IsNullOrEmpty(request.CheckInImageUrl))
             {
-                checkInImageUrl = request.ImageUrl;
+                checkInImageUrl = request.CheckInImageUrl;
             }
 
             if (request.VehicleTypeId == 1) // Xe đạp
@@ -353,9 +353,9 @@ namespace ParkingBuilding.Service.Service
         /// </summary>
         private async Task<string?> ResolveCheckInImageAsync(CheckInRequest request)
         {
-            if (!string.IsNullOrEmpty(request.ImageUrl))
+            if (!string.IsNullOrEmpty(request.CheckInImageUrl))
             {
-                return request.ImageUrl;
+                return request.CheckInImageUrl;
             }
 
             if (request.ImageFile == null || request.ImageFile.Length == 0)
@@ -572,6 +572,17 @@ namespace ParkingBuilding.Service.Service
             slotForWalkIn.SlotStatus = ParkingStatuses.SlotOccupied;
             _context.ParkingSlots.Update(slotForWalkIn);
 
+            // Tạo Ticket riêng cho phiên đỗ này thay vì dùng lại membershipCard.TicketId,
+            // vì ParkingSessions.TicketId có unique index — dùng lại TicketId của thẻ sẽ vi phạm
+            // ràng buộc này ngay khi thẻ check-in vãng lai lần thứ 2 trở đi.
+            var walkInSessionTicket = new Ticket
+            {
+                TicketCode = membershipCard.Ticket.TicketCode,
+                TicketStatus = ParkingStatuses.TicketActive
+            };
+            await _context.Tickets.AddAsync(walkInSessionTicket);
+            await _context.SaveChangesAsync();
+
             var newWalkInSession = new ParkingSession
             {
                 UserId = null, // Set to null for paid session
@@ -581,7 +592,7 @@ namespace ParkingBuilding.Service.Service
                 CheckInTime = DateTime.UtcNow,
                 CheckInImageUrl = checkInImageUrl,
                 SessionStatus = ParkingStatuses.SessionInProgress,
-                TicketId = membershipCard.TicketId,
+                TicketId = walkInSessionTicket.TicketId,
                 IsDeleted = false
             };
 
