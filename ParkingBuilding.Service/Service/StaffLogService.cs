@@ -114,11 +114,14 @@ namespace ParkingBuilding.Service.Service
                 throw new InvalidOperationException("Không tìm thấy ca trực đang hoạt động nào của bạn.");
             }
 
-            var revenue = await CalculateShiftRevenueAsync(staffId, shift.StartTime, null);
+            // FIX: truyền thời điểm đóng ca vào endTime để chỉ tính invoice
+            // trong khoảng [StartTime, EndTime] của ca này, không tính invoice sau khi đóng ca.
+            var endTime = DateTime.UtcNow;
+            var revenue = await CalculateShiftRevenueAsync(staffId, shift.StartTime, endTime);
             shift.SystemCash = revenue.cashAmount;
             shift.TotalTransactions = revenue.transactionCount;
 
-            shift.EndTime = DateTime.UtcNow;
+            shift.EndTime = endTime;
             shift.ActualCash = request.ActualCash;
             shift.Difference = request.ActualCash - shift.SystemCash;
             shift.Status = "Closed";
@@ -176,9 +179,12 @@ namespace ParkingBuilding.Service.Service
 
             if (shift == null) return null;
 
+            // Tính lại realtime doanh thu của ca hiện tại (chỉ read, không ghi vào DB)
+            // để tránh conflict với UpdateShiftRevenueAsync.
+            // FIX: không gán lại shift.SystemCash (object đang được EF Core track)
+            // vì SaveChanges ngầm ở nơi khác có thể ghi giá trị tính toán này vào DB,
+            // gây double-count khi staff login lại ca mới mà thấy tiền ca cũ.
             var revenue = await CalculateShiftRevenueAsync(staffId, shift.StartTime, null);
-            shift.SystemCash = revenue.cashAmount;
-            shift.TotalTransactions = revenue.transactionCount;
 
             return new StaffShiftDto
             {
@@ -187,10 +193,11 @@ namespace ParkingBuilding.Service.Service
                 StaffUsername = shift.Staff?.Username ?? "N/A",
                 StartTime = shift.StartTime,
                 EndTime = shift.EndTime,
-                SystemCash = shift.SystemCash,
+                // FIX: trả về giá trị tính toán realtime thay vì modify entity đang được track
+                SystemCash = revenue.cashAmount,
                 ActualCash = shift.ActualCash,
                 Difference = shift.Difference,
-                TotalTransactions = shift.TotalTransactions,
+                TotalTransactions = revenue.transactionCount,
                 Status = shift.Status,
                 Notes = shift.Notes
             };
