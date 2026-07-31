@@ -194,7 +194,11 @@ namespace ParkingBuilding.Service.Service
             incident.ResolutionNotes = dto.ResolutionNotes;
             incident.FineAmount = dto.FineAmount ?? 0;
 
-            if (incident.IssueType.Equals(IncidentTypes.LostTicket, StringComparison.OrdinalIgnoreCase) && incident.SessionId.HasValue)
+            bool isLostTicket = incident.IssueType.Equals(IncidentTypes.LostTicket, StringComparison.OrdinalIgnoreCase)
+                             || incident.IssueType.Equals("LostTicket", StringComparison.OrdinalIgnoreCase)
+                             || incident.IssueType.Equals("Lost Ticket", StringComparison.OrdinalIgnoreCase);
+
+            if (isLostTicket && incident.SessionId.HasValue)
             {
                 var session = await _context.ParkingSessions
                     .Include(s => s.Ticket)
@@ -252,24 +256,21 @@ namespace ParkingBuilding.Service.Service
                 }
             }
 
-            var isSaved = await _unitOfWork.SaveChangesAsync();
-            if (isSaved)
+            var isSaved = await _context.SaveChangesAsync() >= 0;
+            try
             {
-                try
-                {
-                    var resolver = await _context.Users.FirstOrDefaultAsync(u => u.UserId == resolvedUserId);
-                    string resolverName = resolver?.Username ?? "Quản lý";
-                    string title = $"Sự cố #{incident.IncidentId} đã được giải quyết";
-                    string content = $"Sự cố '{incident.IssueType}' do bạn báo cáo đã được giải quyết bởi {resolverName}. Ghi chú: {dto.ResolutionNotes}";
-                    await _notificationService.SendToUserAsync(incident.ReportedId, title, content, NotificationTypes.IncidentResolved);
-                }
-                catch
-                {
-                    // Ignore notification exceptions so transaction result is not affected
-                }
+                var resolver = await _context.Users.FirstOrDefaultAsync(u => u.UserId == resolvedUserId);
+                string resolverName = resolver?.Username ?? "Quản lý";
+                string title = $"Sự cố #{incident.IncidentId} đã được giải quyết";
+                string content = $"Sự cố '{incident.IssueType}' do bạn báo cáo đã được giải quyết bởi {resolverName}. Ghi chú: {dto.ResolutionNotes}";
+                await _notificationService.SendToUserAsync(incident.ReportedId, title, content, NotificationTypes.IncidentResolved);
+            }
+            catch
+            {
+                // Ignore notification exceptions so transaction result is not affected
             }
 
-            return isSaved;
+            return true;
         }
 
         public async Task<IncidentStatisticsDto> GetIncidentStatisticsAsync()

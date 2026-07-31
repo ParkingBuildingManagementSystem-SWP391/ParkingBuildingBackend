@@ -104,6 +104,34 @@ namespace ParkingBuilding.API.Controllers
             }
         }
 
+        [HttpDelete("users/{userId:int}")]
+        /// <summary>
+        /// API Xóa tài khoản người dùng (Xóa mềm - Soft Delete).
+        /// - Chỉ cập nhật IsDeleted = true, KHÔNG xóa bản ghi khỏi DB để bảo toàn lịch sử phiên đỗ, hóa đơn, sự cố.
+        /// - Yêu cầu vai trò Admin.
+        /// </summary>
+        [Authorize(Roles = "Admin")]
+        public async Task<IActionResult> DeleteUser(int userId)
+        {
+            try
+            {
+                var result = await _adminService.DeleteUserAsync(userId);
+                if (result)
+                {
+                    return Ok(new { message = $"Xóa tài khoản ID {userId} thành công." });
+                }
+                return BadRequest(new { error = "Không thể vô hiệu hóa tài khoản này." });
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return NotFound(new { error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { error = "Lỗi hệ thống khi xóa tài khoản: " + ex.Message });
+            }
+        }
+
         [HttpGet("sessions")]
         /// <summary>
         /// API 1: Lấy danh sách toàn bộ các phiên đỗ xe hiện có (Không điều kiện).
