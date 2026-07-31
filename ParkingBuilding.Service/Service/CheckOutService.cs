@@ -253,6 +253,13 @@ namespace ParkingBuilding.Service.Service
                     throw new Exception("Yêu cầu nhập biển số xe thực tế lúc ra bãi để kiểm tra an ninh đối khớp.");
                 }
 
+                if (session.TypeId == 1 && !cleanCheckoutPlate.StartsWith("BIKE_"))
+                {
+                    _logger.LogWarning("Check-out thất bại: Nhập biển số xe cơ giới '{Plate}' cho phiên đỗ Xe đạp (SessionId {SessionId}).",
+                        cleanCheckoutPlate, session.SessionId);
+                    throw new Exception($"HỆ THỐNG CHẶN: Phiên đỗ này là Xe đạp. Không chấp nhận biển số xe cơ giới ({cleanCheckoutPlate}) khi check-out xe đạp!");
+                }
+
                 if (session.TypeId != 1 && string.IsNullOrEmpty(checkOutImageUrl))
                 {
                     _logger.LogWarning("Check-out thất bại: Thiếu ảnh chụp xe tại cổng ra đối với SessionId {SessionId}.", session.SessionId);
