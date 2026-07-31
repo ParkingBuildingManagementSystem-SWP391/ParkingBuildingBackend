@@ -241,16 +241,29 @@ namespace ParkingBuilding.Service.Service
                     session = await _parkingRepository.GetActiveSessionByLicensePlateAsync(cleanCheckoutPlate);
                 }
 
+                // Fallback dành cho dữ liệu đã lỡ Resolve Mất thẻ trước đây:
+                if (session == null && cleanCheckoutPlate != null)
+                {
+                    var normCheckout = cleanCheckoutPlate.Replace("-", "").Replace(".", "").Replace(" ", "").ToUpper();
+                    session = await _context.ParkingSessions
+                        .Include(s => s.Slot)
+                        .Include(s => s.Ticket)
+                        .Include(s => s.Type)
+                        .Include(s => s.Invoice)
+                        .Include(s => s.User)
+                        .Include(s => s.IncidentReports)
+                        .Where(s => !s.IsDeleted && s.LicenseVehicle != null
+                                 && s.LicenseVehicle.Replace("-", "").Replace(".", "").Replace(" ", "").ToUpper() == normCheckout
+                                 && s.IncidentReports.Any(i => string.Equals(i.IssueType, IncidentTypes.LostTicket, StringComparison.OrdinalIgnoreCase) && i.Status == "Resolved")
+                                 && string.IsNullOrEmpty(s.CheckOutImageUrl))
+                        .OrderByDescending(s => s.SessionId)
+                        .FirstOrDefaultAsync();
+                }
+
                 if (session == null)
                 {
                     _logger.LogWarning("Check-out thất bại: Không tìm thấy phiên đỗ xe đang hoạt động phù hợp.");
                     throw new Exception("Không tìm thấy phiên đỗ xe đang hoạt động phù hợp với thông tin cung cấp.");
-                }
-
-                if (string.IsNullOrEmpty(cleanCheckoutPlate))
-                {
-                    _logger.LogWarning("Check-out thất bại: Bỏ trống biển số xe thực tế lúc ra.");
-                    throw new Exception("Yêu cầu nhập biển số xe thực tế lúc ra bãi để kiểm tra an ninh đối khớp.");
                 }
 
                 if (session.TypeId == 1 && !cleanCheckoutPlate.StartsWith("BIKE_"))
@@ -301,6 +314,40 @@ namespace ParkingBuilding.Service.Service
                             IsSuccess = false,
                             Message = $"HỆ THỐNG CHẶN: Mã vé ({cleanTicketCode}) không trùng khớp với mã vé chính thức của phương tiện ({actualTicketCode})!",
                             TicketCode = actualTicketCode,
+                            SlotName = session.Slot?.SlotName ?? "N/A",
+                            CheckInLicensePlate = session.LicenseVehicle ?? "",
+                            CheckOutLicensePlate = cleanCheckoutPlate ?? "",
+                            IsLicensePlateMatched = false,
+                            CheckInImageUrl = session.CheckInImageUrl,
+                            CheckOutImageUrl = checkOutImageUrl,
+                            CheckInTime = session.CheckInTime ?? DateTime.UtcNow,
+                            CheckOutTime = DateTime.UtcNow,
+                            DurationHours = 0,
+                            TotalAmount = 0,
+                            InvoiceId = 0,
+                            IsPaid = false
+                        };
+                    }
+                }
+                else if (session.TypeId != 1) // Nếu không quét Mã vé và không phải Xe đạp
+                {
+                    // KIỂM TRA BẢO MẬT 2 LỚP: Bắt buộc phải có Báo cáo sự cố Mất thẻ đã được duyệt mới cho phép Check-out chỉ bằng Biển số
+                    bool isApprovedLostTicket = await _context.IncidentReports
+                        .AnyAsync(i => i.SessionId == session.SessionId
+                                    && (i.IssueType == IncidentTypes.LostTicket || i.IssueType == "LostTicket" || i.IssueType == "Lost Ticket")
+                                    && i.Status == "Resolved");
+
+                    if (!isApprovedLostTicket)
+                    {
+                        await dbTransaction.RollbackAsync();
+                        _logger.LogWarning("CHẶN AN NINH 2 LỚP: Thử check-out chỉ bằng biển số ({Plate}) cho SessionId {SessionId} khi chưa quét Mã vé và không có đơn Báo mất thẻ được duyệt.",
+                            cleanCheckoutPlate, session.SessionId);
+
+                        return new CheckoutResponse
+                        {
+                            IsSuccess = false,
+                            Message = "CẢNH BÁO AN NINH 2 LỚP: Bắt buộc phải quét/nhập Mã vé xe để xác thực! Nếu khách bị mất thẻ, vui lòng lập Báo cáo sự cố 'Mất thẻ' để Quản lý duyệt trước khi Check-out.",
+                            TicketCode = session.Ticket?.TicketCode ?? "N/A",
                             SlotName = session.Slot?.SlotName ?? "N/A",
                             CheckInLicensePlate = session.LicenseVehicle ?? "",
                             CheckOutLicensePlate = cleanCheckoutPlate ?? "",
@@ -386,7 +433,22 @@ namespace ParkingBuilding.Service.Service
 
                 var vehicleType = await _context.VehiclesTypes.FirstOrDefaultAsync(vt => vt.TypeId == session.TypeId)
                                   ?? throw new Exception("Loại xe của phiên đỗ không tồn tại.");
-                decimal totalAmount = ParkingPricingCalculator.CalculateFee(checkInTime, checkOutTime, vehicleType);
+                decimal parkingFee = ParkingPricingCalculator.CalculateFee(checkInTime, checkOutTime, vehicleType);
+
+                var lostTicketIncident = await _context.IncidentReports
+                    .FirstOrDefaultAsync(i => i.SessionId == session.SessionId
+                                           && (i.IssueType == IncidentTypes.LostTicket || i.IssueType == "LostTicket" || i.IssueType == "Lost Ticket")
+                                           && i.Status == "Resolved");
+
+                decimal fineAmount = lostTicketIncident?.FineAmount ?? 0;
+                bool isLostTicket = lostTicketIncident != null;
+
+                if (isLostTicket && session.Ticket != null && session.Ticket.TicketStatus != "Blocked")
+                {
+                    session.Ticket.TicketStatus = "Blocked";
+                }
+
+                decimal totalAmount = parkingFee + fineAmount;
 
                 var vnTimeZone = TimeZoneInfo.FindSystemTimeZoneById("SE Asia Standard Time");
                 var localNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, vnTimeZone);
@@ -449,25 +511,7 @@ namespace ParkingBuilding.Service.Service
                     await _context.SaveChangesAsync();
                     await dbTransaction.CommitAsync();
 
-                    return new CheckoutResponse
-                    {
-                        IsSuccess = true,
-                        Message = $"Xe thuộc diện thẻ thành viên hoạt động. Cho phép xe {session.LicenseVehicle} ra khỏi bãi (Phí đỗ: 0 VNĐ).",
-                        TicketCode = session.Ticket?.TicketCode ?? "N/A",
-                        SlotName = slot?.SlotName ?? "N/A",
-                        CheckInLicensePlate = checkInPlate,
-                        CheckOutLicensePlate = cleanCheckoutPlate ?? "",
-                        IsLicensePlateMatched = true,
-                        CheckInImageUrl = session.CheckInImageUrl,
-                        CheckOutImageUrl = checkOutImageUrl,
-                        CheckInTime = checkInTime,
-                        CheckOutTime = checkOutTime,
-                        DurationHours = durationHours,
-                        TotalAmount = 0,
-                        StaffName = staffName,
-                        InvoiceId = invoice.InvoiceId,
-                        IsPaid = true
-                    };
+                    return BuildCheckoutResponse(session, cleanCheckoutPlate, checkOutImageUrl, checkInTime, checkOutTime, durationHours, totalAmount: 0, parkingFee: 0, fineAmount: fineAmount, isLostTicket: isLostTicket, staffName: staffName, isSuccess: true, isPaid: true, message: $"Xe thuộc diện thẻ thành viên hoạt động. Cho phép xe {session.LicenseVehicle} ra khỏi bãi (Phí đỗ: 0 VNĐ).");
                 }
 
                 session.CheckOutImageUrl = checkOutImageUrl;
@@ -528,26 +572,7 @@ namespace ParkingBuilding.Service.Service
                                         await _context.SaveChangesAsync();
                                         await dbTransaction.CommitAsync();
 
-                                        return new CheckoutResponse
-                                        {
-                                            IsSuccess = true,
-                                            Message = $"Hệ thống tự động khấu trừ {additionalFee:N0} VNĐ từ ví tài xế. Mời xe ra!",
-                                            TicketCode = session.Ticket?.TicketCode ?? "N/A",
-                                            SlotName = targetSlot?.SlotName ?? "N/A",
-                                            CheckInLicensePlate = checkInPlate,
-                                            CheckOutLicensePlate = cleanCheckoutPlate ?? "",
-                                            IsLicensePlateMatched = true,
-                                            CheckInImageUrl = session.CheckInImageUrl,
-                                            CheckOutImageUrl = session.CheckOutImageUrl,
-                                            CheckInTime = checkInTime,
-                                            CheckOutTime = checkOutTime,
-                                            DurationHours = durationHours,
-                                            TotalAmount = session.Invoice.TotalAmount,
-                                            StaffName = staffName,
-                                            InvoiceId = session.Invoice.InvoiceId,
-                                            IsPaid = true,
-                                            PaymentUrl = null
-                                        };
+                                        return BuildCheckoutResponse(session, cleanCheckoutPlate, session.CheckOutImageUrl, checkInTime, checkOutTime, durationHours, totalAmount: session.Invoice.TotalAmount, parkingFee: parkingFee, fineAmount: fineAmount, isLostTicket: isLostTicket, staffName: staffName, isSuccess: true, isPaid: true, message: $"Hệ thống tự động khấu trừ {additionalFee:N0} VNĐ từ ví tài xế. Mời xe ra!");
                                     }
                                     else
                                     {
@@ -556,26 +581,7 @@ namespace ParkingBuilding.Service.Service
                                         await _context.SaveChangesAsync();
                                         await dbTransaction.CommitAsync();
 
-                                        return new CheckoutResponse
-                                        {
-                                            IsSuccess = true,
-                                            Message = $"So du vi khong du. Chuyen sang thanh toan tien mat phi phat sinh: {additionalFee:N0} VND.",
-                                            TicketCode = session.Ticket?.TicketCode ?? "N/A",
-                                            SlotName = session.Slot?.SlotName ?? "N/A",
-                                            CheckInLicensePlate = checkInPlate,
-                                            CheckOutLicensePlate = cleanCheckoutPlate ?? "",
-                                            IsLicensePlateMatched = true,
-                                            CheckInImageUrl = session.CheckInImageUrl,
-                                            CheckOutImageUrl = session.CheckOutImageUrl,
-                                            CheckInTime = checkInTime,
-                                            CheckOutTime = checkOutTime,
-                                            DurationHours = durationHours,
-                                            TotalAmount = additionalFee,
-                                            StaffName = staffName,
-                                            InvoiceId = session.Invoice.InvoiceId,
-                                            IsPaid = false,
-                                            PaymentUrl = null
-                                        };
+                                        return BuildCheckoutResponse(session, cleanCheckoutPlate, session.CheckOutImageUrl, checkInTime, checkOutTime, durationHours, totalAmount: additionalFee, parkingFee: parkingFee, fineAmount: fineAmount, isLostTicket: isLostTicket, staffName: staffName, isSuccess: true, isPaid: false, message: $"So du vi khong du. Chuyen sang thanh toan tien mat phi phat sinh: {additionalFee:N0} VND.");
                                     }
                                 }
                                 else
@@ -601,26 +607,7 @@ namespace ParkingBuilding.Service.Service
                                     ipAddress: "127.0.0.1"
                                 );
 
-                                return new CheckoutResponse
-                                {
-                                    IsSuccess = true,
-                                    Message = $"Quá thời gian ân hạn 20 phút. Vui lòng quét mã QR VNPay để thanh toán thêm phí phát sinh: {additionalFee:N0} VNĐ.",
-                                    TicketCode = session.Ticket?.TicketCode ?? "N/A",
-                                    SlotName = session.Slot?.SlotName ?? "N/A",
-                                    CheckInLicensePlate = checkInPlate,
-                                    CheckOutLicensePlate = cleanCheckoutPlate ?? "",
-                                    IsLicensePlateMatched = true,
-                                    CheckInImageUrl = session.CheckInImageUrl,
-                                    CheckOutImageUrl = session.CheckOutImageUrl,
-                                    CheckInTime = checkInTime,
-                                    CheckOutTime = checkOutTime,
-                                    DurationHours = durationHours,
-                                    TotalAmount = additionalFee,
-                                    StaffName = staffName,
-                                    InvoiceId = session.Invoice.InvoiceId,
-                                    IsPaid = false,
-                                    PaymentUrl = paymentUrl
-                                };
+                                return BuildCheckoutResponse(session, cleanCheckoutPlate, session.CheckOutImageUrl, checkInTime, checkOutTime, durationHours, totalAmount: additionalFee, parkingFee: parkingFee, fineAmount: fineAmount, isLostTicket: isLostTicket, staffName: staffName, isSuccess: true, isPaid: false, message: $"Quá thời gian ân hạn 20 phút. Vui lòng quét mã QR VNPay để thanh toán thêm phí phát sinh: {additionalFee:N0} VNĐ.", paymentUrl: paymentUrl);
                             }
                             else
                             {
@@ -629,26 +616,7 @@ namespace ParkingBuilding.Service.Service
                                 await _context.SaveChangesAsync();
                                 await dbTransaction.CommitAsync();
 
-                                return new CheckoutResponse
-                                {
-                                    IsSuccess = true,
-                                    Message = $"Quá thời gian ân hạn 20 phút. Yêu cầu thanh toán thêm phí phát sinh bằng TIỀN MẶT: {additionalFee:N0} VNĐ.",
-                                    TicketCode = session.Ticket?.TicketCode ?? "N/A",
-                                    SlotName = session.Slot?.SlotName ?? "N/A",
-                                    CheckInLicensePlate = checkInPlate,
-                                    CheckOutLicensePlate = cleanCheckoutPlate ?? "",
-                                    IsLicensePlateMatched = true,
-                                    CheckInImageUrl = session.CheckInImageUrl,
-                                    CheckOutImageUrl = session.CheckOutImageUrl,
-                                    CheckInTime = checkInTime,
-                                    CheckOutTime = checkOutTime,
-                                    DurationHours = durationHours,
-                                    TotalAmount = additionalFee,
-                                    StaffName = staffName,
-                                    InvoiceId = session.Invoice.InvoiceId,
-                                    IsPaid = false,
-                                    PaymentUrl = null
-                                };
+                                return BuildCheckoutResponse(session, cleanCheckoutPlate, session.CheckOutImageUrl, checkInTime, checkOutTime, durationHours, totalAmount: additionalFee, parkingFee: parkingFee, fineAmount: fineAmount, isLostTicket: isLostTicket, staffName: staffName, isSuccess: true, isPaid: false, message: $"Quá thời gian ân hạn 20 phút. Yêu cầu thanh toán thêm phí phát sinh bằng TIỀN MẶT: {additionalFee:N0} VNĐ.");
                             }
                         }
                     }
@@ -675,26 +643,7 @@ namespace ParkingBuilding.Service.Service
                     _logger.LogInformation("Check-out THÀNH CÔNG (Đã thanh toán qua App & Còn hạn): Xe '{Plate}' đã ra bãi. Giải phóng ô {SlotName}. SessionId: {SessionId}.",
                         cleanCheckoutPlate, slot?.SlotName ?? "N/A", session.SessionId);
 
-                    return new CheckoutResponse
-                    {
-                        IsSuccess = true,
-                        Message = "Khách hàng đã tự thanh toán trước qua App thành công. Vui lòng cho xe ra!",
-                        TicketCode = session.Ticket?.TicketCode ?? "N/A",
-                        SlotName = slot?.SlotName ?? "N/A",
-                        CheckInLicensePlate = checkInPlate,
-                        CheckOutLicensePlate = cleanCheckoutPlate ?? "",
-                        IsLicensePlateMatched = true,
-                        CheckInImageUrl = session.CheckInImageUrl,
-                        CheckOutImageUrl = session.CheckOutImageUrl,
-                        CheckInTime = checkInTime,
-                        CheckOutTime = checkOutTime,
-                        DurationHours = durationHours,
-                        TotalAmount = session.Invoice.TotalAmount,
-                        StaffName = staffName,
-                        InvoiceId = session.Invoice.InvoiceId,
-                        IsPaid = true,
-                        PaymentUrl = null
-                    };
+                    return BuildCheckoutResponse(session, cleanCheckoutPlate, session.CheckOutImageUrl, checkInTime, checkOutTime, durationHours, totalAmount: session.Invoice.TotalAmount, parkingFee: parkingFee, fineAmount: fineAmount, isLostTicket: isLostTicket, staffName: staffName, isSuccess: true, isPaid: true, message: "Khách hàng đã tự thanh toán trước qua App thành công. Vui lòng cho xe ra!");
                 }
 
                 // ====================================================================================
@@ -1502,6 +1451,49 @@ namespace ParkingBuilding.Service.Service
                 DriverEmail = session.User?.Email ?? "Không có",
                 CustomerType = isMembershipCardValid ? "Membership" : (session.UserId.HasValue ? "Booking" : "WalkIn"),
                 VehicleTypeName = session.Type?.TypeName ?? "N/A"
+            };
+        }
+
+        private CheckoutResponse BuildCheckoutResponse(
+            ParkingSession session,
+            string cleanCheckoutPlate,
+            string? checkOutImageUrl,
+            DateTime checkInTime,
+            DateTime checkOutTime,
+            double durationHours,
+            decimal totalAmount,
+            decimal parkingFee,
+            decimal fineAmount,
+            bool isLostTicket,
+            string staffName,
+            bool isSuccess,
+            bool isPaid,
+            string message,
+            string? paymentUrl = null)
+        {
+            var slot = session.Slot;
+            return new CheckoutResponse
+            {
+                IsSuccess = isSuccess,
+                Message = message,
+                TicketCode = session.Ticket?.TicketCode ?? "N/A",
+                SlotName = slot?.SlotName ?? "N/A",
+                CheckInLicensePlate = session.LicenseVehicle ?? "",
+                CheckOutLicensePlate = cleanCheckoutPlate,
+                IsLicensePlateMatched = true,
+                CheckInImageUrl = session.CheckInImageUrl,
+                CheckOutImageUrl = checkOutImageUrl,
+                CheckInTime = checkInTime,
+                CheckOutTime = checkOutTime,
+                DurationHours = durationHours,
+                TotalAmount = totalAmount,
+                ParkingFee = parkingFee,
+                FineAmount = fineAmount,
+                IsLostTicket = isLostTicket,
+                StaffName = staffName,
+                InvoiceId = session.Invoice?.InvoiceId,
+                IsPaid = isPaid,
+                PaymentUrl = paymentUrl
             };
         }
     }

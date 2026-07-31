@@ -24,6 +24,10 @@ namespace ParkingBuilding.Service.DTOs
         public double DurationHours { get; set; }
         public decimal TotalAmount { get; set; }
 
+        public decimal ParkingFee { get; set; }
+        public decimal FineAmount { get; set; }
+        public bool IsLostTicket { get; set; }
+
         public int? InvoiceId { get; set; }
         public bool IsPaid { get; set; }
 
