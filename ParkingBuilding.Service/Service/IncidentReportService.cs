@@ -194,9 +194,9 @@ namespace ParkingBuilding.Service.Service
             incident.ResolutionNotes = dto.ResolutionNotes;
             incident.FineAmount = dto.FineAmount ?? 0;
 
-            bool isLostTicket = incident.IssueType.Equals(IncidentTypes.LostTicket, StringComparison.OrdinalIgnoreCase)
-                             || incident.IssueType.Equals("LostTicket", StringComparison.OrdinalIgnoreCase)
-                             || incident.IssueType.Equals("Lost Ticket", StringComparison.OrdinalIgnoreCase);
+            bool isLostTicket = string.Equals(incident.IssueType, IncidentTypes.LostTicket, StringComparison.OrdinalIgnoreCase)
+                             || string.Equals(incident.IssueType, "LostTicket", StringComparison.OrdinalIgnoreCase)
+                             || string.Equals(incident.IssueType, "Lost Ticket", StringComparison.OrdinalIgnoreCase);
 
             if (isLostTicket && incident.SessionId.HasValue)
             {

@@ -253,6 +253,12 @@ namespace ParkingBuilding.Service.Service
                     throw new Exception("Yêu cầu nhập biển số xe thực tế lúc ra bãi để kiểm tra an ninh đối khớp.");
                 }
 
+                if (session.TypeId != 1 && string.IsNullOrEmpty(checkOutImageUrl))
+                {
+                    _logger.LogWarning("Check-out thất bại: Thiếu ảnh chụp xe tại cổng ra đối với SessionId {SessionId}.", session.SessionId);
+                    throw new Exception("CẢNH BÁO AN NINH: Bắt buộc phải chụp/cung cấp ảnh xe tại cổng ra đối với xe máy và ô tô để đảm bảo an ninh 2 lớp!");
+                }
+
                 if (!string.IsNullOrEmpty(cleanTicketCode))
                 {
                     string actualTicketCode = (session.Ticket?.TicketCode ?? "").Trim();
