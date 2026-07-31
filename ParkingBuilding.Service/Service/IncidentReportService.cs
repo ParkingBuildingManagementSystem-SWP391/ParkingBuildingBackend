@@ -209,7 +209,7 @@ namespace ParkingBuilding.Service.Service
                 if (session != null && session.SessionStatus == ParkingStatuses.SessionInProgress)
                 {
                     session.SessionStatus = ParkingStatuses.SessionCompleted;
-                    session.CheckOutTime = DateTime.Now;
+                    session.CheckOutTime = DateTime.UtcNow;
 
                     if (session.Ticket != null)
                     {
