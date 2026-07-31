@@ -9,7 +9,9 @@ namespace ParkingBuilding.Service.DTOs
         public string? CheckoutLicensePlate { get; set; }
         public string PaymentMethod { get; set; } = "CASH"; // "CASH", "VNPAY", "WALLET" hoac "AUTO"
         public IFormFile? ImageFile { get; set; }
-        public string? ImageUrl { get; set; }
+
+        // Tên phải khớp với field "checkOutImageUrl" mà FE gửi (field-name binding phân biệt tên, không chỉ hoa/thường).
+        public string? CheckOutImageUrl { get; set; }
 
         /// <summary>
         /// Nhân viên xác nhận bỏ qua cảnh báo bảo mật (biển số / mã vé không khớp) để cho xe ra.
