@@ -394,12 +394,13 @@ namespace ParkingBuilding.Service.Service
                 // ====================================================================================
                 // KỊCH BẢN 0: XE ĐĂNG KÝ THẺ THÀNH VIÊN CÒN HIỆU LỰC (Nhận dạng qua TicketId của phiên đỗ)
                 // ====================================================================================
-                var membershipCard = (session.TicketId != null && session.UserId.HasValue)
+                var membershipCard = (session.UserId.HasValue)
                     ? await _context.MembershipCards
                         .Include(mc => mc.MembershipSlots)
                             .ThenInclude(ms => ms.Slot)
-                        .FirstOrDefaultAsync(mc => mc.TicketId == session.TicketId
-                                             && mc.UserId == session.UserId
+                        .Include(mc => mc.Tier)
+                        .FirstOrDefaultAsync(mc => mc.UserId == session.UserId
+                                             && mc.Tier.TypeId == session.TypeId
                                              && mc.Status == ParkingStatuses.MonthlyCardActive
                                              && !mc.IsDeleted
                                              && mc.EndTime >= localNow)
