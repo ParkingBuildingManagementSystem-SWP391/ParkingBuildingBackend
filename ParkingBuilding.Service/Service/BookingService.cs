@@ -12,6 +12,12 @@ using System.Threading.Tasks;
 
 namespace ParkingBuilding.Service.Service
 {
+    /// <summary>
+    /// SERVICE LAYER: Xử lý nghiệp vụ đặt chỗ đỗ xe trước (Booking Workflow).
+    /// - CHỨC NĂNG CHÍNH: Tự động tìm & gán ô đỗ trống (Serializable Isolation Level), sinh vé giữ chỗ trong 15 phút, tính toán phí đặt chỗ và quản lý hủy giữ chỗ.
+    /// - ĐẦU VÀO (Input): Nhận `BookSlotRequest` từ `ParkingController`.
+    /// - ĐẦU RA (Output): Trả về `BookSlotResponse` (gồm Mã vé `TicketCode`, Tên ô đỗ, Hạn giữ chỗ) cho `ParkingController`.
+    /// </summary>
     public class BookingService : IBookingService
     {
         private readonly IParkingRepository _parkingRepository;
@@ -37,6 +43,12 @@ namespace ParkingBuilding.Service.Service
             _walletService = walletService;
         }
 
+        /// <summary>
+        /// HÀM: Đặt giữ chỗ đỗ xe trước.
+        /// - CHỨC NĂNG: Khóa ô đỗ trống, cấp phát vé giữ chỗ 15 phút, kiểm tra trùng lịch đỗ xe.
+        /// - ĐẦU VÀO: `int userId` (ID tài xế), `BookSlotRequest request` (Loại xe, Biển số, Thời gian dự kiến).
+        /// - ĐẦU RA: `BookSlotResponse` (Mã vé `TicketCode`, SlotName, Thời gian hết hạn giữ chỗ).
+        /// </summary>
         public async Task<BookSlotResponse> BookSlotAsync(int userId, BookSlotRequest request)
         {
             using var transaction = await _context.Database.BeginTransactionAsync(IsolationLevel.Serializable);

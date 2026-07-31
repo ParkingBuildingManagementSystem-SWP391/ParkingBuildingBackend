@@ -3,6 +3,7 @@ using ParkingBuilding.Repository.Entities;
 using ParkingBuilding.Repository.IRepository;
 using ParkingBuilding.Service.DTOs;
 using ParkingBuilding.Service.IService;
+using ParkingBuilding.Service.Service.Helpers;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -128,11 +129,16 @@ namespace ParkingBuilding.Service.Service
             incident.ResolvedId = resolvedUserId;
             incident.ResolvedAt = DateTime.Now;
             incident.ResolutionNotes = dto.ResolutionNotes;
-            incident.FineAmount = 0;
+            incident.FineAmount = dto.FineAmount ?? 0;
 
             if (incident.IssueType.Equals(IncidentTypes.LostTicket, StringComparison.OrdinalIgnoreCase) && incident.SessionId.HasValue)
             {
-                var session = await _unitOfWork.Sessions.GetByIdAsync(incident.SessionId.Value);
+                var session = await _context.ParkingSessions
+                    .Include(s => s.Ticket)
+                    .Include(s => s.Type)
+                    .Include(s => s.Invoice)
+                    .FirstOrDefaultAsync(s => s.SessionId == incident.SessionId.Value);
+
                 if (session != null && session.SessionStatus == ParkingStatuses.SessionInProgress)
                 {
                     session.SessionStatus = ParkingStatuses.SessionCompleted;
@@ -147,6 +153,38 @@ namespace ParkingBuilding.Service.Service
                     if (slot != null)
                     {
                         slot.SlotStatus = ParkingStatuses.SlotAvailable;
+                    }
+
+                    // Tự động tính tiền đỗ xe theo giờ + Tiền phạt mất thẻ để chốt Tổng hóa đơn
+                    decimal fine = incident.FineAmount ?? 0;
+                    decimal parkingFee = 0;
+                    if (session.CheckInTime.HasValue && session.Type != null)
+                    {
+                        parkingFee = ParkingPricingCalculator.CalculateFee(session.CheckInTime.Value, session.CheckOutTime.Value, session.Type);
+                    }
+                    decimal totalAmount = parkingFee + fine;
+
+                    var invoice = session.Invoice;
+                    if (invoice == null)
+                    {
+                        invoice = new Invoice
+                        {
+                            SessionId = session.SessionId,
+                            TotalAmount = totalAmount,
+                            PaymentMethod = "CASH",
+                            PaymentStatus = "SUCCESS",
+                            PaymentTime = DateTime.Now,
+                            CreatedDate = DateTime.Now,
+                            StaffId = resolvedUserId
+                        };
+                        await _context.Invoices.AddAsync(invoice);
+                    }
+                    else
+                    {
+                        invoice.TotalAmount = totalAmount;
+                        invoice.PaymentStatus = "SUCCESS";
+                        invoice.PaymentTime = DateTime.Now;
+                        _context.Invoices.Update(invoice);
                     }
                 }
             }
@@ -169,6 +207,31 @@ namespace ParkingBuilding.Service.Service
             }
 
             return isSaved;
+        }
+
+        public async Task<IncidentStatisticsDto> GetIncidentStatisticsAsync()
+        {
+            var incidents = await _context.IncidentReports.ToListAsync();
+
+            int total = incidents.Count;
+            int pending = incidents.Count(i => i.Status.Equals("Pending", StringComparison.OrdinalIgnoreCase));
+            int resolved = incidents.Count(i => i.Status.Equals("Resolved", StringComparison.OrdinalIgnoreCase));
+            decimal totalFine = incidents.Where(i => i.FineAmount.HasValue).Sum(i => i.FineAmount!.Value);
+
+            string topIssue = incidents
+                .GroupBy(i => i.IssueType)
+                .OrderByDescending(g => g.Count())
+                .Select(g => g.Key)
+                .FirstOrDefault() ?? "N/A";
+
+            return new IncidentStatisticsDto
+            {
+                TotalIncidents = total,
+                PendingCount = pending,
+                ResolvedCount = resolved,
+                TotalFineCollected = totalFine,
+                TopIssueType = topIssue
+            };
         }
 
         private IncidentReportResponseDto MapToResponseDto(IncidentReport i)

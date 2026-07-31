@@ -18,7 +18,10 @@ namespace ParkingBuilding.API.Controllers
     [ApiController]
     [Route("api/[controller]")]
     /// <summary>
-    /// API Controller quản lý các hoạt động thanh toán.
+    /// API CONTROLLER: Quản lý các hoạt động thanh toán hóa đơn đỗ xe.
+    /// - CHỨC NĂNG CHÍNH: Xử lý thanh toán tiền mặt tại quầy, khởi tạo mã VNPay QR, thanh toán bằng Ví điện tử, và nhận Webhook IPN từ VNPay.
+    /// - ĐẦU VÀO (Input): HTTP Post/Get Request (JSON Body / Query Param) từ FE Staff, FE Tài xế hoặc Cổng thanh toán VNPay.
+    /// - ĐẦU RA (Output): Điều hướng gọi `IPaymentService` -> Trả về kết quả giao dịch `PaymentResultDto` hoặc HTTP Response.
     /// </summary>
     public class PaymentsController : ControllerBase
     {
@@ -36,11 +39,14 @@ namespace ParkingBuilding.API.Controllers
             _logger = logger;
         }
 
+        /// <summary>
+        /// API Ghi nhận thanh toán tiền mặt tại quầy (Staff).
+        /// - CHỨC NĂNG: Thu ngân xác nhận thu tiền mặt cho lượt đỗ xe.
+        /// - ĐẦU VÀO: Body `CashPaymentDto request` (Mã vé `TicketCode`, số tiền nhận), JWT Token (StaffId).
+        /// - ĐẦU RA: Gọi `_paymentService.ProcessCashPaymentAsync` -> Trả về `PaymentResultDto`.
+        /// </summary>
         [Authorize(Roles = "Staff")]
         [HttpPost("cash")]
-        /// <summary>
-        /// API ghi nhận thanh toán bằng tiền mặt.
-        /// </summary>
         public async Task<IActionResult> ProcessCashPayment([FromBody] CashPaymentDto request)
         {
             var staffIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value
@@ -65,11 +71,13 @@ namespace ParkingBuilding.API.Controllers
             return Ok(result);
         }
 
-
-        [HttpPost("vnpay/create")]
         /// <summary>
-        /// API tài xế chủ động tạo mã QR VNPay để thanh toán trước qua App di động.
+        /// API Tài xế tạo mã QR / Liên kết thanh toán VNPay.
+        /// - CHỨC NĂNG: Khởi tạo URL chuyển hướng đến cổng thanh toán VNPay.
+        /// - ĐẦU VÀO: Body `CreateVnPayPaymentDto request` (SessionId/InvoiceId), JWT Token (UserId).
+        /// - ĐẦU RA: Gọi `_paymentService.CreateVnPayPaymentUrlAsync` -> Trả về `PaymentResultDto` (URL thanh toán VNPay).
         /// </summary>
+        [HttpPost("vnpay/create")]
         public async Task<IActionResult> CreateVnPayPayment([FromBody] CreateVnPayPaymentDto request)
         {
             var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
@@ -95,7 +103,12 @@ namespace ParkingBuilding.API.Controllers
             return Ok(result);
         }
 
-
+        /// <summary>
+        /// API Thanh toán hóa đơn bằng Ví điện tử cá nhân.
+        /// - CHỨC NĂNG: Trừ số dư trong ví người dùng để thanh toán hóa đơn đỗ xe.
+        /// - ĐẦU VÀO: Body `PayPendingInvoiceWalletRequest request` (InvoiceId), JWT Token (UserId).
+        /// - ĐẦU RA: Gọi `_paymentService.PayPendingInvoiceByWalletAsync` -> Trả về `PaymentResultDto`.
+        /// </summary>
         [HttpPost("pay-pending-invoice-wallet")]
         public async Task<IActionResult> PayPendingInvoiceByWallet([FromBody] PayPendingInvoiceWalletRequest request)
         {
@@ -119,11 +132,14 @@ namespace ParkingBuilding.API.Controllers
         }
 
 
-        [AllowAnonymous]
-        [HttpGet("vnpay-ipn")]
         /// <summary>
         /// Webhook IPN Callback nhận phản hồi trạng thái giao dịch tự động từ VNPay.
+        /// - CHỨC NĂNG: Xác thực chữ ký Hash (Checksum) và cập nhật trạng thái thanh toán tự động trong DB.
+        /// - ĐẦU VÀO: Query Param `VnPayIpnRequestDto request` tự động gửi từ máy chủ VNPay.
+        /// - ĐẦU RA: Gọi `_paymentService.ConfirmVnPayPaymentAsync` -> Trả về JSON theo đúng chuẩn VNPay IPN Protocol (`RspCode`, `Message`).
         /// </summary>
+        [AllowAnonymous]
+        [HttpGet("vnpay-ipn")]
         public async Task<IActionResult> VnPayIpn([FromQuery] VnPayIpnRequestDto request)
         {
             try
