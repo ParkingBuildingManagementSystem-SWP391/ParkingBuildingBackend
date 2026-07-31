@@ -11,8 +11,10 @@ namespace ParkingBuilding.API.Controllers
     [Route("api/[controller]")]
     [ApiController]
     /// <summary>
-    /// API Controller quản lý các hoạt động đỗ xe.
-    /// Cho phép khách đặt trước vị trí, nhân viên thực hiện check-in cho xe đã đặt hoặc xe vãng lai, và soát vé check-out đầu ra.
+    /// API CONTROLLER: Cổng giao tiếp chính cho các hoạt động đỗ xe (Parking Workflow).
+    /// - CHỨC NĂNG CHÍNH: Đặt chỗ trước (Booking), Check-in cổng vào, Check-out cổng ra, Quét QR soát vé, Nhận diện biển số AI.
+    /// - ĐẦU VÀO (Input): Nhận các HTTP Request (Form Data / JSON Body / Path Param) từ Frontend (Mobile App Tài xế / Web Staff).
+    /// - ĐẦU RA (Output): Điều hướng gọi các Service tương ứng (`CheckInService`, `CheckOutService`, `BookingService`) -> Trả HTTP Response (`200 OK`, `400 BadRequest`) về Frontend.
     /// </summary>
     public class ParkingController : ControllerBase
     {
@@ -42,8 +44,9 @@ namespace ParkingBuilding.API.Controllers
         // API 1: Khách đặt chỗ trước 
         /// <summary>
         /// API đặt chỗ trước dành cho tài xế thành viên.
-        /// - BẢO MẬT: Trích xuất UserId trực tiếp từ JWT Token để đảm bảo định danh chính chủ.
-        /// - Nghiệp vụ: Cấp phát tạm thời 1 ô đỗ trống và tạo vé giữ chỗ trong 15 phút.
+        /// - CHỨC NĂNG: Cấp phát tạm thời 1 ô đỗ trống và sinh mã vé giữ chỗ trong 15 phút.
+        /// - ĐẦU VÀO: JWT Token (Chứa UserId), `BookSlotRequest request` (Loại xe, Biển số).
+        /// - ĐẦU RA: Gọi `_bookingService.BookSlotAsync` -> Trả về `BookSlotResponse` (Mã vé `TicketCode`, Tên ô đỗ).
         /// </summary>
         [Authorize(Roles = "Registered_Driver")]
         [HttpPost("book")]
@@ -174,6 +177,12 @@ namespace ParkingBuilding.API.Controllers
         }
 
 
+        /// <summary>
+        /// API Lấy danh sách ô đỗ xe theo tầng.
+        /// - CHỨC NĂNG: Truy vấn danh sách ô đỗ (Slots) thuộc tầng chỉ định.
+        /// - ĐẦU VÀO: Path Param `{floorId}` (ID tầng).
+        /// - ĐẦU RA: Gọi `_parkingQueryService.GetSlotsByFloorIdAsync` -> Trả về danh sách ô đỗ.
+        /// </summary>
         [HttpGet("floor/{floorId}")]
         public async Task<IActionResult> GetSlotsByFloorId(int floorId)
         {
@@ -188,6 +197,12 @@ namespace ParkingBuilding.API.Controllers
             }
         }
 
+        /// <summary>
+        /// API Lấy danh sách vị trí đỗ theo loại xe và trạng thái.
+        /// - CHỨC NĂNG: Lọc danh sách ô đỗ theo loại xe (TypeId) và trạng thái (Status).
+        /// - ĐẦU VÀO: Query Param `typeId`, `status`.
+        /// - ĐẦU RA: Gọi `_parkingQueryService.GetSlotsAsync` -> Trả về danh sách ô đỗ đỗ thỏa điều kiện.
+        /// </summary>
         [HttpGet("slots")]
         public async Task<IActionResult> GetSlots([FromQuery] int? typeId, [FromQuery] string? status)
         {
@@ -203,6 +218,12 @@ namespace ParkingBuilding.API.Controllers
         }
 
         // Thêm endpoint này vào class ParkingController
+        /// <summary>
+        /// API Lấy danh sách lịch sử/phiên đặt chỗ của tài xế đang đăng nhập.
+        /// - CHỨC NĂNG: Tra cứu các phiên đặt chỗ đỗ xe cá nhân của tài xế.
+        /// - ĐẦU VÀO: JWT Token (UserId).
+        /// - ĐẦU RA: Gọi `_parkingQueryService.GetMyBookingsAsync` -> Trả về danh sách `MyBookingResponseDto`.
+        /// </summary>
         [Authorize(Roles = "Registered_Driver")]
         [HttpGet("my-bookings")]
         public async Task<IActionResult> GetMyBookings()
@@ -237,7 +258,12 @@ namespace ParkingBuilding.API.Controllers
             }
         }
 
-        // API: Driver hủy đặt chỗ trước khi check-in
+        /// <summary>
+        /// API Hủy đặt chỗ trước khi xe vào check-in.
+        /// - CHỨC NĂNG: Hủy phiên đặt giữ chỗ (Booking) và giải phóng ô đỗ về Available.
+        /// - ĐẦU VÀO: Path Param `{sessionId}`, JWT Token (UserId).
+        /// - ĐẦU RA: Gọi `_bookingService.CancelBookingAsync` -> Trả về kết quả hủy giữ chỗ.
+        /// </summary>
         [Authorize(Roles = "Registered_Driver")]
         [HttpPost("cancel-booking/{sessionId}")]
         public async Task<IActionResult> CancelBooking(int sessionId)
@@ -266,6 +292,12 @@ namespace ParkingBuilding.API.Controllers
             }
         }
 
+        /// <summary>
+        /// API Nhận diện biển số xe tự động qua AI và upload ảnh phương tiện.
+        /// - CHỨC NĂNG: Đọc ảnh chụp xe, chạy mô hình AI nhận diện biển số song song với tải ảnh lên Cloudinary.
+        /// - ĐẦU VÀO: Form Data `RecognizePlateRequest` (Chứa `ImageFile` và `VehicleTypeId`).
+        /// - ĐẦU RA: Gọi `_aiRecognitionService` & `_imageStorageService` -> Trả về URL ảnh và chuỗi biển số nhận diện (`predictedPlate`).
+        /// </summary>
         [Authorize(Roles = "Staff")]
         [HttpPost("recognize")]
         public async Task<IActionResult> RecognizePlate([FromForm] RecognizePlateRequest request)
@@ -363,6 +395,12 @@ namespace ParkingBuilding.API.Controllers
             }
         }
 
+        /// <summary>
+        /// API Lấy danh sách tất cả các xe đang đỗ trong bãi (Active Sessions).
+        /// - CHỨC NĂNG: Lấy thông tin chi tiết các phiên đỗ đang có trạng thái `InProgress`.
+        /// - ĐẦU VÀO: Không cần tham số.
+        /// - ĐẦU RA: Gọi `_parkingQueryService.GetActiveSessionsAsync` -> Trả về danh sách `ActiveSessionResponseDto`.
+        /// </summary>
         [Authorize(Roles = "Staff")]
         [HttpGet("active-sessions")]
         public async Task<IActionResult> GetActiveSessions()
@@ -378,6 +416,12 @@ namespace ParkingBuilding.API.Controllers
             }
         }
 
+        /// <summary>
+        /// API quét QR tại cổng vào (Check-in).
+        /// - CHỨC NĂNG: Tiếp nhận mã QR hoặc mã vé thô, gọi Service giải mã và thực hiện Check-in.
+        /// - ĐẦU VÀO: Path Param `{ticketCode}`, Query Param `detectedPlate`, JWT Token (StaffId).
+        /// - ĐẦU RA: Gọi `_checkInService.ScanQrCheckInAsync` -> Trả về `ScanCheckInResponse`.
+        /// </summary>
         [Authorize(Roles = "Staff")]
         [HttpGet("scan-checkin/{ticketCode}")]
         public async Task<IActionResult> ScanCheckIn(string ticketCode, [FromQuery] string? detectedPlate)
@@ -401,6 +445,12 @@ namespace ParkingBuilding.API.Controllers
             }
         }
 
+        /// <summary>
+        /// API quét QR tại cổng ra (Check-out).
+        /// - CHỨC NĂNG: Tiếp nhận mã QR hoặc mã vé thô từ cổng ra, tính toán chi phí đỗ xe tạm tính.
+        /// - ĐẦU VÀO: Path Param `{ticketCode}`, Query Param `detectedPlate`.
+        /// - ĐẦU RA: Gọi `_checkOutService.ScanQrCheckOutAsync` -> Trả về `ScanCheckOutResponse`.
+        /// </summary>
         [Authorize(Roles = "Staff")]
         [HttpGet("scan-checkout/{ticketCode}")]
         public async Task<IActionResult> ScanCheckOut(string ticketCode, [FromQuery] string? detectedPlate)
@@ -419,6 +469,12 @@ namespace ParkingBuilding.API.Controllers
             }
         }
 
+        /// <summary>
+        /// API Định vị vị trí xe đang đỗ theo biển số.
+        /// - CHỨC NĂNG: Tìm kiếm thông tin ô đỗ (Tầng, Tên ô) của một xe đang đỗ dựa trên biển số.
+        /// - ĐẦU VÀO: Query Param `licensePlate`.
+        /// - ĐẦU RA: Gọi `_parkingQueryService.LocateVehicleAsync` -> Trả về thông tin vị trí đỗ xe.
+        /// </summary>
         [AllowAnonymous]
         [HttpGet("locate")]
         public async Task<IActionResult> LocateVehicle([FromQuery] string licensePlate)

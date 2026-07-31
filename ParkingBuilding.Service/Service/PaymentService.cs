@@ -19,8 +19,10 @@ namespace ParkingBuilding.Service.Service
     //              LUỒNG 6 : PAYMENT - THANH TOÁN
     // =========================================================================
     /// <summary>
-    /// Lớp nghiệp vụ quản lý thanh toán (Payment Workflow).
-    /// Hỗ trợ xác nhận thanh toán tiền mặt tại quầy và xử lý giao dịch thông qua cổng thanh toán VNPay.
+    /// SERVICE LAYER: Xử lý nghiệp vụ thanh toán (Payment Workflow).
+    /// - CHỨC NĂNG CHÍNH: Xác nhận thanh toán tiền mặt tại quầy (Cash), sinh liên kết thanh toán VNPay trực tuyến, xử lý IPN callback hoàn tất giao dịch.
+    /// - ĐẦU VÀO (Input): Nhận `CashPaymentDto` hoặc `CreateVnPayPaymentDto` từ `PaymentsController`.
+    /// - ĐẦU RA (Output): Trả về `PaymentResultDto` (trạng thái thanh toán/URL VNPay) cho `PaymentsController`.
     /// </summary>
     public class PaymentService : IPaymentService
     {

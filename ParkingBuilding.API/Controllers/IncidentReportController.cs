@@ -104,5 +104,14 @@ namespace ParkingBuilding.API.Controllers
             var result = await _incidentService.GetMyIncidentsAsync(userId);
             return Ok(result);
         }
+
+        // 6. Thống kê sự cố & doanh thu tiền phạt (Chỉ dành riêng cho Manager)
+        [Authorize(Roles = "Manager")]
+        [HttpGet("statistics")]
+        public async Task<IActionResult> GetIncidentStatistics()
+        {
+            var result = await _incidentService.GetIncidentStatisticsAsync();
+            return Ok(result);
+        }
     }
 }

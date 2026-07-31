@@ -11,6 +11,12 @@ using System.Threading.Tasks;
 
 namespace ParkingBuilding.Service.Service
 {
+    /// <summary>
+    /// SERVICE LAYER: Xử lý nghiệp vụ Check-out và soát xe ra bãi đỗ.
+    /// - CHỨC NĂNG CHÍNH: Phân tích mã vé/QR, đối soát biển số xe ra, tính tổng thời gian/chi phí đỗ xe, áp dụng chính sách vé tháng/ân hạn, cập nhật trạng thái ô đỗ thành Available và hoàn tất phiên đỗ.
+    /// - ĐẦU VÀO (Input): Nhận DTO `CheckoutRequest` truyền từ `ParkingController`.
+    /// - ĐẦU RA (Output): Trả về `CheckoutResponse` (kèm tổng tiền, chi tiết hóa đơn, trạng thái thanh toán) cho `ParkingController`.
+    /// </summary>
     public class CheckOutService : ICheckOutService
     {
         private readonly IParkingRepository _parkingRepository;
@@ -113,7 +119,6 @@ namespace ParkingBuilding.Service.Service
             }
 
 
-            // Dòng 50: Khai báo biến checkOutImageUrl ở đây
             string? checkOutImageUrl = null;
 
             if (!string.IsNullOrEmpty(request.ImageUrl))
@@ -126,7 +131,6 @@ namespace ParkingBuilding.Service.Service
                 {
                     try
                     {
-                        // 1. Nhận diện từ file trực tiếp
                         string detectedPlate = await _aiRecognitionService.PredictLicensePlateFromFileAsync(request.ImageFile);
                         request.CheckoutLicensePlate = detectedPlate;
                     }
@@ -136,7 +140,6 @@ namespace ParkingBuilding.Service.Service
                     }
                 }
 
-                // 2. Upload Cloudinary sau khi AI nhận dạng
                 checkOutImageUrl = await _imageStorageService.UploadImageAsync(request.ImageFile, "parking_checkout");
             }
 
@@ -1308,6 +1311,12 @@ namespace ParkingBuilding.Service.Service
             }
         }
 
+        /// <summary>
+        /// HÀM: Quét mã QR tại cổng Check-out.
+        /// - CHỨC NĂNG: Giải mã chuỗi QR hoặc mã vé thô từ cổng ra, tính toán chi phí đỗ xe tạm tính và kiểm tra trạng thái vé.
+        /// - ĐẦU VÀO: `string ticketCodeOrLicense` (Mã QR/vé/biển số), `string? detectedPlate` (Biển số xe do camera AI quét ở cổng ra).
+        /// - ĐẦU RA: `ScanCheckOutResponse` (Thông tin phiên đỗ, thời gian đỗ, tổng tiền cần thanh toán).
+        /// </summary>
         public async Task<ScanCheckOutResponse> ScanQrCheckOutAsync(string ticketCodeOrLicense, string? detectedPlate)
         {
             if (QrCodeParserHelper.TryParseQr(ticketCodeOrLicense, out var parsedTicket, out var parsedPlate, out var parsedSessionId, out var parsedSlot))

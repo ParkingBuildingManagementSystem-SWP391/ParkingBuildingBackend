@@ -10,6 +10,12 @@ using System.Threading.Tasks;
 
 namespace ParkingBuilding.Service.Service
 {
+    /// <summary>
+    /// SERVICE LAYER: Xử lý nghiệp vụ Check-in xe vào bãi đỗ.
+    /// - CHỨC NĂNG CHÍNH: Phân tích mã vé/QR, xác thực ca trực nhân viên, đối soát biển số, tự động gán vị trí đỗ và khởi tạo phiên đỗ xe mới (InProgress).
+    /// - ĐẦU VÀO (Input): Nhận DTO `CheckInRequest` hoặc `WalkInRequest` truyền từ `ParkingController`.
+    /// - ĐẦU RA (Output): Trả về `ScanCheckInResponse` hoặc `WalkInResponse` (kèm mã vé, tên vị trí đỗ, trạng thái) cho `ParkingController`.
+    /// </summary>
     public class CheckInService : ICheckInService
     {
         private readonly IParkingRepository _parkingRepository;
